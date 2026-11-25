@@ -1,0 +1,17 @@
+{
+  "name": "onderzoeksomgeving",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Onderzoeksomgeving voor HR-onderzoek: vragenlijsten, dashboard en stukken op Cloudflare Workers + D1.",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "db:lokaal": "wrangler d1 migrations apply DB --local",
+    "db:live": "wrangler d1 migrations apply DB --remote",
+    "test": "node --test --test-concurrency=1 test/*.test.mjs",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "4.168.0"
+  }
+}
