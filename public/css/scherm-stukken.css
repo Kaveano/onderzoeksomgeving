@@ -1,1 +1,278 @@
-/* Opmaak voor het scherm: stukken */
+/* Opmaak voor de schermen: stukken (overzicht) en stuk bewerken.
+   Alle klassen beginnen met "st-" zodat ze niet botsen met andere schermen. */
+
+/* Knoppen minstens 36px hoog (prettig aanraken op een telefoon). */
+.st-scherm .knop-klein,
+.st-meldingen .knop-klein,
+.st-dialoog .knop-klein { min-height: 36px; }
+
+/* ============ Overzicht ============ */
+
+.st-uitleg { max-width: 75ch; }
+
+.st-item-titel {
+  display: inline-block;
+  color: var(--tekst);
+  text-decoration: none;
+  font-size: 1.05rem;
+  padding: 2px 0;
+}
+.st-item-titel:hover { color: var(--primair); text-decoration: underline; }
+.st-item-meta { margin-top: var(--ruimte-1); gap: var(--ruimte-1) var(--ruimte-2); }
+
+.st-knop-gevaar { color: var(--gevaar); }
+.st-knop-gevaar:hover { background: var(--gevaar-zacht); color: var(--gevaar); }
+
+.st-tip { margin: 0 0 var(--ruimte-4); padding: 0 var(--ruimte-1); max-width: 75ch; }
+
+/* ============ Stuk bewerken ============ */
+
+.st-meldingen .melding p { margin-bottom: var(--ruimte-2); }
+.st-meldingen .knoppen { margin-top: var(--ruimte-2); }
+.st-kopieer-uitkomst { display: block; margin-top: var(--ruimte-2); }
+.st-kopieer-uitkomst:empty { display: none; }
+
+/* De kaart zelf zonder binnenruimte: balk, tekstvak en voet lopen van rand tot rand. */
+.kaart.st-bewerken { padding: 0; }
+
+.st-kop {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(160px, 220px);
+  gap: var(--ruimte-3);
+  align-items: start;
+  padding: var(--ruimte-4) var(--ruimte-4) 0;
+}
+.st-kop .veld { margin-bottom: var(--ruimte-3); }
+.st-kop .veld > label.st-veldlabel {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--tekst-zacht);
+}
+.st-kop input.st-titel {
+  font-size: 1.35rem;
+  font-weight: 600;
+  min-height: 48px;
+  padding: 6px 10px;
+}
+
+.st-weergavevak:empty { display: none; }
+.st-weergavevak { margin-bottom: var(--ruimte-3); }
+
+.st-kop-lezen { padding: var(--ruimte-4) var(--ruimte-4) var(--ruimte-3); }
+.st-titel-lezen { font-size: 1.4rem; margin-bottom: var(--ruimte-2); overflow-wrap: anywhere; }
+
+/* Werkbalk: blijft onder de kopbalk staan tijdens het scrollen (top wordt door het script gezet). */
+.st-balk {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ruimte-2);
+  padding: var(--ruimte-2) var(--ruimte-4);
+  background: var(--vlak);
+  border-top: 1px solid var(--rand);
+  border-bottom: 1px solid var(--rand);
+}
+.st-alleen-lezen .st-balk { border-top: 1px solid var(--rand); }
+
+.st-opmaak { display: flex; flex-wrap: wrap; gap: var(--ruimte-1); min-width: 0; }
+.st-bewerken .st-opmaakknop { min-height: 36px; padding: 4px 10px; }
+.st-ok-vet { font-weight: 700; }
+.st-ok-cursief { font-style: italic; }
+
+.st-balk-rechts {
+  margin-left: auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--ruimte-2) var(--ruimte-3);
+  min-width: 0;
+}
+
+.st-status {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.875rem;
+  color: var(--tekst-zacht);
+  min-width: 0;
+}
+.st-status::before {
+  content: '';
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--rand-sterk);
+}
+.st-status-ok::before { background: var(--succes); }
+.st-status-wacht::before { background: var(--waarschuwing); }
+.st-status-bezig::before { background: var(--primair); animation: st-puls 0.8s ease-in-out infinite alternate; }
+.st-status-fout { color: var(--gevaar); font-weight: 600; }
+.st-status-fout::before { background: var(--gevaar); }
+.st-status-rust::before { display: none; }
+@keyframes st-puls { to { opacity: 0.25; } }
+@media (prefers-reduced-motion: reduce) {
+  .st-status-bezig::before { animation: none; }
+}
+
+/* Schakelaar Schrijven / Voorbeeld */
+.st-weergave {
+  display: inline-flex;
+  flex: none;
+  border: 1px solid var(--rand-sterk);
+  border-radius: var(--radius-klein);
+  overflow: hidden;
+}
+.st-weergaveknop {
+  min-height: 36px;
+  padding: 4px 12px;
+  border: 0;
+  background: var(--vlak);
+  color: var(--tekst);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+.st-weergaveknop + .st-weergaveknop { border-left: 1px solid var(--rand-sterk); }
+.st-weergaveknop:hover { background: var(--vlak-hover); }
+.st-weergaveknop[aria-pressed='true'] { background: var(--primair-zacht); color: var(--primair); font-weight: 600; }
+.st-weergaveknop:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; }
+
+/* Het schrijfvlak: tekst in een prettig leesbare kolom, het vak zelf over de volle breedte. */
+.st-schrijfvlak { position: relative; }
+.st-bewerken textarea.st-tekst,
+.st-voorbeeld {
+  padding: var(--ruimte-5) max(var(--ruimte-4), calc((100% - 74ch) / 2));
+  font-size: 1.0625rem;
+  line-height: 1.7;
+}
+.st-bewerken textarea.st-tekst {
+  display: block;
+  width: 100%;
+  min-height: 60vh;
+  height: 68vh;
+  border: 0;
+  border-radius: 0;
+  background: var(--vlak);
+  resize: vertical;
+}
+.st-bewerken textarea.st-tekst:focus { border: 0; outline: 2px solid var(--focus); outline-offset: -2px; }
+.st-bewerken textarea.st-tekst::placeholder { color: var(--tekst-zacht); opacity: 1; }
+.st-alleen-lezen textarea.st-tekst { cursor: text; }
+
+/* Voorbeeld (opgemaakte tekst) */
+.st-voorbeeld {
+  min-height: 60vh;
+  overflow-wrap: anywhere;
+}
+.st-voorbeeld > :first-child { margin-top: 0; }
+.st-voorbeeld p { margin: 0 0 1em; }
+.st-v-kop { margin: 1.4em 0 0.5em; line-height: 1.3; }
+.st-v-kop-1 { font-size: 1.6rem; }
+.st-v-kop-2 { font-size: 1.3rem; }
+.st-v-kop-3 { font-size: 1.1rem; }
+.st-v-lijst { margin: 0 0 1em; padding-left: 1.6em; }
+.st-v-lijst li + li { margin-top: 0.25em; }
+.st-v-citaat {
+  margin: 0 0 1em;
+  padding: 0.25em 0 0.25em 1em;
+  border-left: 4px solid var(--rand-sterk);
+  color: var(--tekst-zacht);
+}
+.st-v-citaat > :last-child { margin-bottom: 0; }
+
+.st-voet {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ruimte-2);
+  padding: var(--ruimte-2) var(--ruimte-4);
+  border-top: 1px solid var(--rand);
+  background: var(--vlak-2);
+  border-radius: 0 0 var(--radius) var(--radius);
+  font-size: 0.875rem;
+}
+
+/* Uitleg over de opmaak */
+.st-hulp summary {
+  cursor: pointer;
+  font-weight: 600;
+  padding: 6px 0;
+}
+.st-hulp[open] summary { margin-bottom: var(--ruimte-2); }
+.st-hulp p { max-width: 75ch; }
+.st-hulptabel { margin-bottom: var(--ruimte-3); }
+.st-hulptabel td { vertical-align: middle; }
+.st-code {
+  font-family: var(--lettertype-mono);
+  font-size: 0.875rem;
+  background: var(--vlak-2);
+  border: 1px solid var(--rand);
+  padding: 1px 6px;
+  border-radius: 4px;
+  white-space: pre;
+}
+
+/* Conflict- en herstelvensters */
+.st-conflict-feiten,
+.st-conflict-keuzes { margin: 0 0 var(--ruimte-3); padding-left: 1.2em; }
+.st-conflict-feiten li + li,
+.st-conflict-keuzes li + li { margin-top: var(--ruimte-1); }
+.st-conflict-details { margin: 0 0 var(--ruimte-3); }
+.st-conflict-details summary {
+  cursor: pointer;
+  color: var(--primair);
+  font-weight: 500;
+  padding: 6px 0;
+}
+.st-conflict-tekst {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 240px;
+  overflow-y: auto;
+  margin-top: var(--ruimte-2);
+  padding: var(--ruimte-3);
+  background: var(--vlak);
+  border: 1px solid var(--rand);
+  border-radius: var(--radius-klein);
+  font-size: 0.9rem;
+}
+.st-dialoog .st-conflict-tekst { background: var(--vlak-2); }
+dialog.dialoog.st-dialoog { width: min(640px, calc(100vw - 24px)); }
+
+/* ============ Telefoon ============ */
+
+@media (max-width: 640px) {
+  .st-kop {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+    padding: var(--ruimte-3) var(--ruimte-3) 0;
+  }
+  .st-kop-lezen { padding: var(--ruimte-3) var(--ruimte-3) var(--ruimte-2); }
+  .st-titel-lezen { font-size: 1.2rem; }
+  .st-kop input.st-titel { font-size: 1.15rem; }
+  .st-balk { padding: var(--ruimte-2) var(--ruimte-3); gap: var(--ruimte-2); }
+  .st-bewerken .st-opmaakknop { padding: 4px 8px; font-size: 0.85rem; }
+  .st-balk-rechts { margin-left: 0; width: 100%; justify-content: space-between; }
+  .st-bewerken:not(.st-alleen-lezen) .st-balk { row-gap: var(--ruimte-1); }
+  .st-bewerken:not(.st-alleen-lezen) .st-status { font-size: 0.8125rem; line-height: 1.3; padding: 2px 0; }
+  .st-bewerken textarea.st-tekst,
+  .st-voorbeeld { padding: var(--ruimte-3); font-size: 1.0625rem; line-height: 1.6; }
+  .st-bewerken textarea.st-tekst { height: 60vh; }
+  .st-voet { padding: var(--ruimte-2) var(--ruimte-3); }
+}
+
+@media print {
+  .st-balk, .st-voet, .st-hulp, .st-meldingen, .st-kruimel { display: none !important; }
+  .kaart.st-bewerken { border: 0; }
+}
+
+/* De kop van het conflictvenster krijgt de focus (zodat doortypen niets kiest); geen kader nodig. */
+.st-dialoog h2[tabindex='-1']:focus { outline: none; }

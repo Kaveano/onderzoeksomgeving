@@ -1,0 +1,587 @@
+/* Openbare vragenlijst voor respondenten (vaak op een telefoon).
+   Bouwt voort op de kleuren en maten uit app.css, dus werkt ook in donkere modus.
+   Geen inline style-attributen: alle opmaak staat hier. */
+
+/* Ruimte voor de vaste voortgangsbalk: wat in beeld wordt gescrold (ook door Tab) valt er niet onder. */
+html {
+  scroll-padding-top: 72px;
+}
+
+.vl-pagina {
+  background: var(--achtergrond);
+}
+
+.vl-hoofd {
+  --vl-zijruimte: var(--ruimte-4);
+  max-width: 720px;
+  margin: 0 auto;
+  padding: var(--ruimte-5) var(--vl-zijruimte) var(--ruimte-3);
+}
+
+/* Knoppen op deze pagina: groot genoeg om op een telefoon aan te tikken. */
+.vl-hoofd .knop {
+  min-height: 44px;
+}
+
+.vl-laden {
+  justify-content: center;
+  padding: var(--ruimte-6) 0;
+}
+
+/* ---------- Kop met titel en uitleg ---------- */
+
+.vl-kop,
+.vl-thema,
+.vl-verstuur,
+.vl-bericht {
+  background: var(--vlak);
+  border: 1px solid var(--rand);
+  border-radius: var(--radius);
+  box-shadow: var(--schaduw);
+  padding: var(--ruimte-5);
+  margin-bottom: var(--ruimte-4);
+  min-width: 0;
+}
+
+.vl-kop {
+  border-top: 4px solid var(--primair);
+}
+.vl-kop h1 {
+  margin-bottom: var(--ruimte-3);
+  overflow-wrap: anywhere;
+}
+.vl-intro {
+  font-size: 1.02rem;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.vl-intro p:last-child {
+  margin-bottom: 0;
+}
+
+.vl-verplicht-uitleg {
+  color: var(--tekst-zacht);
+  font-size: 0.9rem;
+  margin: 0 0 var(--ruimte-3);
+}
+
+.vl-al-ingevuld .knop {
+  margin-top: var(--ruimte-1);
+}
+
+/* ---------- Voortgang (blijft bovenaan staan tijdens het scrollen) ---------- */
+
+.vl-voortgang {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  margin: 0 calc(-1 * var(--vl-zijruimte)) var(--ruimte-3);
+  padding: var(--ruimte-2) var(--vl-zijruimte);
+  background: var(--achtergrond);
+  box-shadow: 0 1px 0 var(--rand);
+}
+.vl-voortgang-regel {
+  margin: 0 0 6px;
+  font-size: 0.875rem;
+  color: var(--tekst-zacht);
+  font-variant-numeric: tabular-nums;
+}
+.vl-voortgang-balk {
+  display: block;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--rand);
+  overflow: hidden;
+}
+.vl-voortgang-vulling {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: 999px;
+  background: var(--primair);
+  transition: width 0.25s ease;
+}
+
+/* ---------- Thema's en vragen ---------- */
+
+.vl-thema > h2 {
+  font-size: 1.2rem;
+  margin-bottom: var(--ruimte-1);
+  overflow-wrap: anywhere;
+}
+
+.vl-vraag {
+  position: relative;
+  margin: 0 calc(-1 * var(--ruimte-3));
+  padding: var(--ruimte-4) var(--ruimte-3);
+  scroll-margin-top: var(--ruimte-2);
+}
+/* Scheidingslijn tussen vragen, even breed als de tekst. */
+.vl-vraag + .vl-vraag::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: var(--ruimte-3);
+  right: var(--ruimte-3);
+  border-top: 1px solid var(--rand);
+}
+.vl-vraag:last-child {
+  padding-bottom: var(--ruimte-2);
+}
+
+/* Een zwevende legend gedraagt zich als gewone tekst in plaats van "in de rand". */
+.vl-vraag > legend.vl-vraag-tekst {
+  float: left;
+  width: 100%;
+  padding: 0;
+  margin: 0 0 var(--ruimte-3);
+  font-size: 1.05rem;
+  font-weight: 600;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.vl-vraag > :not(legend) {
+  clear: both;
+}
+.vl-vraag-nr {
+  color: var(--tekst-zacht);
+  font-variant-numeric: tabular-nums;
+  margin-right: 0.35em;
+}
+
+.vl-toelichting {
+  color: var(--tekst-zacht);
+  font-size: 0.93rem;
+  margin: calc(-1 * var(--ruimte-2)) 0 var(--ruimte-3);
+  overflow-wrap: anywhere;
+}
+.vl-toelichting p {
+  margin-bottom: var(--ruimte-2);
+}
+.vl-toelichting p:last-child {
+  margin-bottom: 0;
+}
+.vl-hulp {
+  color: var(--tekst-zacht);
+  font-size: 0.9rem;
+  margin: calc(-1 * var(--ruimte-2)) 0 var(--ruimte-3);
+}
+
+/* Foutmelding bij een vraag */
+.vl-vraag-ongeldig {
+  background: var(--gevaar-zacht);
+  box-shadow: inset 4px 0 0 var(--gevaar);
+  border-radius: 0 var(--radius-klein) var(--radius-klein) 0;
+}
+.vl-vraag-ongeldig::before,
+.vl-vraag-ongeldig + .vl-vraag::before {
+  border-top-color: transparent;
+}
+.vl-fout {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--ruimte-2);
+  margin: 0 0 var(--ruimte-3);
+  color: var(--gevaar);
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+.vl-fout::before {
+  content: '!' / '';
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+  border-radius: 50%;
+  background: var(--gevaar);
+  color: var(--vlak);
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1;
+}
+.vl-fout[hidden] {
+  display: none;
+}
+
+/* ---------- Antwoordopties ----------
+   Het echte keuzerondje/vinkvakje ligt onzichtbaar over het hele vlak:
+   het blijft zo bruikbaar met toetsenbord en schermlezer, en het hele vlak is aan te tikken. */
+
+.vl-opties {
+  display: grid;
+  gap: var(--ruimte-2);
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.vl-optie {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  cursor: pointer;
+}
+.vl-optie-invoer {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.vl-optie-vlak {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--ruimte-3);
+  min-height: 48px;
+  padding: var(--ruimte-2) var(--ruimte-3);
+  border: 1px solid var(--rand-sterk);
+  border-radius: var(--radius);
+  background: var(--vlak);
+  color: var(--tekst);
+  line-height: 1.35;
+  transition: background-color 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+}
+.vl-optie-tekst {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.vl-optie:hover .vl-optie-vlak {
+  border-color: var(--primair);
+  background: var(--vlak-2);
+}
+.vl-optie-invoer:checked + .vl-optie-vlak {
+  border-color: var(--primair);
+  background: var(--primair-zacht);
+  box-shadow: inset 0 0 0 1px var(--primair);
+}
+.vl-optie-invoer:focus-visible + .vl-optie-vlak {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* Rondje (één antwoord) of vierkantje (meerdere antwoorden) */
+.vl-optie-teken {
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--rand-sterk);
+  border-radius: 50%;
+  background: var(--vlak);
+}
+.vl-optie-teken-vierkant {
+  border-radius: 4px;
+}
+.vl-optie-invoer:checked + .vl-optie-vlak .vl-optie-teken {
+  border-color: var(--primair);
+  background: var(--primair);
+}
+.vl-optie-invoer:checked + .vl-optie-vlak .vl-optie-teken::after {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--tekst-omgekeerd);
+}
+.vl-optie-invoer:checked + .vl-optie-vlak .vl-optie-teken-vierkant::after {
+  width: 6px;
+  height: 11px;
+  border-radius: 0;
+  background: none;
+  border: solid var(--tekst-omgekeerd);
+  border-width: 0 2.5px 2.5px 0;
+  transform: translate(0, -1px) rotate(45deg);
+}
+
+/* Schaal 1 tot 5: op een groot scherm naast elkaar, op een telefoon onder elkaar. */
+.vl-schaal {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+.vl-schaal .vl-optie-vlak {
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 6px;
+  min-height: 92px;
+  padding: var(--ruimte-3) var(--ruimte-1);
+  text-align: center;
+}
+.vl-schaal .vl-optie-tekst {
+  font-size: 0.85rem;
+  line-height: 1.25;
+  hyphens: auto;
+}
+.vl-optie-nr {
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 2px solid var(--rand-sterk);
+  border-radius: 50%;
+  background: var(--vlak);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.vl-optie-invoer:checked + .vl-optie-vlak .vl-optie-nr {
+  border-color: var(--primair);
+  background: var(--primair);
+  color: var(--tekst-omgekeerd);
+}
+
+.vl-weetniet {
+  display: flex;
+  margin-top: var(--ruimte-2);
+}
+.vl-weetniet .vl-optie-vlak {
+  border-style: dashed;
+  color: var(--tekst-zacht);
+  padding-right: var(--ruimte-4);
+}
+.vl-weetniet .vl-optie-invoer:checked + .vl-optie-vlak {
+  border-style: solid;
+  color: var(--tekst);
+}
+
+/* Ja / nee: twee grote vlakken naast elkaar */
+.vl-janee {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  max-width: 440px;
+}
+.vl-janee .vl-optie-vlak {
+  justify-content: center;
+  min-height: 52px;
+  font-weight: 600;
+  font-size: 1.05rem;
+}
+
+/* Open vraag */
+.vl-open textarea {
+  min-height: 132px;
+  line-height: 1.5;
+}
+.vl-teller {
+  margin: var(--ruimte-1) 0 0;
+  text-align: right;
+  font-size: 0.85rem;
+  color: var(--tekst-zacht);
+  font-variant-numeric: tabular-nums;
+}
+.vl-teller-vol {
+  color: var(--waarschuwing);
+  font-weight: 600;
+}
+
+/* Lokaasveld tegen robots: buiten beeld, niet met display:none. */
+.vl-lokaas {
+  position: absolute;
+  left: -10000px;
+  top: auto;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+/* ---------- Versturen ---------- */
+
+.vl-verstuur {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ruimte-3);
+}
+.vl-verstuur-uitleg {
+  margin: 0;
+  color: var(--tekst-zacht);
+  font-size: 0.93rem;
+}
+.vl-samenvatting:empty {
+  display: none;
+}
+.vl-samenvatting .melding {
+  margin-bottom: 0;
+}
+.vl-samenvatting .melding p:last-child {
+  margin-bottom: 0;
+}
+.vl-samenvatting .knoppen {
+  margin-top: var(--ruimte-3);
+}
+.vl-samenvatting-kop {
+  font-weight: 700;
+}
+.vl-knop-verstuur {
+  align-self: flex-start;
+  min-height: 50px;
+  padding: 10px 32px;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+.vl-knop-verstuur:disabled {
+  cursor: progress;
+}
+
+/* ---------- Meldingen (gesloten, bestaat niet, fout) en bedankt ---------- */
+
+.vl-bericht {
+  text-align: center;
+  padding: var(--ruimte-6) var(--ruimte-5);
+}
+.vl-bericht h1 {
+  overflow-wrap: anywhere;
+}
+.vl-bericht h1:focus {
+  outline: none;
+}
+.vl-bericht p {
+  max-width: 34em;
+  margin-left: auto;
+  margin-right: auto;
+  overflow-wrap: anywhere;
+}
+.vl-bericht p:last-child {
+  margin-bottom: 0;
+}
+.vl-bericht .knop {
+  margin-top: var(--ruimte-2);
+}
+.vl-bovenschrift {
+  color: var(--tekst-zacht);
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin-bottom: var(--ruimte-1);
+}
+.vl-bericht-icoon {
+  display: inline-grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  margin-bottom: var(--ruimte-3);
+  border-radius: 50%;
+  background: var(--primair-zacht);
+  color: var(--primair);
+}
+.vl-bericht-succes .vl-bericht-icoon {
+  background: var(--succes-zacht);
+  color: var(--succes);
+}
+.vl-bericht-fout .vl-bericht-icoon {
+  background: var(--waarschuwing-zacht);
+  color: var(--waarschuwing);
+}
+.vl-bedankt-tekst {
+  font-size: 1.05rem;
+  line-height: 1.6;
+}
+
+/* ---------- Voettekst ---------- */
+
+.vl-voet {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: var(--ruimte-2) var(--ruimte-4) var(--ruimte-6);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  gap: var(--ruimte-2);
+  color: var(--tekst-zacht);
+  font-size: 0.875rem;
+  text-align: center;
+}
+.vl-voet[hidden] {
+  display: none;
+}
+.vl-voet p {
+  margin: 0;
+}
+.vl-voet-icoon {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+/* ---------- Telefoon ---------- */
+
+@media (max-width: 559px) {
+  .vl-hoofd {
+    --vl-zijruimte: var(--ruimte-3);
+    padding-top: var(--ruimte-3);
+  }
+  .vl-kop,
+  .vl-thema,
+  .vl-verstuur {
+    padding: var(--ruimte-4);
+  }
+  .vl-bericht {
+    padding: var(--ruimte-5) var(--ruimte-4);
+  }
+  .vl-schaal {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .vl-schaal .vl-optie-vlak {
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: var(--ruimte-3);
+    min-height: 50px;
+    padding: var(--ruimte-2) var(--ruimte-3);
+    text-align: left;
+  }
+  .vl-schaal .vl-optie-tekst {
+    font-size: 1rem;
+  }
+  .vl-optie-nr {
+    width: 32px;
+    height: 32px;
+  }
+  .vl-weetniet {
+    display: grid;
+  }
+  .vl-janee {
+    max-width: none;
+  }
+  .vl-knop-verstuur {
+    align-self: stretch;
+  }
+  .vl-voet {
+    padding-left: var(--ruimte-3);
+    padding-right: var(--ruimte-3);
+    text-align: left;
+  }
+}
+
+/* ---------- Toegankelijkheid en afdrukken ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .vl-voortgang-vulling,
+  .vl-optie-vlak {
+    transition: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .vl-optie-invoer:checked + .vl-optie-vlak {
+    outline: 3px solid Highlight;
+    outline-offset: -3px;
+  }
+  .vl-optie-invoer:checked + .vl-optie-vlak .vl-optie-nr,
+  .vl-optie-invoer:checked + .vl-optie-vlak .vl-optie-teken {
+    forced-color-adjust: none;
+    background: Highlight;
+    color: HighlightText;
+    border-color: Highlight;
+  }
+}
+
+@media print {
+  .vl-voortgang,
+  .vl-verstuur {
+    display: none;
+  }
+  .vl-kop,
+  .vl-thema {
+    box-shadow: none;
+  }
+}

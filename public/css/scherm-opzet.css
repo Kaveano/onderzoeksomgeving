@@ -1,1 +1,308 @@
 /* Opmaak voor het scherm: opzet */
+
+/* Knoppen op dit scherm minstens 36px hoog (prettig aanraken op een telefoon). */
+.opzet .knop-klein { min-height: 36px; }
+
+/* Bij springen naar een kop of item niet onder de vaste kopbalk verdwijnen. */
+.opzet [data-focus],
+.opzet-sectie { scroll-margin-top: 84px; }
+
+.opzet-onderkop {
+  margin: 0;
+  color: var(--tekst-zacht);
+  font-size: 0.875rem;
+}
+.opzet-uitleg {
+  color: var(--tekst-zacht);
+  max-width: 75ch;
+}
+.opzet-omschrijving {
+  margin: 2px 0 0;
+  color: var(--tekst-zacht);
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+.opzet-leeg-klein {
+  margin: var(--ruimte-2) 0 0;
+  color: var(--tekst-zacht);
+  font-size: 0.875rem;
+}
+
+/* ---------- Snel naar een onderdeel ---------- */
+
+.opzet-paginanav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ruimte-1);
+  margin: calc(-1 * var(--ruimte-2)) 0 var(--ruimte-3);
+}
+.opzet-paginanav-label {
+  color: var(--tekst-zacht);
+  font-size: 0.875rem;
+  margin-right: var(--ruimte-1);
+}
+
+/* ---------- 1. Gegevens ---------- */
+
+.opzet-opslaanrij {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ruimte-2) var(--ruimte-3);
+  margin-top: var(--ruimte-2);
+}
+.opzet-opslaanstatus {
+  font-size: 0.875rem;
+  color: var(--tekst-zacht);
+}
+.opzet-opslaanstatus.opzet-niet-opgeslagen {
+  color: var(--waarschuwing);
+  font-weight: 600;
+}
+.opzet-gegevens-form .formulier-rij > .veld { margin-bottom: 0; }
+.opzet-gegevens-form .formulier-rij { margin-bottom: var(--ruimte-4); align-items: start; }
+
+.opzet-gegevens-lijst {
+  display: grid;
+  grid-template-columns: minmax(140px, 200px) minmax(0, 1fr);
+  gap: var(--ruimte-2) var(--ruimte-4);
+  margin: 0;
+}
+.opzet-gegevens-lijst dt {
+  font-weight: 600;
+  color: var(--tekst-zacht);
+}
+.opzet-gegevens-lijst dd {
+  margin: 0;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- 2. Thema's en meetpunten ---------- */
+
+.opzet-begrippen {
+  background: var(--vlak-2);
+  border-radius: var(--radius);
+  padding: var(--ruimte-3) var(--ruimte-4);
+  margin-bottom: var(--ruimte-4);
+  font-size: 0.95rem;
+}
+.opzet-begrippen dl { margin: 0 0 var(--ruimte-2); }
+.opzet-begrip {
+  display: grid;
+  grid-template-columns: 6.5rem minmax(0, 1fr);
+  gap: var(--ruimte-3);
+  padding: 2px 0;
+}
+.opzet-begrip dt { font-weight: 700; }
+.opzet-begrip dd { margin: 0; }
+.opzet-begrippen > p {
+  margin: 0;
+  color: var(--tekst-zacht);
+}
+
+.opzet-themas {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--ruimte-3);
+}
+.opzet-thema {
+  border: 1px solid var(--rand);
+  border-radius: var(--radius);
+  padding: var(--ruimte-3) var(--ruimte-4) var(--ruimte-4);
+  background: var(--vlak);
+  min-width: 0;
+}
+.opzet-thema-kop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--ruimte-2) var(--ruimte-4);
+}
+.opzet-thema-tekst {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+.opzet-thema-tekst h3 {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--ruimte-2);
+  margin: 0 0 2px;
+}
+.opzet-thema-naam {
+  overflow-wrap: anywhere;
+  padding-top: 1px;
+}
+.opzet-nummer {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--primair-zacht);
+  color: var(--primair);
+  font-size: 0.85rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.opzet-thema-tekst .opzet-omschrijving,
+.opzet-thema-tekst .opzet-meta { padding-left: 34px; }
+.opzet-meta {
+  margin: 4px 0 0;
+  font-size: 0.875rem;
+  color: var(--tekst-zacht);
+}
+
+.opzet-acties {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--ruimte-1);
+}
+.opzet-verplaats {
+  display: inline-flex;
+  gap: var(--ruimte-1);
+  margin-right: var(--ruimte-1);
+}
+.opzet-verplaats-knop { font-size: 1.05rem; }
+
+.opzet-thema-melding:not(:empty) { margin-top: var(--ruimte-3); }
+.opzet-thema-melding .melding { margin: 0; }
+.opzet-thema-melding .melding p { margin-bottom: var(--ruimte-1); }
+
+.opzet-meetpunten {
+  margin-top: var(--ruimte-3);
+  margin-left: 34px;
+  padding: var(--ruimte-2) var(--ruimte-3);
+  background: var(--vlak-2);
+  border-radius: var(--radius-klein);
+}
+.opzet-meetpunten-kop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ruimte-2);
+}
+.opzet-meetpunten-kop h4 {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--tekst-zacht);
+}
+.opzet-meetpunt-lijst { margin-top: var(--ruimte-1); }
+.opzet-meetpunt-lijst .lijst-item {
+  padding: var(--ruimte-2) 0;
+  align-items: center;
+}
+.opzet-meetpunt-titel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px var(--ruimte-2);
+}
+.opzet-eenheid { font-weight: 500; }
+
+/* ---------- 3. Meetmomenten (tijdlijn) ---------- */
+
+.opzet-tijdlijn > .lijst-item {
+  position: relative;
+  padding-left: 30px;
+  border-bottom: 0;
+}
+.opzet-tijdlijn > .lijst-item::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 18px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--vlak);
+  border: 3px solid var(--primair);
+}
+.opzet-tijdlijn > .lijst-item::after {
+  content: '';
+  position: absolute;
+  left: 10px;
+  top: 34px;
+  bottom: -16px;
+  width: 2px;
+  background: var(--rand-sterk);
+}
+.opzet-tijdlijn > .lijst-item:last-child::after { display: none; }
+.opzet-tijdlijn .lijst-item-meta { margin-top: 2px; }
+
+/* ---------- 4. Sjablonen ---------- */
+
+.opzet-blok {
+  min-width: 0;
+  border: 1px solid var(--rand);
+  border-radius: var(--radius);
+  padding: var(--ruimte-4);
+}
+.opzet-blok > h3 { margin-bottom: var(--ruimte-2); }
+.opzet-blok-smal { max-width: 720px; }
+.opzet-blok .opzet-uitleg { font-size: 0.95rem; }
+.opzet-blok .opzet-leeg-klein { margin: 0 0 var(--ruimte-3); }
+.opzet-sjabloon-info {
+  background: var(--vlak-2);
+  border-radius: var(--radius-klein);
+  padding: var(--ruimte-3);
+  margin: calc(-1 * var(--ruimte-2)) 0 var(--ruimte-4);
+  font-size: 0.95rem;
+}
+.opzet-sjabloon-info p { margin-bottom: var(--ruimte-2); }
+.opzet-sjabloon-info > :last-child { margin-bottom: 0; }
+.opzet-chips {
+  list-style: none;
+  margin: 0 0 var(--ruimte-2);
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ruimte-1);
+}
+.opzet-resultaat:not(:empty) { margin-top: var(--ruimte-4); }
+.opzet-resultaat .melding { margin: 0; }
+.opzet-resultaat .melding p { margin-bottom: var(--ruimte-2); }
+.opzet-resultaat [tabindex='-1']:focus { outline: none; }
+
+/* ---------- Oplichten na verplaatsen of toevoegen ---------- */
+
+@keyframes opzet-oplichten {
+  from { box-shadow: 0 0 0 3px var(--focus); }
+  to { box-shadow: 0 0 0 3px transparent; }
+}
+.opzet-oplichten {
+  animation: opzet-oplichten 1.4s ease-out;
+  border-radius: var(--radius-klein);
+}
+@media (prefers-reduced-motion: reduce) {
+  .opzet-oplichten { animation: none; }
+}
+
+/* ---------- Telefoon ---------- */
+
+@media (max-width: 640px) {
+  .opzet-thema { padding: var(--ruimte-3); }
+  .opzet-thema-tekst { flex-basis: 100%; }
+  .opzet-acties { width: 100%; justify-content: flex-start; }
+  .opzet-thema-tekst .opzet-omschrijving,
+  .opzet-thema-tekst .opzet-meta { padding-left: 0; }
+  .opzet-meetpunten { margin-left: 0; padding: var(--ruimte-2); }
+  .opzet-begrippen { padding: var(--ruimte-3); }
+  .opzet-begrip { grid-template-columns: minmax(0, 1fr); gap: 0; padding: 0 0 var(--ruimte-2); }
+  .opzet-gegevens-lijst { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .opzet-gegevens-lijst dd { margin-bottom: var(--ruimte-3); }
+  .opzet-blok { padding: var(--ruimte-3); }
+}
+
+@media print {
+  .opzet-paginanav, .opzet-acties, .opzet-verplaats { display: none !important; }
+}
