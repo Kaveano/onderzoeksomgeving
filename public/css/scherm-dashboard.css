@@ -688,3 +688,6 @@
   .db-snelnaar, .db-filter { display: none !important; }
   .db-thema:not([open]) > .db-thema-inhoud { display: block; }
 }
+
+/* Verborgen cel in de uitsplitsing (te weinig respondenten) */
+.dashboard .db-cel-verborgen { color: var(--tekst-zacht); font-style: italic; }

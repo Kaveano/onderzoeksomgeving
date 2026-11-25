@@ -89,10 +89,10 @@ export async function toon(container, ctx) {
         ),
         ctx.alleenLezen ? null : h('div', { class: 'lijst-item-acties' },
           statusKeuze,
-          h('button', { class: 'knop knop-klein', onclick: async () => { if (await formulier(a)) laad(); } }, 'Wijzigen'),
+          h('button', { class: 'knop knop-klein', 'aria-label': `Wijzigen: "${a.titel}"`, onclick: async () => { if (await formulier(a)) laad(); } }, 'Wijzigen'),
           h('button', {
             class: 'knop knop-klein knop-licht',
-            'aria-label': `Verwijder "${a.titel}"`,
+            'aria-label': `Verwijderen: "${a.titel}"`,
             onclick: async () => {
               if (!(await bevestig({ titel: 'Actie verwijderen?', tekst: `"${a.titel}" wordt verwijderd.`, knop: 'Verwijderen', gevaar: true }))) return;
               try {

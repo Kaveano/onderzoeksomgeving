@@ -65,6 +65,8 @@ function svg(tag, attrs = {}, ...kinderen) {
 
 const heeft = (x) => x !== null && x !== undefined && !Number.isNaN(Number(x));
 const nl = (n) => Number(n || 0).toLocaleString('nl-NL');
+// Verschillen altijd berekenen uit de getoonde (afgeronde) waarden, zodat de getallen optellen.
+const r1 = (x) => Math.round(x * 10) / 10;
 const nTekst = (n) => `n = ${nl(n)}`;
 
 /** Getal met maximaal 2 decimalen, zonder overbodige nullen: 4,25 / 12 / 0,5 */
@@ -624,14 +626,16 @@ export async function toon(container, ctx) {
     if (punten.length < 2) return null;
     const w = (p) => (isJaNee ? p.percentage_ja : p.gemiddelde);
     const tekst = punten.map((p) => `${p.naam} ${isJaNee ? `${procent(w(p))} ja` : getal(w(p), 1)}`).join(' → ');
-    const dlt = w(punten[punten.length - 1]) - w(punten[0]);
+    const dlt = isJaNee
+      ? Math.round(w(punten[punten.length - 1])) - Math.round(w(punten[0]))
+      : r1(w(punten[punten.length - 1])) - r1(w(punten[0]));
     return {
       tekst,
-      verschil: isJaNee ? Math.round(dlt) : dlt,
+      verschil: dlt,
       el: h('div', { class: 'db-vraag-verloop' },
         h('span', { class: 'db-verloop-label' }, 'Verloop: '),
         h('span', {}, tekst), ' ',
-        isJaNee ? verschilEl(Math.round(dlt), 0, ' procentpunt') : verschilEl(dlt, 1)),
+        isJaNee ? verschilEl(dlt, 0, ' procentpunt') : verschilEl(dlt, 1)),
     };
   }
 
@@ -954,7 +958,7 @@ export async function toon(container, ctx) {
         .filter((x) => x.p && heeft(x.p.gemiddelde));
       if (!punten.length) continue;
       const tekst = punten.map((x) => `${x.mm.naam} ${getal(x.p.gemiddelde, 1)}`).join(' → ');
-      const dlt = punten.length > 1 ? punten[punten.length - 1].p.gemiddelde - punten[0].p.gemiddelde : null;
+      const dlt = punten.length > 1 ? r1(punten[punten.length - 1].p.gemiddelde) - r1(punten[0].p.gemiddelde) : null;
       regels.push(`- ${t.naam}: ${tekst}${dlt !== null ? ` (${metTeken(dlt, 1)})` : ''}`);
     }
     return regels.join('\n');
@@ -971,7 +975,7 @@ export async function toon(container, ctx) {
         h('tbody', {}, reeksen.map((t) => {
           const cellen = mmData.map((mm) => t.punten.find((p) => p.meetmoment_id === mm.id));
           const met = cellen.filter((p) => p && heeft(p.gemiddelde));
-          const dlt = met.length > 1 ? met[met.length - 1].gemiddelde - met[0].gemiddelde : null;
+          const dlt = met.length > 1 ? r1(met[met.length - 1].gemiddelde) - r1(met[0].gemiddelde) : null;
           return h('tr', {},
             h('th', { scope: 'row' }, t.naam, t.thema_naam ? h('span', { class: 'db-th-sub' }, t.thema_naam) : null),
             cellen.map((p) => h('td', { class: 'rechts getal' },
@@ -1017,7 +1021,7 @@ export async function toon(container, ctx) {
         };
       });
       const met = punten.filter((p) => p.y !== null);
-      const dlt = met.length > 1 ? met[met.length - 1].y - met[0].y : null;
+      const dlt = met.length > 1 ? r1(met[met.length - 1].y) - r1(met[0].y) : null;
       const beschrijving = `${t.naam}: ${mmData.map((mm, i) => `${mm.naam} ${punten[i].y === null ? 'geen gegevens' : getal(punten[i].y, 1)}`).join(', ')}`;
       return h('figure', { class: 'db-mini' },
         h('figcaption', { class: 'db-mini-kop' }, h('span', { class: 'db-mini-titel' }, t.naam), verschilEl(dlt, 1)),
@@ -1207,13 +1211,16 @@ export async function toon(container, ctx) {
     for (const g of u.groepen) {
       const naam = g.samengevoegd && g.samengevoegd.length ? `${g.label}: ${g.samengevoegd.join(', ')}` : g.label;
       if (g.verborgen) {
-        kop(`${naam} – niet getoond (minder dan ${u.drempel} respondenten)`);
+        kop(`${naam} – niet getoond`);
+        if (g.reden) regels.push(g.reden);
         continue;
       }
       kop(`${naam} (${nTekst(g.n)})`);
-      for (const t of g.themas) regels.push(`- ${t.naam}: ${getal(t.gemiddelde, 1)}`);
+      for (const t of g.themas) {
+        regels.push(`- ${t.naam}: ${t.verborgen ? `niet getoond (minder dan ${u.drempel} respondenten)` : getal(t.gemiddelde, 1)}`);
+      }
     }
-    regels.push('', `Groepen met minder dan ${u.drempel} respondenten worden niet apart getoond, zodat niemand herkenbaar is.`);
+    regels.push('', `Groepen en scores met minder dan ${u.drempel} respondenten worden niet apart getoond, zodat niemand herkenbaar is.`);
     return regels.join('\n');
   }
 
@@ -1221,7 +1228,18 @@ export async function toon(container, ctx) {
     return h('th', { scope: 'row', class: 'db-groep-naam' },
       g.label,
       g.samengevoegd && g.samengevoegd.length ? h('span', { class: 'db-th-sub' }, g.samengevoegd.join(', ')) : null,
-      reden ? h('span', { class: 'db-th-sub db-reden' }, reden) : null);
+      reden ? h('span', { class: 'db-th-sub db-reden' }, reden) : null,
+      !reden && g.toelichting ? h('span', { class: 'db-th-sub' }, g.toelichting) : null);
+  }
+
+  /** Cel in de uitsplitsing: getal, of "<5" als het om te weinig respondenten gaat. */
+  function groepCel(w, drempel) {
+    if (w && w.verborgen) {
+      return h('td', { class: 'rechts getal db-cel-verborgen', title: `Minder dan ${drempel} respondenten; niet getoond` },
+        h('span', { 'aria-hidden': 'true' }, `<${drempel}`),
+        h('span', { class: 'sr-only' }, `minder dan ${drempel} respondenten, niet getoond`));
+    }
+    return h('td', { class: 'rechts getal' }, w && heeft(w.gemiddelde) ? getal(w.gemiddelde, 1) : '–');
   }
 
   function vulUitsplitsing(el) {
@@ -1260,10 +1278,7 @@ export async function toon(container, ctx) {
       return h('tr', {},
         groepNaamCel(g),
         h('td', { class: 'rechts getal' }, nl(g.n)),
-        themas.map((t) => {
-          const w = perThema.get(t.thema_id);
-          return h('td', { class: 'rechts getal' }, w && heeft(w.gemiddelde) ? getal(w.gemiddelde, 1) : '–');
-        }));
+        themas.map((t) => groepCel(perThema.get(t.thema_id), u.drempel)));
     });
 
     // Per vraag (alleen zichtbare groepen)
@@ -1281,10 +1296,7 @@ export async function toon(container, ctx) {
             h('tbody', {}, schaalVragen.map((q) => h('tr', {},
               h('th', { scope: 'row', class: 'db-vraag-cel' }, q.tekst),
               h('td', { class: 'rechts getal' }, getal(q.gemiddelde, 1)),
-              zichtbaar.map((g) => {
-                const w = (g.vragen || []).find((x) => x.vraag_id === q.id);
-                return h('td', { class: 'rechts getal' }, w && heeft(w.gemiddelde) ? getal(w.gemiddelde, 1) : '–');
-              })))),
+              zichtbaar.map((g) => groepCel((g.vragen || []).find((x) => x.vraag_id === q.id), u.drempel))))),
           )))
       : null;
 
@@ -1300,8 +1312,9 @@ export async function toon(container, ctx) {
           h('tbody', {}, rijIedereen, rijen),
         )),
       !zichtbaar.length
-        ? melding(`Geen enkele groep heeft ${u.drempel} of meer respondenten, dus er zijn geen resultaten per groep te tonen.`)
+        ? melding((u.groepen.find((g) => g.verborgen) || {}).reden || `Geen enkele groep heeft ${u.drempel} of meer respondenten, dus er zijn geen resultaten per groep te tonen.`)
         : null,
+      zichtbaar.length && u.uitleg_cel ? h('p', { class: 'klein zacht' }, u.uitleg_cel) : null,
       perVraag,
     );
   }
@@ -1312,7 +1325,9 @@ export async function toon(container, ctx) {
     const regel = h('p', { class: 'db-uitleg' },
       `Om anonimiteit te beschermen tonen we alleen groepen met minimaal ${drempel} respondenten. `,
       'Kleinere groepen voegen we samen tot "Overige groepen samen". Is die samengevoegde groep nog te klein, ',
-      'dan gaat ook de kleinste andere groep erin op; anders zou je de kleine groep kunnen terugrekenen uit het totaal.');
+      'dan gaat ook de kleinste andere groep erin op; anders zou je de kleine groep kunnen terugrekenen uit het totaal. ',
+      `Ook een score binnen een groep tonen we alleen als minstens ${drempel} respondenten uit die groep de vragen beantwoordden. `,
+      'Leg uitkomsten van verschillende uitsplitsingen niet naast elkaar om kleinere groepen af te leiden.');
 
     if (s.klein) {
       return kaart('db-uitsplitsing', 'Uitsplitsing', 'Uitsplitsing', {},

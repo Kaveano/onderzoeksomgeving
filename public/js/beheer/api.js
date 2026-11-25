@@ -11,7 +11,7 @@ export class ApiFout extends Error {
 
 const BASIS = '/api/beheer';
 
-async function verzoek(methode, pad, body) {
+async function verzoek(methode, pad, body, { keepalive = false } = {}) {
   let r;
   try {
     r = await fetch(pad.startsWith('/api/') ? pad : BASIS + pad, {
@@ -20,6 +20,7 @@ async function verzoek(methode, pad, body) {
       body: body !== undefined ? JSON.stringify(body) : undefined,
       credentials: 'same-origin',
       cache: 'no-store',
+      keepalive,
     });
   } catch {
     throw new ApiFout(0, 'Geen verbinding met de server. Controleer je internetverbinding en probeer het opnieuw.');
@@ -42,7 +43,8 @@ async function verzoek(methode, pad, body) {
 export const api = {
   get: (pad) => verzoek('GET', pad),
   post: (pad, body = {}) => verzoek('POST', pad, body),
-  put: (pad, body = {}) => verzoek('PUT', pad, body),
+  // opties.keepalive: true laat het verzoek ook afmaken als het tabblad wordt gesloten (max. 64 kB).
+  put: (pad, body = {}, opties) => verzoek('PUT', pad, body, opties),
   del: (pad, body) => verzoek('DELETE', pad, body),
 };
 

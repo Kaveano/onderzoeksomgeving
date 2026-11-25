@@ -497,6 +497,8 @@ html {
 }
 .vl-voet p {
   margin: 0;
+  flex: 0 1 auto;
+  text-align: left;
 }
 .vl-voet-icoon {
   flex: 0 0 auto;

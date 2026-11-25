@@ -1,14 +1,25 @@
 // Dashboard: respons, gemiddelden per thema, verdeling, verloop, eigen cijfers,
-// open antwoorden en uitsplitsing. Groepen met minder dan DREMPEL respondenten
-// worden in een uitsplitsing nooit getoond.
+// open antwoorden en uitsplitsing.
+//
+// Privacy in de uitsplitsing:
+// - een groep wordt alleen getoond als hij minstens DREMPEL respondenten heeft;
+// - ook elk getal (gemiddelde per thema of per vraag) in een groep wordt alleen getoond
+//   als minstens DREMPEL respondenten in die groep die vraag/dat thema beantwoordden;
+// - kleine groepen en cellen worden zo nodig samen met de kleinste andere verborgen,
+//   zodat ze niet uit het totaal zijn terug te rekenen;
+// - gemiddelden per groep worden op 1 decimaal afgerond en zonder aantallen antwoorden
+//   doorgegeven, zodat ze niet tegen elkaar weg te strepen zijn.
+//
+// Rekenwerk: elke inzending wordt één keer doorlopen (gratis laag: 10 ms rekentijd per verzoek).
 
 import { json } from '../lib/http.js';
 import * as v from '../lib/validatie.js';
 import { haalOnderzoek } from '../lib/db.js';
 import { DREMPEL, SCHALEN, WEET_NIET } from '../lib/schalen.js';
 
-const rond = (x) => (x === null || x === undefined || Number.isNaN(x) ? null : Math.round(x * 100) / 100);
-const pct = (deel, geheel) => (geheel ? Math.round((deel / geheel) * 1000) / 10 : null);
+const pct = (deel, geheel) => (geheel ? (deel / geheel) * 100 : null);
+const deel = (som, n) => (n ? som / n : null);
+const eenDecimaal = (x) => (x === null ? null : Math.round(x * 10) / 10);
 
 function schudden(lijst) {
   const a = [...lijst];
@@ -23,29 +34,86 @@ function schaalWaarde(a) {
   return Number.isInteger(a) && a >= 1 && a <= 5 ? a : null;
 }
 
-/** Gemiddelde (gepoold) per groep vragen over een set inzendingen. */
-function gepoold(vragen, inzendingen) {
-  let som = 0;
-  let aantal = 0;
-  let respondenten = 0;
-  for (const inz of inzendingen) {
-    let telt = false;
-    for (const q of vragen) {
-      const w = schaalWaarde(inz.a[q.id]);
-      if (w !== null) {
-        som += w;
-        aantal++;
-        telt = true;
+/**
+ * Telt in één doorloop alles wat het dashboard nodig heeft voor een set vragen en inzendingen.
+ * Geeft per vraag tellingen en per thema/meetpunt (schaalvragen) som, aantal antwoorden en respondenten.
+ */
+function aggregeer(vragen, inzendingen) {
+  const perVraag = vragen.map((q) => ({
+    q,
+    tellingen: [0, 0, 0, 0, 0],
+    som: 0,
+    n: 0,
+    weetNiet: 0,
+    ja: 0,
+    nee: 0,
+    opties: q.type === 'meerkeuze' ? new Map(JSON.parse(q.opties || '[]').map((o) => [o.id, 0])) : null,
+    open: 0,
+  }));
+  const groepen = { thema: new Map(), meetpunt: new Map() };
+  const groep = (soort, sleutel) => {
+    let g = groepen[soort].get(sleutel);
+    if (!g) {
+      g = { som: 0, aantal: 0, respondenten: 0, laatst: -1 };
+      groepen[soort].set(sleutel, g);
+    }
+    return g;
+  };
+
+  inzendingen.forEach((inz, r) => {
+    const a = inz.a;
+    for (const s of perVraag) {
+      const w = a[s.q.id];
+      if (w === undefined) continue;
+      switch (s.q.type) {
+        case 'schaal': {
+          const x = schaalWaarde(w);
+          if (x !== null) {
+            s.tellingen[x - 1]++;
+            s.som += x;
+            s.n++;
+            for (const g of [groep('thema', s.q.thema_id), s.q.meetpunt_id ? groep('meetpunt', s.q.meetpunt_id) : null]) {
+              if (!g) continue;
+              g.som += x;
+              g.aantal++;
+              if (g.laatst !== r) {
+                g.laatst = r;
+                g.respondenten++;
+              }
+            }
+          } else if (w === WEET_NIET) s.weetNiet++;
+          break;
+        }
+        case 'janee':
+          if (w === 'ja') s.ja++;
+          else if (w === 'nee') s.nee++;
+          break;
+        case 'meerkeuze': {
+          const keuzes = Array.isArray(w) ? w : [w];
+          let telt = false;
+          for (const k of keuzes) {
+            if (s.opties.has(k)) {
+              s.opties.set(k, s.opties.get(k) + 1);
+              telt = true;
+            }
+          }
+          if (telt) s.n++;
+          break;
+        }
+        case 'open':
+          if (typeof w === 'string' && w) s.open++;
+          break;
+        default:
       }
     }
-    if (telt) respondenten++;
-  }
-  return { gemiddelde: aantal ? rond(som / aantal) : null, n: respondenten, antwoorden: aantal };
+  });
+  return { perVraag, themas: groepen.thema, meetpunten: groepen.meetpunt };
 }
 
-/** Statistiek voor één vraag. */
-function vraagStatistiek(q, inzendingen) {
-  const resultaat = {
+/** Statistiek voor één vraag, uit de geaggregeerde tellingen. */
+function vraagStatistiek(s) {
+  const q = s.q;
+  const r = {
     id: q.id,
     thema_id: q.thema_id,
     meetpunt_id: q.meetpunt_id,
@@ -57,140 +125,148 @@ function vraagStatistiek(q, inzendingen) {
   };
   if (q.type === 'schaal') {
     const labels = SCHALEN[q.schaal_soort] || SCHALEN.eens;
-    const tellingen = [0, 0, 0, 0, 0];
-    let weetNiet = 0;
-    let som = 0;
-    for (const inz of inzendingen) {
-      const a = inz.a[q.id];
-      const w = schaalWaarde(a);
-      if (w !== null) {
-        tellingen[w - 1]++;
-        som += w;
-      } else if (a === WEET_NIET) weetNiet++;
-    }
-    const n = tellingen.reduce((x, y) => x + y, 0);
-    resultaat.n = n + weetNiet;
-    resultaat.gemiddelde = n ? rond(som / n) : null;
-    resultaat.n_score = n;
-    resultaat.verdeling = labels.map((label, i) => ({ waarde: i + 1, label, aantal: tellingen[i], percentage: pct(tellingen[i], n + weetNiet) }));
-    if (q.weet_niet) resultaat.verdeling.push({ waarde: WEET_NIET, label: 'Weet niet / n.v.t.', aantal: weetNiet, percentage: pct(weetNiet, n + weetNiet) });
+    const totaal = s.n + s.weetNiet;
+    r.n = totaal;
+    r.n_score = s.n;
+    r.gemiddelde = deel(s.som, s.n);
+    r.verdeling = labels.map((label, i) => ({ waarde: i + 1, label, aantal: s.tellingen[i], percentage: pct(s.tellingen[i], totaal) }));
+    if (q.weet_niet) r.verdeling.push({ waarde: WEET_NIET, label: 'Weet niet / n.v.t.', aantal: s.weetNiet, percentage: pct(s.weetNiet, totaal) });
   } else if (q.type === 'janee') {
-    let ja = 0;
-    let nee = 0;
-    for (const inz of inzendingen) {
-      if (inz.a[q.id] === 'ja') ja++;
-      else if (inz.a[q.id] === 'nee') nee++;
-    }
-    resultaat.n = ja + nee;
-    resultaat.percentage_ja = pct(ja, ja + nee);
-    resultaat.verdeling = [
-      { waarde: 'ja', label: 'Ja', aantal: ja, percentage: pct(ja, ja + nee) },
-      { waarde: 'nee', label: 'Nee', aantal: nee, percentage: pct(nee, ja + nee) },
+    const n = s.ja + s.nee;
+    r.n = n;
+    r.percentage_ja = pct(s.ja, n);
+    r.verdeling = [
+      { waarde: 'ja', label: 'Ja', aantal: s.ja, percentage: pct(s.ja, n) },
+      { waarde: 'nee', label: 'Nee', aantal: s.nee, percentage: pct(s.nee, n) },
     ];
   } else if (q.type === 'meerkeuze') {
-    const opties = JSON.parse(q.opties || '[]');
-    const tel = new Map(opties.map((o) => [o.id, 0]));
-    let n = 0;
-    for (const inz of inzendingen) {
-      const a = inz.a[q.id];
-      const keuzes = Array.isArray(a) ? a : typeof a === 'string' ? [a] : [];
-      let telt = false;
-      for (const k of keuzes) {
-        if (tel.has(k)) {
-          tel.set(k, tel.get(k) + 1);
-          telt = true;
-        }
-      }
-      if (telt) n++;
-    }
-    resultaat.n = n;
+    r.n = s.n;
     // Bij meerdere antwoorden: percentage van respondenten (telt op tot meer dan 100%).
-    resultaat.verdeling = opties.map((o) => ({ waarde: o.id, label: o.label, aantal: tel.get(o.id), percentage: pct(tel.get(o.id), n) }));
+    r.verdeling = JSON.parse(q.opties || '[]').map((o) => ({
+      waarde: o.id,
+      label: o.label,
+      aantal: s.opties.get(o.id),
+      percentage: pct(s.opties.get(o.id), s.n),
+    }));
   } else if (q.type === 'open') {
-    resultaat.n = inzendingen.filter((inz) => typeof inz.a[q.id] === 'string' && inz.a[q.id]).length;
+    r.n = s.open;
   }
-  return resultaat;
+  return r;
 }
 
 /**
- * Deelt respondenten op in groepen volgens een uitsplitsvraag en verbergt
- * groepen onder de drempel. Kleine groepen worden samengevoegd tot
- * "Overige groepen samen"; is die ook te klein, dan gaat ook de kleinste
- * zichtbare groep erin op, zodat niets via aftrekken van het totaal te herleiden is.
+ * Verbergt in één kolom (thema of vraag) de cellen met te weinig respondenten, en zo nodig
+ * de kleinste andere cellen erbij, zodat de verborgen cellen samen minstens DREMPEL respondenten
+ * tellen en niet uit het totaal zijn terug te rekenen.
  */
-function uitsplitsing(vraag, vragenlijstVragen, inzendingen, themaNamen) {
+function onderdrukKolom(cellen) {
+  const verborgen = cellen.filter((c) => c.n > 0 && c.n < DREMPEL);
+  if (!verborgen.length) return;
+  let samen = verborgen.reduce((t, c) => t + c.n, 0);
+  const rest = cellen.filter((c) => c.n >= DREMPEL).sort((a, b) => a.n - b.n);
+  while (samen < DREMPEL && rest.length) {
+    const extra = rest.shift();
+    verborgen.push(extra);
+    samen += extra.n;
+  }
+  for (const c of verborgen) c.verborgen = true;
+}
+
+/** Uitsplitsing naar de antwoorden op één vraag (meerkeuze met één antwoord, of ja/nee). */
+function uitsplitsing(vraag, lijstVragen, inzendingen, themaNamen) {
   const groepen = [];
-  const sleutelNaarGroep = new Map();
-  if (vraag.type === 'janee') {
-    for (const [w, label] of [['ja', 'Ja'], ['nee', 'Nee']]) {
-      const g = { label, inz: [] };
-      groepen.push(g);
-      sleutelNaarGroep.set(w, g);
-    }
-  } else {
-    for (const o of JSON.parse(vraag.opties || '[]')) {
-      const g = { label: o.label, inz: [] };
-      groepen.push(g);
-      sleutelNaarGroep.set(o.id, g);
-    }
+  const perSleutel = new Map();
+  const opties = vraag.type === 'janee' ? [['ja', 'Ja'], ['nee', 'Nee']] : JSON.parse(vraag.opties || '[]').map((o) => [o.id, o.label]);
+  for (const [sleutel, label] of opties) {
+    const g = { label, inz: [] };
+    groepen.push(g);
+    perSleutel.set(sleutel, g);
   }
   const leeg = { label: 'Niet ingevuld', inz: [] };
-  for (const inz of inzendingen) {
-    const g = sleutelNaarGroep.get(inz.a[vraag.id]);
-    (g || leeg).inz.push(inz);
-  }
+  for (const inz of inzendingen) (perSleutel.get(inz.a[vraag.id]) || leeg).inz.push(inz);
   if (leeg.inz.length) groepen.push(leeg);
 
   const metAntwoorden = groepen.filter((g) => g.inz.length > 0);
-  let zichtbaar = metAntwoorden.filter((g) => g.inz.length >= DREMPEL);
+  const zichtbaar = metAntwoorden.filter((g) => g.inz.length >= DREMPEL);
   let klein = metAntwoorden.filter((g) => g.inz.length < DREMPEL);
-
+  let ookGroteGroep = null;
   if (klein.length) {
-    let kleinTotaal = klein.reduce((n, g) => n + g.inz.length, 0);
+    const kleinTotaal = klein.reduce((n, g) => n + g.inz.length, 0);
     if (kleinTotaal < DREMPEL && zichtbaar.length) {
-      // Kleinste zichtbare groep erbij, anders is de kleine groep terug te rekenen.
+      // Anders is de kleine groep terug te rekenen uit het totaal min de getoonde groepen.
       zichtbaar.sort((a, b) => a.inz.length - b.inz.length);
-      const extra = zichtbaar.shift();
-      klein = [...klein, extra];
-      kleinTotaal += extra.inz.length;
+      ookGroteGroep = zichtbaar.shift();
+      klein = [...klein, ookGroteGroep];
     }
   }
 
-  const schaalVragen = vragenlijstVragen.filter((q) => q.type === 'schaal');
+  const schaalVragen = lijstVragen.filter((q) => q.type === 'schaal');
   const themaIds = [...new Set(schaalVragen.map((q) => q.thema_id))];
-  const resultaatGroep = (label, inz, extra = {}) => ({
-    label,
-    verborgen: false,
-    n: inz.length,
-    ...extra,
-    themas: themaIds.map((tid) => ({
-      thema_id: tid,
-      naam: themaNamen.get(tid),
-      ...gepoold(schaalVragen.filter((q) => q.thema_id === tid), inz),
-    })),
-    vragen: schaalVragen.map((q) => ({ vraag_id: q.id, ...gepoold([q], inz) })),
-  });
 
-  const uit = zichtbaar.map((g) => resultaatGroep(g.label, g.inz));
-  // Volgorde van de antwoordopties aanhouden.
+  const uit = zichtbaar.map((g) => ({ label: g.label, verborgen: false, n: g.inz.length, inz: g.inz }));
   const volgorde = new Map(groepen.map((g, i) => [g.label, i]));
   uit.sort((a, b) => volgorde.get(a.label) - volgorde.get(b.label));
 
+  let verborgenGroep = null;
   if (klein.length) {
     const samen = klein.flatMap((g) => g.inz);
     const namen = klein.map((g) => g.label);
+    const kleineNamen = klein.filter((g) => g !== ookGroteGroep).map((g) => `"${g.label}"`).join(', ');
     if (samen.length >= DREMPEL && uit.length) {
-      uit.push(resultaatGroep('Overige groepen samen', samen, { samengevoegd: namen }));
-    } else {
       uit.push({
+        label: 'Overige groepen samen',
+        verborgen: false,
+        n: samen.length,
+        inz: samen,
+        samengevoegd: namen,
+        toelichting: ookGroteGroep
+          ? `"${ookGroteGroep.label}" is samengevoegd met ${kleineNamen}, omdat die groep anders uit het totaal terug te rekenen is.`
+          : `Groepen met minder dan ${DREMPEL} respondenten zijn samengevoegd.`,
+      });
+    } else {
+      verborgenGroep = {
         label: uit.length ? 'Overige groepen samen' : 'Alle groepen',
         verborgen: true,
-        reden: `Minder dan ${DREMPEL} respondenten per groep; niet getoond om anonimiteit te beschermen.`,
         samengevoegd: namen,
-      });
+        reden: ookGroteGroep
+          ? `Niet apart getoond: ${kleineNamen} heeft minder dan ${DREMPEL} respondenten en zou anders uit het totaal terug te rekenen zijn. Daarom is ook "${ookGroteGroep.label}" niet apart te zien.`
+          : `Minder dan ${DREMPEL} respondenten per groep; niet getoond om de anonimiteit te beschermen.`,
+      };
     }
   }
-  return { vraag_id: vraag.id, tekst: vraag.tekst, drempel: DREMPEL, groepen: uit };
+
+  // Getallen per groep, met de drempel per cel.
+  for (const g of uit) {
+    const agg = aggregeer(schaalVragen, g.inz);
+    g.themas = themaIds.map((tid) => {
+      const t = agg.themas.get(tid);
+      return { thema_id: tid, naam: themaNamen.get(tid), n: t ? t.respondenten : 0, gemiddelde: t ? deel(t.som, t.aantal) : null };
+    });
+    g.vragen = agg.perVraag.map((s) => ({ vraag_id: s.q.id, n: s.n, gemiddelde: deel(s.som, s.n) }));
+  }
+  if (uit.length) {
+    themaIds.forEach((_, i) => onderdrukKolom(uit.map((g) => g.themas[i])));
+    schaalVragen.forEach((_, i) => onderdrukKolom(uit.map((g) => g.vragen[i])));
+  }
+  for (const g of uit) {
+    delete g.inz;
+    for (const c of [...g.themas, ...g.vragen]) {
+      if (c.verborgen) {
+        c.gemiddelde = null;
+        c.n = null;
+      } else {
+        c.gemiddelde = eenDecimaal(c.gemiddelde);
+      }
+    }
+  }
+  if (verborgenGroep) uit.push(verborgenGroep);
+  return {
+    vraag_id: vraag.id,
+    tekst: vraag.tekst,
+    drempel: DREMPEL,
+    groepen: uit,
+    uitleg_cel: `Een streepje met "<${DREMPEL}" betekent: te weinig respondenten in deze groep beantwoordden dit, dus niet getoond.`,
+  };
 }
 
 export async function dashboard({ request, env, params }) {
@@ -203,11 +279,9 @@ export async function dashboard({ request, env, params }) {
     env.DB.prepare(
       'SELECT m.id, m.naam, m.eenheid, m.thema_id FROM meetpunten m JOIN themas t ON t.id = m.thema_id WHERE t.onderzoek_id = ? ORDER BY t.volgorde, m.volgorde, m.id',
     ).bind(onderzoekId),
+    env.DB.prepare('SELECT id, naam, datum FROM meetmomenten WHERE onderzoek_id = ? ORDER BY volgorde, id').bind(onderzoekId),
     env.DB.prepare(
-      "SELECT id, naam, datum FROM meetmomenten WHERE onderzoek_id = ? ORDER BY COALESCE(datum, '9999-12-31'), volgorde, id",
-    ).bind(onderzoekId),
-    env.DB.prepare(
-      'SELECT id, titel, status, meetmoment_id, aantal_uitgenodigd FROM vragenlijsten WHERE onderzoek_id = ? ORDER BY id',
+      'SELECT id, titel, status, code, meetmoment_id, aantal_uitgenodigd FROM vragenlijsten WHERE onderzoek_id = ? ORDER BY id',
     ).bind(onderzoekId),
     env.DB.prepare(
       `SELECT q.* FROM vragen q JOIN vragenlijsten vl ON vl.id = q.vragenlijst_id JOIN themas t ON t.id = q.thema_id
@@ -228,6 +302,7 @@ export async function dashboard({ request, env, params }) {
   const meetmomenten = meetmomentenR.results;
   const mmNamen = new Map(meetmomenten.map((m) => [m.id, m.naam]));
   const lijsten = lijstenR.results;
+  const lijstInfo = new Map(lijsten.map((l) => [l.id, l]));
   const vragen = vragenR.results;
 
   const inzPerLijst = new Map(lijsten.map((l) => [l.id, []]));
@@ -243,6 +318,11 @@ export async function dashboard({ request, env, params }) {
   const vragenPerLijst = new Map(lijsten.map((l) => [l.id, []]));
   for (const q of vragen) vragenPerLijst.get(q.vragenlijst_id)?.push(q);
 
+  // Eén doorloop per vragenlijst; alles hieronder rekent met deze tellingen.
+  const aggPerLijst = new Map(lijsten.map((l) => [l.id, aggregeer(vragenPerLijst.get(l.id), inzPerLijst.get(l.id))]));
+  const vraagAgg = new Map();
+  for (const agg of aggPerLijst.values()) for (const s of agg.perVraag) vraagAgg.set(s.q.id, s);
+
   // 1. Respons per vragenlijst
   const respons = lijsten.map((l) => {
     const inz = inzPerLijst.get(l.id);
@@ -252,6 +332,8 @@ export async function dashboard({ request, env, params }) {
       vragenlijst_id: l.id,
       titel: l.titel,
       status: l.status,
+      code: l.code,
+      aantal_vragen: vragenPerLijst.get(l.id).length,
       meetmoment_id: l.meetmoment_id,
       meetmoment_naam: mmNamen.get(l.meetmoment_id) || null,
       aantal: inz.length,
@@ -264,138 +346,130 @@ export async function dashboard({ request, env, params }) {
   // 2. Gekozen vragenlijst
   let gekozen = null;
   const param = Number(url.searchParams.get('vragenlijst'));
-  if (lijsten.some((l) => l.id === param)) gekozen = param;
+  if (lijstInfo.has(param)) gekozen = param;
   if (!gekozen) {
     const metAntwoorden = lijsten.filter((l) => inzPerLijst.get(l.id).length).map((l) => l.id);
     gekozen = metAntwoorden.length ? metAntwoorden[metAntwoorden.length - 1] : lijsten[0]?.id || null;
   }
 
-  // Verloop per vraag via de "stamvraag" (bij gekopieerde vragenlijsten).
+  // Dezelfde vraag in gekopieerde vragenlijsten herkennen via de "stamvraag".
   const stam = (q) => q.bron_vraag_id || q.id;
-  const lijstInfo = new Map(lijsten.map((l) => [l.id, l]));
+  const vragenPerStam = new Map();
+  for (const q of vragen) {
+    if (!vragenPerStam.has(stam(q))) vragenPerStam.set(stam(q), []);
+    vragenPerStam.get(stam(q)).push(q);
+  }
 
   let selectie = null;
   if (gekozen) {
     const inz = inzPerLijst.get(gekozen);
     const lv = vragenPerLijst.get(gekozen);
-    const schaalVragen = lv.filter((q) => q.type === 'schaal');
-    const vraagStats = lv.map((q) => {
-      const s = vraagStatistiek(q, inz);
-      s.thema_naam = themaNamen.get(q.thema_id);
-      if (q.type === 'schaal' || q.type === 'janee') {
-        // Zelfde vraag in andere vragenlijsten, per meetmoment.
+    const agg = aggPerLijst.get(gekozen);
+
+    const vraagStats = agg.perVraag.map((s) => {
+      const r = vraagStatistiek(s);
+      r.thema_naam = themaNamen.get(s.q.thema_id);
+      if (s.q.type === 'schaal' || s.q.type === 'janee') {
         const perMm = new Map();
-        for (const ander of vragen) {
-          if (stam(ander) !== stam(q)) continue;
-          const l = lijstInfo.get(ander.vragenlijst_id);
-          if (!l || !l.meetmoment_id) continue;
-          if (!perMm.has(l.meetmoment_id)) perMm.set(l.meetmoment_id, []);
-          perMm.get(l.meetmoment_id).push({ q: ander, inz: inzPerLijst.get(l.id) });
+        for (const ander of vragenPerStam.get(stam(s.q)) || []) {
+          const mmId = lijstInfo.get(ander.vragenlijst_id)?.meetmoment_id;
+          if (!mmId) continue;
+          const a = vraagAgg.get(ander.id);
+          const p = perMm.get(mmId) || { som: 0, n: 0, ja: 0, janee: 0 };
+          p.som += a.som;
+          p.n += a.n;
+          p.ja += a.ja;
+          p.janee += a.ja + a.nee;
+          perMm.set(mmId, p);
         }
         if (perMm.size > 1) {
-          s.verloop = meetmomenten
-            .filter((mm) => perMm.has(mm.id))
-            .map((mm) => {
-              const delen = perMm.get(mm.id);
-              if (q.type === 'schaal') {
-                let som = 0;
-                let n = 0;
-                for (const d of delen) {
-                  for (const i of d.inz) {
-                    const w = schaalWaarde(i.a[d.q.id]);
-                    if (w !== null) {
-                      som += w;
-                      n++;
-                    }
-                  }
-                }
-                return { meetmoment_id: mm.id, naam: mm.naam, gemiddelde: n ? rond(som / n) : null, n };
-              }
-              let ja = 0;
-              let n = 0;
-              for (const d of delen) {
-                for (const i of d.inz) {
-                  if (i.a[d.q.id] === 'ja') ja++;
-                  if (i.a[d.q.id] === 'ja' || i.a[d.q.id] === 'nee') n++;
-                }
-              }
-              return { meetmoment_id: mm.id, naam: mm.naam, percentage_ja: pct(ja, n), n };
-            });
+          r.verloop = meetmomenten.filter((mm) => perMm.has(mm.id)).map((mm) => {
+            const p = perMm.get(mm.id);
+            return s.q.type === 'schaal'
+              ? { meetmoment_id: mm.id, naam: mm.naam, gemiddelde: deel(p.som, p.n), n: p.n }
+              : { meetmoment_id: mm.id, naam: mm.naam, percentage_ja: pct(p.ja, p.janee), n: p.janee };
+          });
         }
       }
-      return s;
+      return r;
     });
 
+    const schaalVragen = lv.filter((q) => q.type === 'schaal');
     const themaIds = [...new Set(schaalVragen.map((q) => q.thema_id))];
     const meetpuntIds = [...new Set(schaalVragen.map((q) => q.meetpunt_id).filter(Boolean))];
 
-    const open = lv
-      .filter((q) => q.type === 'open')
-      .map((q) => ({
-        vraag_id: q.id,
-        tekst: q.tekst,
-        thema_naam: themaNamen.get(q.thema_id),
-        antwoorden: schudden(inz.map((i) => i.a[q.id]).filter((a) => typeof a === 'string' && a)),
-      }));
-
     const uitsplitsvragen = lv.filter((q) => q.uitsplitsen && (q.type === 'janee' || (q.type === 'meerkeuze' && !q.meerdere_antwoorden)));
-    const uitsplitsId = Number(url.searchParams.get('uitsplitsen'));
-    const uitsplitsVraag = uitsplitsvragen.find((q) => q.id === uitsplitsId) || null;
+    const uitsplitsVraag = uitsplitsvragen.find((q) => q.id === Number(url.searchParams.get('uitsplitsen'))) || null;
 
     selectie = {
       vragenlijst_id: gekozen,
       titel: lijstInfo.get(gekozen).titel,
+      meetmoment_naam: mmNamen.get(lijstInfo.get(gekozen).meetmoment_id) || null,
       n: inz.length,
       klein: inz.length < DREMPEL,
-      themas: themaIds.map((tid) => ({
-        thema_id: tid,
-        naam: themaNamen.get(tid),
-        aantal_vragen: schaalVragen.filter((q) => q.thema_id === tid).length,
-        ...gepoold(schaalVragen.filter((q) => q.thema_id === tid), inz),
-      })),
-      meetpunten: meetpuntIds.map((mid) => ({
-        meetpunt_id: mid,
-        naam: meetpuntInfo.get(mid)?.naam,
-        thema_id: meetpuntInfo.get(mid)?.thema_id,
-        ...gepoold(schaalVragen.filter((q) => q.meetpunt_id === mid), inz),
-      })),
+      themas: themaIds.map((tid) => {
+        const t = agg.themas.get(tid) || { som: 0, aantal: 0, respondenten: 0 };
+        return {
+          thema_id: tid,
+          naam: themaNamen.get(tid),
+          aantal_vragen: schaalVragen.filter((q) => q.thema_id === tid).length,
+          gemiddelde: deel(t.som, t.aantal),
+          n: t.respondenten,
+          antwoorden: t.aantal,
+        };
+      }),
+      meetpunten: meetpuntIds.map((mid) => {
+        const m = agg.meetpunten.get(mid) || { som: 0, aantal: 0, respondenten: 0 };
+        return {
+          meetpunt_id: mid,
+          naam: meetpuntInfo.get(mid)?.naam,
+          thema_id: meetpuntInfo.get(mid)?.thema_id,
+          gemiddelde: deel(m.som, m.aantal),
+          n: m.respondenten,
+          antwoorden: m.aantal,
+        };
+      }),
       vragen: vraagStats,
-      open,
+      open: lv
+        .filter((q) => q.type === 'open')
+        .map((q) => ({
+          vraag_id: q.id,
+          tekst: q.tekst,
+          thema_naam: themaNamen.get(q.thema_id),
+          antwoorden: schudden(inz.map((i) => i.a[q.id]).filter((a) => typeof a === 'string' && a)),
+        })),
       uitsplitsvragen: uitsplitsvragen.map((q) => ({ id: q.id, tekst: q.tekst })),
       uitsplitsing: uitsplitsVraag ? uitsplitsing(uitsplitsVraag, lv, inz, themaNamen) : null,
     };
   }
 
-  // 3. Verloop per thema en meetpunt over de meetmomenten
-  const verloopThemas = [];
-  const verloopMeetpunten = [];
-  const perMeetmoment = meetmomenten.map((mm) => {
-    const ls = lijsten.filter((l) => l.meetmoment_id === mm.id);
-    return {
-      mm,
-      delen: ls.map((l) => ({ vragen: vragenPerLijst.get(l.id).filter((q) => q.type === 'schaal'), inz: inzPerLijst.get(l.id) })),
-    };
-  });
-  const gepooldOver = (delen, filter) => {
+  // 3. Verloop per thema en meetpunt over de meetmomenten (uit de tellingen per vragenlijst)
+  const perMeetmoment = meetmomenten.map((mm) => ({
+    mm,
+    aggs: lijsten.filter((l) => l.meetmoment_id === mm.id).map((l) => aggPerLijst.get(l.id)),
+  }));
+  const pool = (aggs, soort, sleutel) => {
     let som = 0;
-    let n = 0;
+    let aantal = 0;
     let respondenten = 0;
-    for (const d of delen) {
-      const r = gepoold(d.vragen.filter(filter), d.inz);
-      if (r.antwoorden) {
-        som += r.gemiddelde * r.antwoorden;
-        n += r.antwoorden;
-        respondenten += r.n;
+    for (const a of aggs) {
+      const g = a[soort].get(sleutel);
+      if (g) {
+        som += g.som;
+        aantal += g.aantal;
+        respondenten += g.respondenten;
       }
     }
-    return { gemiddelde: n ? rond(som / n) : null, n: respondenten };
+    return { gemiddelde: deel(som, aantal), n: respondenten };
   };
+  const verloopThemas = [];
   for (const t of themas) {
-    const punten = perMeetmoment.map(({ mm, delen }) => ({ meetmoment_id: mm.id, naam: mm.naam, datum: mm.datum, ...gepooldOver(delen, (q) => q.thema_id === t.id) }));
+    const punten = perMeetmoment.map(({ mm, aggs }) => ({ meetmoment_id: mm.id, naam: mm.naam, datum: mm.datum, ...pool(aggs, 'themas', t.id) }));
     if (punten.some((p) => p.gemiddelde !== null)) verloopThemas.push({ thema_id: t.id, naam: t.naam, punten });
   }
+  const verloopMeetpunten = [];
   for (const m of meetpunten) {
-    const punten = perMeetmoment.map(({ mm, delen }) => ({ meetmoment_id: mm.id, naam: mm.naam, datum: mm.datum, ...gepooldOver(delen, (q) => q.meetpunt_id === m.id) }));
+    const punten = perMeetmoment.map(({ mm, aggs }) => ({ meetmoment_id: mm.id, naam: mm.naam, datum: mm.datum, ...pool(aggs, 'meetpunten', m.id) }));
     if (punten.some((p) => p.gemiddelde !== null)) {
       verloopMeetpunten.push({ meetpunt_id: m.id, naam: m.naam, thema_naam: themaNamen.get(m.thema_id), punten });
     }

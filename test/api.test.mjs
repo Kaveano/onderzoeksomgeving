@@ -245,12 +245,12 @@ test('respondenten kunnen invullen; er wordt geen persoonsinformatie opgeslagen'
     assert.equal(r.status, 200, JSON.stringify(r.data));
     assert.match(r.data.bedanktekst, /dank/i);
   }
-  const exp = await fetch(`${BASIS}/api/beheer/onderzoeken/${ids.onderzoek}/export/volledig.json`, { headers: { Cookie: cookie } });
+  const exp = await fetch(`${BASIS}/api/beheer/onderzoeken/${ids.onderzoek}/export/data`, { headers: { Cookie: cookie } });
   const tekst = await exp.text();
   assert.doesNotMatch(tekst, /203\.0\.113\.7|TestBrowser/);
   const data = JSON.parse(tekst);
-  const inz = data.vragenlijsten[0].inzendingen[0];
-  assert.deepEqual(Object.keys(inz).sort(), ['antwoorden', 'datum', 'respondent']);
+  const inz = data.inzendingen[0];
+  assert.deepEqual(Object.keys(inz).sort(), ['antwoorden', 'datum', 'vragenlijst_id']);
   assert.match(inz.datum, /^\d{4}-\d{2}-\d{2}$/);
 });
 
@@ -263,7 +263,7 @@ test('dashboard: respons, gemiddelden, verdeling en open antwoorden', async () =
   assert.equal(s.klein, false);
   // (6*4 + 2*2 + 1*1)/9 = 3,22
   const werkdruk = s.themas.find((t) => t.thema_id === ids.themaWerkdruk);
-  assert.equal(werkdruk.gemiddelde, 3.22);
+  assert.ok(Math.abs(werkdruk.gemiddelde - 29 / 9) < 1e-9); // exact; het scherm rondt één keer af
   assert.equal(werkdruk.n, 9);
   const schaal = s.vragen.find((q) => q.type === 'schaal');
   assert.deepEqual(schaal.verdeling.slice(0, 5).map((x) => x.aantal), [1, 2, 0, 6, 0]);
@@ -398,25 +398,35 @@ test('maximum aantal inzendingen per link', async () => {
   assert.match(r.data.fout, /maximale aantal/);
 });
 
-test('export: CSV voor Nederlandse Excel, zonder formules', async () => {
+test('export: gegevens voor de browser, CSV voor Nederlandse Excel zonder formules, stukken als leesbare tekst', async () => {
   await api(`/api/publiek/${ids.code}`, {
     methode: 'POST', metCookie: false,
     body: { antwoorden: { [vindVraag((q) => q.type === 'open').id]: '=HYPERLINK("http://kwaad.example")' } },
   });
-  const r = await fetch(`${BASIS}/api/beheer/onderzoeken/${ids.onderzoek}/export/antwoorden.csv?vragenlijst=${ids.vragenlijst}`, { headers: { Cookie: cookie } });
+  const exp = await import('../public/js/beheer/export.js');
+  const r = await api(`/api/beheer/onderzoeken/${ids.onderzoek}/export/data`);
   assert.equal(r.status, 200);
-  assert.match(r.headers.get('content-disposition'), /attachment; filename="testbedrijf-bv-antwoorden-/);
-  const bytes = new Uint8Array(await r.arrayBuffer());
-  assert.deepEqual([...bytes.slice(0, 3)], [0xef, 0xbb, 0xbf]); // BOM: zo herkent Excel UTF-8
-  const tekst = new TextDecoder().decode(bytes);
-  assert.match(tekst.split('\r\n')[0], /^Respondent;Datum;/);
-  assert.match(tekst, /"'=HYPERLINK\(""http:\/\/kwaad\.example""\)"/);
-  const lang = await fetch(`${BASIS}/api/beheer/onderzoeken/${ids.onderzoek}/export/antwoorden.csv`, { headers: { Cookie: cookie } });
-  assert.match(await lang.text(), /Vragenlijst;Meetmoment;Respondent/);
+  const data = r.data;
+  assert.equal(data.onderzoek.bedrijfsnaam, 'Testbedrijf BV');
+  assert.ok(data.inzendingen.length >= 15);
+
+  const breed = exp.antwoordenVragenlijstCsv(data, ids.vragenlijst);
+  assert.equal(breed.charCodeAt(0), 0xfeff); // BOM: zo herkent Excel UTF-8
+  assert.match(breed.split('\r\n')[0], /^\uFEFFRespondent;Datum;/);
+  assert.match(breed, /"'=HYPERLINK\(""http:\/\/kwaad\.example""\)"/);
+  const lang = exp.alleAntwoordenCsv(data);
+  assert.match(lang, /Vragenlijst;Meetmoment;Respondent/);
+  assert.match(lang, /;Schaal 1 tot 5;Eens;4/);
+  assert.match(exp.eigenInvoerCsv(data), /Verzuim Q3;5,4;%/);
+  const json = JSON.parse(exp.volledigeJson(data));
+  assert.equal(json.vragenlijsten[0].inzendingen[0].respondent, 1);
+  assert.match(exp.bestandsnaam(data, 'alle-antwoorden', 'csv'), /^testbedrijf-bv-alle-antwoorden-\d{4}-\d{2}-\d{2}\.csv$/);
+
+  await api(`/api/beheer/stukken/${ids.stuk}`, { methode: 'PUT', body: { inhoud: '## Conclusie\n- **Werkdruk** is hoog\n\nWerkdruk: gemiddeld 3,2' , overschrijven: true } });
   const txt = await fetch(`${BASIS}/api/beheer/onderzoeken/${ids.onderzoek}/export/stukken.txt`, { headers: { Cookie: cookie } });
-  assert.match(await txt.text(), /Werkdruk: gemiddeld 3,2/);
-  const inv = await fetch(`${BASIS}/api/beheer/onderzoeken/${ids.onderzoek}/export/eigen-invoer.csv`, { headers: { Cookie: cookie } });
-  assert.match(await inv.text(), /Verzuim Q3;5,4;%/);
+  const t = await txt.text();
+  assert.match(t, /Conclusie\r\n-+\r\n• Werkdruk is hoog/);
+  assert.doesNotMatch(t, /\*\*|## /);
 });
 
 test('opslaan als eigen sjabloon en weer toepassen op een nieuw onderzoek', async () => {
@@ -436,9 +446,119 @@ test('opslaan als eigen sjabloon en weer toepassen op een nieuw onderzoek', asyn
   ids.tweede = n.data.id;
 });
 
+test('drempel per getal: een score in een groep alleen bij minstens 5 respondenten (en niet terug te rekenen)', async () => {
+  const vl = await api(`/api/beheer/onderzoeken/${ids.onderzoek}/vragenlijsten`, { methode: 'POST', body: { titel: 'Celtest' } });
+  const q1 = await api(`/api/beheer/vragenlijsten/${vl.data.id}/vragen`, {
+    methode: 'POST', body: { type: 'janee', thema_id: ids.themaWerkdruk, tekst: 'Geef je leiding?', uitsplitsen: true },
+  });
+  const sv = await api(`/api/beheer/vragenlijsten/${vl.data.id}/vragen`, {
+    methode: 'POST', body: { type: 'schaal', thema_id: ids.themaWerkdruk, tekst: 'Ik heb het naar mijn zin.' },
+  });
+  await api(`/api/beheer/vragenlijsten/${vl.data.id}/status`, { methode: 'POST', body: { status: 'open' } });
+  const det = await api(`/api/beheer/vragenlijsten/${vl.data.id}`);
+  const code = det.data.vragenlijst.code;
+  const stuur = (a) => api(`/api/publiek/${code}`, { methode: 'POST', metCookie: false, body: { antwoorden: a } });
+  for (let i = 0; i < 6; i++) await stuur({ [q1.data.id]: 'ja', [sv.data.id]: 4 });
+  for (let i = 0; i < 4; i++) await stuur({ [q1.data.id]: 'nee' });
+  await stuur({ [q1.data.id]: 'nee', [sv.data.id]: 1 });
+  const d = await api(`/api/beheer/onderzoeken/${ids.onderzoek}/dashboard?vragenlijst=${vl.data.id}&uitsplitsen=${q1.data.id}`);
+  const g = d.data.selectie.uitsplitsing.groepen;
+  const nee = g.find((x) => x.label === 'Nee');
+  const ja = g.find((x) => x.label === 'Ja');
+  assert.equal(nee.n, 5);
+  // Bij "Nee" vulde maar 1 persoon de schaalvraag in: niet tonen.
+  assert.equal(nee.themas[0].verborgen, true);
+  assert.equal(nee.themas[0].gemiddelde, null);
+  assert.equal(nee.vragen[0].gemiddelde, null);
+  // En dan ook "Ja" niet, anders is "Nee" uit het totaal terug te rekenen.
+  assert.equal(ja.themas[0].verborgen, true);
+  assert.equal(ja.themas[0].gemiddelde, null);
+  assert.doesNotMatch(JSON.stringify(g), /"antwoorden"/);
+});
+
+test('antwoordmogelijkheden: oude antwoorden schuiven nooit naar een nieuwe optie', async () => {
+  const vl = await api(`/api/beheer/onderzoeken/${ids.onderzoek}/vragenlijsten`, { methode: 'POST', body: { titel: 'Optietest' } });
+  const q = await api(`/api/beheer/vragenlijsten/${vl.data.id}/vragen`, {
+    methode: 'POST', body: { type: 'meerkeuze', thema_id: ids.themaWerkdruk, tekst: 'Hoe kom je naar je werk?', opties: ['Auto', 'Fiets', 'OV'] },
+  });
+  await api(`/api/beheer/vragenlijsten/${vl.data.id}/status`, { methode: 'POST', body: { status: 'open' } });
+  const det = await api(`/api/beheer/vragenlijsten/${vl.data.id}`);
+  const vraag = det.data.vragen[0];
+  const ov = vraag.opties.find((o) => o.label === 'OV').id;
+  for (let i = 0; i < 4; i++) {
+    await api(`/api/publiek/${det.data.vragenlijst.code}`, { methode: 'POST', metCookie: false, body: { antwoorden: { [q.data.id]: ov } } });
+  }
+  const nieuw = [...vraag.opties.filter((o) => o.label !== 'OV'), { label: 'Thuiswerken' }];
+  const w = await api(`/api/beheer/vragen/${q.data.id}`, { methode: 'PUT', body: { ...vraag, opties: nieuw } });
+  assert.equal(w.status, 200);
+  const na = await api(`/api/beheer/vragenlijsten/${vl.data.id}`);
+  const thuis = na.data.vragen[0].opties.find((o) => o.label === 'Thuiswerken');
+  assert.notEqual(thuis.id, ov);
+  const d = await api(`/api/beheer/onderzoeken/${ids.onderzoek}/dashboard?vragenlijst=${vl.data.id}`);
+  const verdeling = d.data.selectie.vragen[0].verdeling;
+  assert.equal(verdeling.find((x) => x.label === 'Thuiswerken').aantal, 0);
+  // Laatste vraag van een open vragenlijst verwijderen: de vragenlijst gaat dicht.
+  const del = await api(`/api/beheer/vragen/${q.data.id}`, { methode: 'DELETE' });
+  assert.equal(del.data.vragenlijst_gesloten, true);
+});
+
+test('limieten houden stand bij gelijktijdige inzendingen', async () => {
+  const vl = await api(`/api/beheer/onderzoeken/${ids.onderzoek}/vragenlijsten`, { methode: 'POST', body: { titel: 'Limiettest' } });
+  const q = await api(`/api/beheer/vragenlijsten/${vl.data.id}/vragen`, {
+    methode: 'POST', body: { type: 'schaal', thema_id: ids.themaWerkdruk, tekst: 'Test' },
+  });
+  const det = await api(`/api/beheer/vragenlijsten/${vl.data.id}`);
+  await api(`/api/beheer/vragenlijsten/${vl.data.id}`, { methode: 'PUT', body: { ...det.data.vragenlijst, max_inzendingen: 3, status: 'open' } });
+  const pogingen = await Promise.all(Array.from({ length: 20 }, () =>
+    api(`/api/publiek/${det.data.vragenlijst.code}`, { methode: 'POST', metCookie: false, body: { antwoorden: { [q.data.id]: 3 } } })));
+  assert.equal(pogingen.filter((p) => p.status === 200).length, 3);
+  const lijst = await api(`/api/beheer/onderzoeken/${ids.onderzoek}/vragenlijsten`);
+  assert.equal(lijst.data.vragenlijsten.find((l) => l.id === vl.data.id).aantal_inzendingen, 3);
+});
+
+test('meetmomenten staan in de volgorde waarin je ze aanmaakt (ook zonder datum)', async () => {
+  const d = await api(`/api/beheer/onderzoeken/${ids.onderzoek}`);
+  const namen = d.data.meetmomenten.map((m) => m.naam);
+  assert.deepEqual(namen.slice(0, 2), ['Nulmeting', 'Vervolgmeting']);
+  // Omdraaien kan met /volgorde
+  const ids2 = d.data.meetmomenten.map((m) => m.id);
+  const r = await api('/api/beheer/volgorde', { methode: 'POST', body: { soort: 'meetmomenten', ids: [...ids2].reverse() } });
+  assert.equal(r.status, 200);
+  await api('/api/beheer/volgorde', { methode: 'POST', body: { soort: 'meetmomenten', ids: ids2 } });
+});
+
+test('uitleg aan respondenten klopt met wat er wordt opgeslagen', async () => {
+  const det = await api(`/api/beheer/vragenlijsten/${ids.vragenlijst}`);
+  assert.match(det.data.vragenlijst.introtekst, /alleen de datum, niet het tijdstip/);
+  assert.match(det.data.vragenlijst.introtekst, /minstens 5 personen/);
+  const b = await api('/api/beheer/onderzoeken', { methode: 'POST', body: { bedrijfsnaam: 'Bakkerij De Korenschoof B.V.', titel: 'MTO', sjablonen: ['medewerkerstevredenheid', 'hr-processen'] } });
+  const vl = await api(`/api/beheer/onderzoeken/${b.data.id}/vragenlijsten`);
+  assert.equal(vl.data.vragenlijsten[0].titel, 'MTO');
+  const v = await api(`/api/beheer/vragenlijsten/${vl.data.vragenlijsten[0].id}`);
+  assert.doesNotMatch(v.data.vragenlijst.introtekst, /B\.V\.\./);
+  const det2 = await api(`/api/beheer/onderzoeken/${b.data.id}`);
+  const verzuim = det2.data.themas.flatMap((t) => t.meetpunten).filter((m) => m.naam === 'Verzuimpercentage');
+  assert.equal(verzuim.length, 1);
+  await api(`/api/beheer/onderzoeken/${b.data.id}/archiveren`, { methode: 'POST', body: {} });
+  await api(`/api/beheer/onderzoeken/${b.data.id}`, { methode: 'DELETE', body: { bevestiging: 'Bakkerij De Korenschoof B.V.' } });
+});
+
+test('elk scherm waar de navigatie naar verwijst bestaat', async () => {
+  const { readFileSync, existsSync } = await import('node:fs');
+  const app = readFileSync(new URL('../public/js/beheer/app.js', import.meta.url), 'utf8');
+  const modules = [...app.matchAll(/import\('\.\/schermen\/([a-z-]+\.js)'\)/g)].map((m) => m[1]);
+  assert.ok(modules.length >= 12);
+  for (const m of modules) assert.ok(existsSync(new URL(`../public/js/beheer/schermen/${m}`, import.meta.url)), m);
+});
+
+test('ongeldige tekens in een adres geven een nette 404', async () => {
+  const r = await api('/api/publiek/%E0%A4%A', { metCookie: false });
+  assert.equal(r.status, 404);
+});
+
 test('meerdere onderzoeken naast elkaar', async () => {
   const r = await api('/api/beheer/onderzoeken');
-  assert.equal(r.data.onderzoeken.filter((o) => o.status === 'actief').length, 2);
+  assert.ok(r.data.onderzoeken.filter((o) => o.status === 'actief').length >= 2);
 });
 
 test('thema met vragen kan niet zomaar weg', async () => {

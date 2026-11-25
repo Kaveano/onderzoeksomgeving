@@ -79,10 +79,8 @@ const BEHEER_ROUTES = [
   ['PUT', `${B}/acties/:id`, acties.wijzig],
   ['DELETE', `${B}/acties/:id`, acties.verwijder],
 
-  ['GET', `${B}/onderzoeken/:id/export/antwoorden.csv`, exporteren.antwoordenCsv],
-  ['GET', `${B}/onderzoeken/:id/export/eigen-invoer.csv`, exporteren.invoerCsv],
+  ['GET', `${B}/onderzoeken/:id/export/data`, exporteren.data],
   ['GET', `${B}/onderzoeken/:id/export/stukken.txt`, exporteren.stukkenTxt],
-  ['GET', `${B}/onderzoeken/:id/export/volledig.json`, exporteren.volledigJson],
 ];
 
 const PUBLIEKE_ROUTES = [
@@ -127,9 +125,13 @@ function zoek(routes, methode, pad) {
     padBestaat = true;
     if (r.methode !== methode) continue;
     const params = {};
-    r.namen.forEach((naam, i) => {
-      params[naam] = decodeURIComponent(m[i + 1]);
-    });
+    try {
+      r.namen.forEach((naam, i) => {
+        params[naam] = decodeURIComponent(m[i + 1]);
+      });
+    } catch {
+      throw new Fout(404, 'Onbekend adres.');
+    }
     return { handler: r.handler, params };
   }
   if (padBestaat) throw new Fout(405, 'Deze actie is hier niet toegestaan.');

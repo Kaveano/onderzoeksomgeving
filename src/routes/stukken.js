@@ -3,7 +3,7 @@
 import { Fout, json, leesJson, bestand } from '../lib/http.js';
 import * as v from '../lib/validatie.js';
 import { alle, een, haalOnderzoek, haalBewerkbaarOnderzoek, bewerkbaarVia, nuIso, volgendeVolgorde } from '../lib/db.js';
-import { slug } from '../lib/export-hulp.js';
+import { slug, markdownNaarTekst } from '../lib/export-hulp.js';
 
 const SOORTEN = ['notitie', 'bevindingen', 'rapport', 'overig'];
 const MAX_INHOUD = 500_000;

@@ -14,19 +14,25 @@ export function slug(tekst) {
 }
 
 /**
- * Eén CSV-cel. Puntkomma als scheidingsteken (Nederlandse Excel), getallen met komma.
- * Tekst die met = + - @ begint krijgt een apostrof, zodat Excel er geen formule van maakt.
+ * Zet de eenvoudige opmaak uit de schrijfomgeving om naar leesbare platte tekst
+ * (voor .txt-bestanden die in Word of een e-mail worden geplakt).
  */
-export function csvCel(waarde) {
-  if (waarde === null || waarde === undefined) return '';
-  if (typeof waarde === 'number') return Number.isFinite(waarde) ? String(waarde).replace('.', ',') : '';
-  let t = String(waarde);
-  if (/^[=+\-@\t\r]/.test(t)) t = `'${t}`;
-  if (/[";\r\n]/.test(t)) t = `"${t.replace(/"/g, '""')}"`;
-  return t;
-}
-
-/** Maakt een CSV-bestand (met BOM zodat Excel UTF-8 herkent). */
-export function maakCsv(rijen) {
-  return '﻿' + rijen.map((r) => r.map(csvCel).join(';')).join('\r\n') + '\r\n';
+export function markdownNaarTekst(tekst) {
+  return String(tekst || '')
+    .split(/\r?\n/)
+    .map((regel) => {
+      const kop = /^(#{1,3})\s+(.*)$/.exec(regel);
+      if (kop) {
+        const t = kop[2].replace(/\*\*(.+?)\*\*/g, '$1').replace(/\*(.+?)\*/g, '$1').trim();
+        return kop[1].length === 1 ? `${t.toUpperCase()}\n${'='.repeat(Math.min(t.length, 60))}`
+          : kop[1].length === 2 ? `${t}\n${'-'.repeat(Math.min(t.length, 60))}` : t;
+      }
+      return regel
+        .replace(/^(\s*)[-*+]\s+/, '$1• ')
+        .replace(/^>\s?/, '  ')
+        .replace(/\*\*(.+?)\*\*/g, '$1')
+        .replace(/(^|[^\\*])\*(?!\s)(.+?)\*/g, '$1$2')
+        .replace(/\\\*/g, '*');
+    })
+    .join('\n');
 }

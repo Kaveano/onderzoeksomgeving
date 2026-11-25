@@ -59,7 +59,7 @@ export function melding(inhoud, soort = '') {
   return h('div', { class: `melding${soort ? ` melding-${soort}` : ''}`, role: soort === 'gevaar' ? 'alert' : null }, inhoud);
 }
 
-// ---------- Toasts ----------
+// ---------- Toasts (korte meldingen onderin). soort: '', 'succes', 'fout', 'waarschuwing' ----------
 
 let toastHouder;
 export function meld(tekst, soort = '') {
@@ -67,9 +67,12 @@ export function meld(tekst, soort = '') {
     toastHouder = h('div', { class: 'toasts', 'aria-live': 'polite', role: 'status' });
     document.body.append(toastHouder);
   }
+  // Niet dezelfde melding twee keer, en hooguit drie tegelijk (anders bedekken ze op een telefoon het scherm).
+  for (const oud of toastHouder.children) if (oud.textContent === tekst) oud.remove();
+  while (toastHouder.children.length >= 3) toastHouder.firstElementChild.remove();
   const t = h('div', { class: `toast${soort ? ` toast-${soort}` : ''}` }, tekst);
   toastHouder.append(t);
-  setTimeout(() => t.remove(), soort === 'fout' ? 7000 : 3500);
+  setTimeout(() => t.remove(), soort === 'fout' ? 7000 : soort === 'waarschuwing' ? 5500 : 3500);
 }
 
 /** Toont een fout van de server (of een netwerkfout) als toast. */
@@ -79,10 +82,20 @@ export function meldFout(fout) {
 
 // ---------- Dialogen ----------
 
-function maakDialoog(titel, inhoud, knoppen) {
-  const d = h('dialog', { class: 'dialoog', 'aria-labelledby': 'dlg-titel' },
-    h('form', { method: 'dialog' },
-      h('div', { class: 'dialoog-inhoud' }, h('h2', { id: 'dlg-titel' }, titel), inhoud),
+let dialoogTeller = 0;
+
+/** Unieke id voor elementen in dialogen (er kunnen er twee tegelijk open zijn). */
+export function uniekeId(voorvoegsel = 'id') {
+  dialoogTeller += 1;
+  return `${voorvoegsel}-${dialoogTeller}`;
+}
+
+/** Basis van een dialoog (ook bruikbaar voor schermen met een eigen dialoog). */
+export function maakDialoog(titel, inhoud, knoppen) {
+  const titelId = uniekeId('dlg-titel');
+  const d = h('dialog', { class: 'dialoog', 'aria-labelledby': titelId },
+    h('form', { method: 'dialog', novalidate: true },
+      h('div', { class: 'dialoog-inhoud' }, h('h2', { id: titelId }, titel), inhoud),
       h('div', { class: 'dialoog-voet' }, knoppen),
     ),
   );
@@ -105,8 +118,9 @@ export function bevestig({ titel, tekst, knop = 'Doorgaan', gevaar = false, typT
       ...(Array.isArray(tekst) ? tekst : [tekst]).map((t) => (t instanceof Node ? t : h('p', {}, t))),
     ];
     if (typTekst) {
-      invoer = h('input', { type: 'text', autocomplete: 'off', 'aria-label': 'Bevestiging' });
-      inhoud.push(h('div', { class: 'veld' }, h('label', {}, `Typ "${typTekst}" om te bevestigen`), invoer));
+      const invoerId = uniekeId('bevestiging');
+      invoer = h('input', { type: 'text', id: invoerId, autocomplete: 'off', spellcheck: 'false' });
+      inhoud.push(h('div', { class: 'veld' }, h('label', { for: invoerId }, `Typ "${typTekst}" om te bevestigen`), invoer));
       ok.disabled = true;
       invoer.addEventListener('input', () => {
         ok.disabled = invoer.value.trim() !== typTekst.trim();
@@ -137,8 +151,9 @@ export function formulierDialoog({ titel, velden, knop = 'Opslaan', intro = null
     const invoer = {};
     const foutEl = h('div', { class: 'veld-fout', role: 'alert' });
     const inhoud = [intro ? h('p', { class: 'zacht' }, intro) : null];
+    const basisId = uniekeId('dlg-veld');
     velden.forEach((v, i) => {
-      const id = `dlg-veld-${i}`;
+      const id = `${basisId}-${i}`;
       let el;
       if (v.type === 'textarea') {
         el = h('textarea', { id, rows: v.rijen || 4, maxlength: v.max || null, placeholder: v.placeholder || null }, v.waarde ?? '');
@@ -206,7 +221,20 @@ export function formulierDialoog({ titel, velden, knop = 'Opslaan', intro = null
       resultaat = waarden;
       d.close();
     });
-    annuleer.addEventListener('click', () => d.close());
+    const beginwaarden = JSON.stringify(velden.map((v) => (v.type === 'checkbox' ? invoer[v.naam].checked : invoer[v.naam].value)));
+    const gewijzigd = () =>
+      JSON.stringify(velden.map((v) => (v.type === 'checkbox' ? invoer[v.naam].checked : invoer[v.naam].value))) !== beginwaarden;
+    const sluitNaVragen = async () => {
+      if (!gewijzigd() || (await bevestig({ titel: 'Wijzigingen weggooien?', tekst: 'Wat je hier hebt ingevuld, wordt niet opgeslagen.', knop: 'Weggooien', gevaar: true }))) {
+        d.close();
+      }
+    };
+    // Escape (en het terug-gebaar op Android) sluit niet zomaar als er iets is ingevuld.
+    d.addEventListener('cancel', (e) => {
+      e.preventDefault();
+      sluitNaVragen();
+    });
+    annuleer.addEventListener('click', () => sluitNaVragen());
     d.addEventListener('close', () => klaar(resultaat));
     d.showModal();
     const eerste = velden.length ? invoer[velden[0].naam] : ok;
@@ -234,6 +262,14 @@ export function datum(iso) {
   const [j, m, d] = String(iso).slice(0, 10).split('-').map(Number);
   if (!j || !m || !d) return '';
   return `${d} ${MAANDEN[m - 1]} ${j}`;
+}
+
+/** ISO-tijdstip → datum in lokale tijd, bijv. '25 nov. 2026' */
+export function lokaleDatum(iso) {
+  if (!iso) return '';
+  const t = new Date(iso);
+  if (Number.isNaN(t.getTime())) return '';
+  return `${t.getDate()} ${MAANDEN[t.getMonth()]} ${t.getFullYear()}`;
 }
 
 /** ISO-tijdstip → '25 nov. 2026, 14:32' (lokale tijd) */

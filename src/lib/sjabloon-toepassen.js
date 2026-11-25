@@ -5,20 +5,22 @@
 import { alle, nuIso, volgendeVolgorde } from './db.js';
 import { willekeurigeCode } from './auth.js';
 import { SCHALEN } from './schalen.js';
+import { Fout } from './http.js';
+import { INTRO_ANONIEM } from '../sjablonen.js';
+
+export const MAX_VRAGEN = 100;
 
 function vervang(tekst, bedrijf) {
-  return String(tekst || '').replaceAll('{bedrijf}', bedrijf);
+  // "van {bedrijf}." met "Voorbeeld B.V." mag geen dubbele punt opleveren.
+  return String(tekst || '')
+    .replaceAll('{bedrijf}.', `${bedrijf.replace(/\.+$/, '')}.`)
+    .replaceAll('{bedrijf}', bedrijf);
 }
 
 const sleutel = (s) => String(s).trim().toLowerCase();
 
 export function standaardIntro(bedrijf) {
-  return (
-    `Fijn dat je mee wilt doen aan dit onderzoek van ${bedrijf}. Het invullen duurt maar een paar minuten.\n\n` +
-    'Je antwoorden zijn anoniem. We vragen niet naar je naam en slaan geen e-mailadres, IP-adres of tijdstip van invullen op. ' +
-    'Resultaten worden alleen getoond voor groepen van minimaal 5 personen, zodat niemand herkenbaar is. ' +
-    'Deelname is vrijwillig en je kunt vragen overslaan die je niet wilt beantwoorden.'
-  );
+  return `${vervang('Fijn dat je mee wilt doen aan dit onderzoek van {bedrijf}.', bedrijf)} Het invullen duurt maar een paar minuten.\n\n${INTRO_ANONIEM}`;
 }
 
 export const STANDAARD_BEDANKT =
@@ -27,6 +29,30 @@ export const STANDAARD_BEDANKT =
 /** Zet een lijst labels om naar opties met vaste id's. */
 export function optiesMetIds(labels) {
   return labels.map((label, i) => ({ id: `o${i + 1}`, label: String(label) }));
+}
+
+/** Alle vragen uit de sjablonen, zonder dubbele (zelfde tekst), achtergrondvragen achteraan. */
+function verzamelVragen(inhouden, bedrijf) {
+  const vragen = [];
+  const gezien = new Set();
+  for (const inhoud of inhouden) {
+    for (const v of inhoud.vragen || []) {
+      const tekst = vervang(v.tekst, bedrijf);
+      if (gezien.has(sleutel(tekst))) continue;
+      gezien.add(sleutel(tekst));
+      vragen.push({ ...v, tekst, themaNaam: vervang(v.thema, bedrijf) });
+    }
+  }
+  vragen.sort((a, b) => (sleutel(a.themaNaam) === 'achtergrond') - (sleutel(b.themaNaam) === 'achtergrond'));
+  return vragen;
+}
+
+/** Weigert vooraf (vóór er iets wordt opgeslagen) als de sjablonen samen te veel vragen hebben. */
+export function controleerSjablonen(inhouden, bedrijf) {
+  const aantal = verzamelVragen(inhouden, bedrijf).length;
+  if (aantal > MAX_VRAGEN) {
+    throw new Fout(400, `De gekozen sjablonen hebben samen ${aantal} vragen; een vragenlijst kan er maximaal ${MAX_VRAGEN} hebben. Kies minder sjablonen.`);
+  }
 }
 
 /**
@@ -39,6 +65,7 @@ export function optiesMetIds(labels) {
 export async function pasSjablonenToe(env, onderzoek, inhouden, { meetmomentId = null } = {}) {
   const bedrijf = onderzoek.bedrijfsnaam;
   const nu = nuIso();
+  controleerSjablonen(inhouden, bedrijf);
 
   const [bestaandeThemas, bestaandeMeetpunten, bestaandeActies] = await env.DB.batch([
     env.DB.prepare('SELECT id, naam FROM themas WHERE onderzoek_id = ?').bind(onderzoek.id),
@@ -75,17 +102,27 @@ export async function pasSjablonenToe(env, onderzoek, inhouden, { meetmomentId =
     for (const r of res) themaIds.set(sleutel(r.results[0].naam), r.results[0].id);
   }
 
-  // 2. Meetpunten
+  // 2. Meetpunten. Een meetpunt met een naam die elders in het onderzoek al bestaat (bijv.
+  // "Verzuimpercentage" in twee sjablonen) wordt niet nog eens aangemaakt, tenzij er vragen naar verwijzen.
   const nieuweMeetpunten = [];
+  const meetpuntNamen = new Set(bestaandeMeetpunten.results.map((m) => sleutel(m.naam)));
+  const gebruikt = new Set();
+  for (const inhoud of inhouden) {
+    for (const v of inhoud.vragen || []) {
+      if (v.meetpunt) gebruikt.add(`${sleutel(vervang(v.thema, bedrijf))}|${sleutel(vervang(v.meetpunt, bedrijf))}`);
+    }
+  }
   for (const inhoud of inhouden) {
     for (const t of inhoud.themas || []) {
       const themaId = themaIds.get(sleutel(vervang(t.naam, bedrijf)));
       for (const m of t.meetpunten || []) {
         const naam = vervang(m.naam, bedrijf);
         const k = `${themaId}|${sleutel(naam)}`;
-        if (!meetpuntIds.has(k) && !nieuweMeetpunten.some((n) => n.k === k)) {
-          nieuweMeetpunten.push({ k, themaId, naam, omschrijving: vervang(m.omschrijving, bedrijf), eenheid: m.eenheid || '' });
-        }
+        if (meetpuntIds.has(k) || nieuweMeetpunten.some((n) => n.k === k)) continue;
+        const elders = meetpuntNamen.has(sleutel(naam));
+        if (elders && !gebruikt.has(`${sleutel(vervang(t.naam, bedrijf))}|${sleutel(naam)}`)) continue;
+        meetpuntNamen.add(sleutel(naam));
+        nieuweMeetpunten.push({ k, themaId, naam, omschrijving: vervang(m.omschrijving, bedrijf), eenheid: m.eenheid || '' });
       }
     }
   }
@@ -101,26 +138,15 @@ export async function pasSjablonenToe(env, onderzoek, inhouden, { meetmomentId =
   }
 
   // 3. Vragenlijst met alle vragen
-  const vragen = [];
-  const gezien = new Set();
-  for (const inhoud of inhouden) {
-    for (const v of inhoud.vragen || []) {
-      const tekst = vervang(v.tekst, bedrijf);
-      if (gezien.has(sleutel(tekst))) continue;
-      gezien.add(sleutel(tekst));
-      vragen.push({ ...v, tekst, themaNaam: vervang(v.thema, bedrijf) });
-    }
-  }
-  // Achtergrondvragen achteraan.
-  vragen.sort((a, b) => (sleutel(a.themaNaam) === 'achtergrond') - (sleutel(b.themaNaam) === 'achtergrond'));
+  const vragen = verzamelVragen(inhouden, bedrijf);
 
   let vragenlijstId = null;
   if (vragen.length) {
     const eerste = inhouden.find((i) => i.vragenlijst) || {};
     const vl = eerste.vragenlijst || {};
     const titel = inhouden.filter((i) => (i.vragen || []).length).length > 1
-      ? 'Vragenlijst'
-      : vervang(vl.titel || 'Vragenlijst', bedrijf);
+      ? onderzoek.titel
+      : vervang(vl.titel || onderzoek.titel, bedrijf);
     const vlRes = await env.DB.prepare(
       `INSERT INTO vragenlijsten (onderzoek_id, meetmoment_id, titel, introtekst, bedanktekst, code, status, aangemaakt_op)
        VALUES (?, ?, ?, ?, ?, ?, 'gesloten', ?) RETURNING id`,

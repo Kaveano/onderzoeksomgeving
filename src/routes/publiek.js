@@ -1,5 +1,6 @@
 // Openbare vragenlijst: ophalen en insturen. Geen account nodig.
-// Er wordt GEEN naam, e-mail, IP-adres, browserinformatie of tijdstip opgeslagen.
+// Er wordt GEEN naam, e-mail, IP-adres, browserinformatie of tijdstip opgeslagen; alleen de datum.
+// Inzendingen krijgen een willekeurig id, zodat de volgorde van invullen niet te herleiden is.
 
 import { Fout, json, leesJson } from '../lib/http.js';
 import { alle, een, vandaagNL } from '../lib/db.js';
@@ -114,6 +115,12 @@ function controleerAntwoord(vraag, waarde) {
   }
 }
 
+/** Willekeurig positief geheel getal (max. 2^53) als id, zodat ids niets zeggen over de volgorde. */
+function willekeurigId() {
+  const [a, b] = crypto.getRandomValues(new Uint32Array(2));
+  return (a & 0x1fffff) * 0x100000000 + b + 1;
+}
+
 function tijdvak(nu = new Date()) {
   // '2026-11-25T14:3' = tijdvak van 10 minuten (UTC)
   return nu.toISOString().slice(0, 15);
@@ -151,33 +158,42 @@ export async function insturen({ request, env, params }) {
     throw new Fout(400, 'Je hebt nog geen vragen beantwoord.');
   }
 
-  // Limieten: maximum totaal (indien ingesteld), per 10 minuten en per dag.
+  // Opslaan en limieten controleren in één ondeelbare batch (een D1-batch is één transactie):
+  // eerst de teller ophogen, dan de inzending alleen toevoegen als alle limieten nog niet bereikt zijn.
+  // Het id van een inzending is willekeurig, zodat de volgorde van invullen niet te herleiden is.
   const vak = tijdvak();
   const dag = vak.slice(0, 10);
-  const [totaal, perVak, perDag] = await env.DB.batch([
-    env.DB.prepare('SELECT COUNT(*) AS n FROM inzendingen WHERE vragenlijst_id = ?').bind(vl.id),
-    env.DB.prepare('SELECT aantal FROM inzendteller WHERE vragenlijst_id = ? AND tijdvak = ?').bind(vl.id, vak),
-    env.DB.prepare("SELECT COALESCE(SUM(aantal), 0) AS n FROM inzendteller WHERE vragenlijst_id = ? AND tijdvak >= ? AND tijdvak < ?")
-      .bind(vl.id, dag, `${dag}U`),
-  ]);
-  if (vl.max_inzendingen && totaal.results[0].n >= vl.max_inzendingen) {
-    throw new Fout(409, 'Het maximale aantal deelnemers voor deze vragenlijst is bereikt. Je antwoorden zijn niet opgeslagen.');
-  }
-  const aantalVak = perVak.results[0] ? perVak.results[0].aantal : 0;
-  if (aantalVak >= LIMIET_PER_10_MIN || perDag.results[0].n >= LIMIET_PER_DAG) {
-    throw new Fout(429, 'Er worden op dit moment erg veel antwoorden verstuurd. Probeer het over een kwartier opnieuw.');
-  }
-
-  const tweeDagenTerug = tijdvak(new Date(Date.now() - 2 * 24 * 60 * 60 * 1000));
-  await env.DB.batch([
-    env.DB.prepare('INSERT INTO inzendingen (vragenlijst_id, datum, antwoorden) VALUES (?, ?, ?)')
-      .bind(vl.id, vandaagNL(), JSON.stringify(antwoorden)),
+  const gisteren = tijdvak(new Date(Date.now() - 24 * 60 * 60 * 1000));
+  const resultaat = await env.DB.batch([
     env.DB.prepare(
       `INSERT INTO inzendteller (vragenlijst_id, tijdvak, aantal) VALUES (?, ?, 1)
        ON CONFLICT (vragenlijst_id, tijdvak) DO UPDATE SET aantal = aantal + 1`,
     ).bind(vl.id, vak),
-    env.DB.prepare('DELETE FROM inzendteller WHERE vragenlijst_id = ? AND tijdvak < ?').bind(vl.id, tweeDagenTerug),
+    env.DB.prepare(
+      `INSERT INTO inzendingen (id, vragenlijst_id, datum, antwoorden)
+       SELECT ?, ?, ?, ?
+       WHERE (SELECT aantal FROM inzendteller WHERE vragenlijst_id = ? AND tijdvak = ?) <= ?
+         AND (SELECT COALESCE(SUM(aantal), 0) FROM inzendteller WHERE vragenlijst_id = ? AND tijdvak >= ? AND tijdvak < ?) <= ?
+         AND (? IS NULL OR (SELECT COUNT(*) FROM inzendingen WHERE vragenlijst_id = ?) < ?)`,
+    ).bind(
+      willekeurigId(), vl.id, vandaagNL(), JSON.stringify(antwoorden),
+      vl.id, vak, LIMIET_PER_10_MIN,
+      vl.id, dag, `${dag}U`, LIMIET_PER_DAG,
+      vl.max_inzendingen, vl.id, vl.max_inzendingen,
+    ),
+    // Tellers van eerdere dagen zijn niet meer nodig.
+    env.DB.prepare('DELETE FROM inzendteller WHERE tijdvak < ?').bind(gisteren),
   ]);
+
+  if (!resultaat[1].meta.changes) {
+    if (vl.max_inzendingen) {
+      const totaal = await een(env, 'SELECT COUNT(*) AS n FROM inzendingen WHERE vragenlijst_id = ?', vl.id);
+      if (totaal.n >= vl.max_inzendingen) {
+        throw new Fout(409, 'Het maximale aantal deelnemers voor deze vragenlijst is bereikt. Je antwoorden zijn niet opgeslagen.');
+      }
+    }
+    throw new Fout(429, 'Er worden op dit moment erg veel antwoorden verstuurd. Probeer het over een kwartier opnieuw.');
+  }
 
   return json({ ok: true, bedanktekst: vl.bedanktekst });
 }

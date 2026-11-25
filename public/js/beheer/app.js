@@ -13,7 +13,7 @@
 //   zetTitel(tekst)    – titel van het browsertabblad
 
 import { api } from './api.js';
-import { h, vervang, laden, melding, meld, statusLabel, datum } from './ui.js';
+import { h, vervang, laden, melding, meld, statusLabel, lokaleDatum, uniekeId } from './ui.js';
 
 const app = document.getElementById('app');
 let instellingen = null;
@@ -120,7 +120,7 @@ function onderzoekKop(detail, tab) {
     ),
     o.status === 'gearchiveerd'
       ? melding(
-        `Dit onderzoek is gearchiveerd op ${datum(o.gearchiveerd_op)}. Je kunt alles inzien en exporteren, maar niets meer wijzigen.`,
+        `Dit onderzoek is gearchiveerd op ${lokaleDatum(o.gearchiveerd_op)}. Je kunt alles inzien en exporteren, maar niets meer wijzigen.`,
         'waarschuwing',
       )
       : null,
@@ -138,7 +138,16 @@ async function weergeven() {
   const adres = leesAdres();
   const hoofd = h('main', { class: 'inhoud', id: 'inhoud', tabindex: '-1' });
   const kopActief = adres.scherm === 'sjablonen' ? 'sjablonen' : adres.tab ? null : 'start';
-  vervang(app, h('a', { href: '#inhoud', class: 'sr-only' }, 'Naar de inhoud'), kopbalk(kopActief), hoofd);
+  const overslaan = h('a', {
+    href: '#inhoud',
+    class: 'sr-only overslaan',
+    onclick: (e) => {
+      // Niet via het adres (#inhoud), want dat gebruikt de navigatie al.
+      e.preventDefault();
+      hoofd.focus();
+    },
+  }, 'Naar de inhoud');
+  vervang(app, overslaan, kopbalk(kopActief), hoofd);
   hoofd.append(laden());
 
   if (adres.scherm === 'onbekend') {
@@ -177,20 +186,31 @@ async function weergeven() {
     if (mijnBeurt !== weergaveTeller) return;
     vervang(container);
     await module.toon(container, ctx);
-    hoofd.focus({ preventScroll: true });
+    // Alleen naar de inhoud springen als het scherm zelf geen focus heeft gezet.
+    const actief = document.activeElement;
+    if (!actief || actief === document.body || !hoofd.contains(actief)) hoofd.focus({ preventScroll: true });
   } catch (fout) {
     if (mijnBeurt !== weergaveTeller) return;
     if (fout.status === 401) return; // inlogscherm wordt al getoond
     console.error(fout);
+    const uitleg = typeof fout.status === 'number' && fout.status > 0
+      ? fout.message
+      : 'Laad de pagina opnieuw. Blijft dit gebeuren, controleer dan je internetverbinding.';
+    // De kop met tabbladen (als die er al staat) laten staan, zodat je naar een ander onderdeel kunt.
+    const kop = hoofd.querySelector('.tabs') ? [...hoofd.children].slice(0, -1) : [];
     vervang(hoofd,
-      melding([h('strong', {}, 'Dit scherm kon niet worden geladen. '), fout.message || ''], 'gevaar'),
-      h('p', {}, h('a', { href: '#/' }, 'Terug naar het overzicht')),
+      kop,
+      melding([h('strong', {}, 'Dit onderdeel kon niet worden geladen. '), uitleg], 'gevaar'),
+      h('div', { class: 'knoppen' },
+        h('button', { type: 'button', class: 'knop', onclick: () => location.reload() }, 'Pagina opnieuw laden'),
+        h('a', { class: 'knop knop-licht', href: '#/' }, 'Naar het overzicht')),
     );
   }
 }
 
 function toonInlog(foutmelding = '') {
   vertrekHandlers = [];
+  for (const d of document.querySelectorAll('dialog[open]')) d.close();
   const invoer = h('input', { type: 'password', id: 'wachtwoord', autocomplete: 'current-password', required: true });
   const fout = h('div', { class: 'veld-fout', role: 'alert' }, foutmelding);
   const knop = h('button', { type: 'submit', class: 'knop knop-primair' }, 'Inloggen');
@@ -225,12 +245,58 @@ function toonInlog(foutmelding = '') {
   invoer.focus();
 }
 
-window.addEventListener('niet-ingelogd', () => {
-  if (!document.getElementById('wachtwoord')) {
+/**
+ * Sessie verlopen terwijl je aan het werk bent: inloggen in een dialoog bovenop het huidige
+ * scherm (ook boven een open dialoog), zodat wat je hebt ingevuld blijft staan.
+ */
+let inlogDialoogOpen = false;
+function toonInlogDialoog() {
+  if (inlogDialoogOpen || document.getElementById('wachtwoord')) return;
+  if (!document.querySelector('main.inhoud')) {
     toonInlog('Je sessie is verlopen. Log opnieuw in.');
-    meld('Je bent uitgelogd. Log opnieuw in om verder te gaan.', 'fout');
+    return;
   }
-});
+  inlogDialoogOpen = true;
+  const invoerId = uniekeId('wachtwoord');
+  const titelId = uniekeId('dlg-titel');
+  const invoer = h('input', { type: 'password', id: invoerId, autocomplete: 'current-password' });
+  const fout = h('div', { class: 'veld-fout', role: 'alert' });
+  const knop = h('button', { type: 'submit', class: 'knop knop-primair' }, 'Inloggen');
+  const d = h('dialog', { class: 'dialoog', 'aria-labelledby': titelId },
+    h('form', { method: 'dialog', novalidate: true },
+      h('div', { class: 'dialoog-inhoud' },
+        h('h2', { id: titelId }, 'Opnieuw inloggen'),
+        h('p', {}, 'Je sessie is verlopen. Log opnieuw in; wat je had ingevuld blijft staan. Probeer daarna je laatste actie nog een keer.'),
+        h('div', { class: 'veld' }, h('label', { for: invoerId }, 'Wachtwoord'), invoer),
+        fout),
+      h('div', { class: 'dialoog-voet' },
+        h('button', { type: 'button', class: 'knop', onclick: () => { d.close(); toonInlog(); } }, 'Naar inlogscherm'),
+        knop)));
+  d.querySelector('form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    fout.textContent = '';
+    knop.disabled = true;
+    try {
+      await api.post('/api/inloggen', { wachtwoord: invoer.value });
+      d.close();
+      meld('Je bent weer ingelogd. Probeer je laatste actie opnieuw.', 'succes');
+    } catch (err) {
+      fout.textContent = err.message;
+      knop.disabled = false;
+      invoer.select();
+    }
+  });
+  d.addEventListener('cancel', (e) => e.preventDefault());
+  d.addEventListener('close', () => {
+    inlogDialoogOpen = false;
+    setTimeout(() => d.remove(), 0);
+  });
+  document.body.append(d);
+  d.showModal();
+  invoer.focus();
+}
+
+window.addEventListener('niet-ingelogd', toonInlogDialoog);
 window.addEventListener('hashchange', weergeven);
 
 (async function start() {

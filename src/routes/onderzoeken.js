@@ -3,7 +3,7 @@
 import { Fout, json, leesJson } from '../lib/http.js';
 import * as v from '../lib/validatie.js';
 import { alle, een, haalOnderzoek, haalBewerkbaarOnderzoek, nuIso } from '../lib/db.js';
-import { pasSjablonenToe, maakSjabloonInhoud } from '../lib/sjabloon-toepassen.js';
+import { pasSjablonenToe, maakSjabloonInhoud, controleerSjablonen } from '../lib/sjabloon-toepassen.js';
 import { STANDAARD_SJABLONEN, STANDAARD_STUKKEN } from '../sjablonen.js';
 
 /** Zoekt sjablooninhoud op id: 'medewerkerstevredenheid' of 'eigen-12'. */
@@ -48,6 +48,7 @@ export async function nieuw({ request, env }) {
   const sjabloonIds = Array.isArray(body.sjablonen) ? body.sjablonen.slice(0, 10) : [];
   const inhouden = [];
   for (const sid of [...new Set(sjabloonIds)]) inhouden.push(await zoekSjabloon(env, sid));
+  controleerSjablonen(inhouden, f.bedrijfsnaam);
 
   const nu = nuIso();
   const o = await env.DB.prepare(
@@ -82,7 +83,7 @@ export async function detail({ env, params }) {
     ).bind(id),
     env.DB.prepare(
       `SELECT mm.*, (SELECT COUNT(*) FROM vragenlijsten v WHERE v.meetmoment_id = mm.id) AS aantal_vragenlijsten
-       FROM meetmomenten mm WHERE mm.onderzoek_id = ? ORDER BY COALESCE(mm.datum, '9999-12-31'), mm.volgorde, mm.id`,
+       FROM meetmomenten mm WHERE mm.onderzoek_id = ? ORDER BY mm.volgorde, mm.id`,
     ).bind(id),
     env.DB.prepare(
       `SELECT t.id AS thema_id,

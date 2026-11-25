@@ -19,9 +19,9 @@
   --primair-hover: #174b6f;
   --primair-zacht: #e3eef6;
   --accent: #b5651d;
-  --succes: #2e7d4f;
+  --succes: #276b43;
   --succes-zacht: #e2f2e8;
-  --waarschuwing: #9a6700;
+  --waarschuwing: #855900;
   --waarschuwing-zacht: #fff4d6;
   --gevaar: #b42318;
   --gevaar-hover: #912018;
@@ -300,6 +300,7 @@ main.inhoud {
 .rij-tussen { justify-content: space-between; }
 
 .melding {
+  overflow-wrap: anywhere;
   border-radius: var(--radius);
   padding: var(--ruimte-3) var(--ruimte-4);
   margin-bottom: var(--ruimte-4);
@@ -324,6 +325,9 @@ main.inhoud {
 
 /* Labels/badges */
 .label {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -430,6 +434,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--focus); outline:
 input[aria-invalid='true'], select[aria-invalid='true'], textarea[aria-invalid='true'] { border-color: var(--gevaar); }
 fieldset { border: 0; padding: 0; margin: 0 0 var(--ruimte-4); min-width: 0; }
 
+.veld > label.keuze { display: flex; font-weight: 500; }
 .keuze {
   display: flex;
   align-items: flex-start;
@@ -447,7 +452,7 @@ fieldset { border: 0; padding: 0; margin: 0 0 var(--ruimte-4); min-width: 0; }
 
 /* ---------- Tabellen en lijsten ---------- */
 
-.tabel-wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.tabel-wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; position: relative; }
 table.tabel { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
 .tabel th, .tabel td {
   text-align: left;
@@ -455,6 +460,7 @@ table.tabel { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
   border-bottom: 1px solid var(--rand);
   vertical-align: top;
 }
+.tabel .rechts { text-align: right; }
 .tabel th { font-size: 0.85rem; color: var(--tekst-zacht); font-weight: 600; background: var(--vlak-2); }
 .tabel tbody tr:hover { background: var(--vlak-2); }
 
@@ -485,7 +491,10 @@ dialog.dialoog {
   box-shadow: var(--schaduw-groot);
 }
 dialog.dialoog::backdrop { background: rgba(10, 15, 25, 0.5); }
-.dialoog-inhoud { padding: var(--ruimte-5); overflow-y: auto; max-height: calc(100vh - 140px); }
+dialog.dialoog { max-height: calc(100dvh - 24px); }
+dialog.dialoog[open] { display: flex; flex-direction: column; }
+dialog.dialoog > form { display: flex; flex-direction: column; min-height: 0; flex: 1 1 auto; }
+.dialoog-inhoud { padding: var(--ruimte-5); overflow-y: auto; min-height: 0; flex: 1 1 auto; }
 .dialoog-inhoud > h2 { margin-bottom: var(--ruimte-3); }
 .dialoog-voet {
   display: flex;
@@ -521,6 +530,7 @@ dialog.dialoog::backdrop { background: rgba(10, 15, 25, 0.5); }
 }
 .toast-fout { background: var(--gevaar); color: #fff; }
 .toast-succes { background: var(--succes); color: #fff; }
+.toast-waarschuwing { background: var(--waarschuwing-zacht); color: var(--tekst); border: 1px solid var(--waarschuwing); }
 @media (prefers-color-scheme: dark) {
   .toast-succes, .toast-fout { color: #10151b; }
 }
@@ -574,3 +584,44 @@ dialog.dialoog::backdrop { background: rgba(10, 15, 25, 0.5); }
 }
 
 main.inhoud:focus { outline: none; }
+
+/* ---------- Aanvullingen ---------- */
+
+/* "Naar de inhoud"-link wordt zichtbaar zodra hij focus krijgt (toetsenbord). */
+.sr-only.overslaan:focus,
+.sr-only.overslaan:focus-visible {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  width: auto;
+  height: auto;
+  margin: 0;
+  clip: auto;
+  overflow: visible;
+  white-space: nowrap;
+  z-index: 100;
+  padding: 8px 14px;
+  background: var(--vlak);
+  color: var(--primair);
+  border: 2px solid var(--focus);
+  border-radius: var(--radius-klein);
+}
+
+.kruimel a { display: inline-flex; align-items: center; min-height: 36px; }
+
+/* Rode knoppen leesbaar in donkere modus. */
+@media (prefers-color-scheme: dark) {
+  .knop-gevaar, .knop-gevaar:hover { color: var(--tekst-omgekeerd); }
+}
+
+/* Aanraakschermen en smalle schermen: knoppen minimaal 36px hoog. */
+@media (pointer: coarse), (max-width: 640px) {
+  .knop-klein { min-height: 36px; }
+}
+
+/* Heel smalle telefoons (320px): bovenbalk past nog. */
+@media (max-width: 360px) {
+  .kop-binnen { gap: var(--ruimte-1); padding-left: var(--ruimte-2); padding-right: var(--ruimte-2); }
+  .kop-nav { gap: 0; }
+  .kop-nav a, .kop-nav button { padding: 6px 7px; font-size: 0.9rem; }
+}

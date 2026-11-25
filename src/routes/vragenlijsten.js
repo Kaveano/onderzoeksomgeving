@@ -40,7 +40,7 @@ export async function lijst({ env, params }) {
        (SELECT COUNT(*) FROM inzendingen i WHERE i.vragenlijst_id = vl.id) AS aantal_inzendingen
      FROM vragenlijsten vl LEFT JOIN meetmomenten mm ON mm.id = vl.meetmoment_id
      WHERE vl.onderzoek_id = ?
-     ORDER BY COALESCE(mm.datum, '9999-12-31'), vl.id`,
+     ORDER BY mm.volgorde IS NULL, mm.volgorde, vl.id`,
     onderzoekId,
   );
   return json({ vragenlijsten: rijen });
@@ -194,7 +194,7 @@ function controleerOpties(ruw) {
   for (const o of ruw) {
     const label = v.tekst(typeof o === 'string' ? o : o && o.label, 'Antwoordmogelijkheid', { max: 200 });
     if (!label) continue;
-    let oid = typeof o === 'object' && o && typeof o.id === 'string' && /^o\d{1,4}$/.test(o.id) ? o.id : null;
+    let oid = typeof o === 'object' && o && typeof o.id === 'string' && /^o[a-z0-9]{1,12}$/.test(o.id) ? o.id : null;
     if (oid && ids.has(oid)) oid = null;
     opties.push({ id: oid, label });
     if (oid) ids.add(oid);
@@ -206,8 +206,16 @@ function controleerOpties(ruw) {
     if (labels.has(o.label.toLowerCase())) throw new Fout(400, `De antwoordmogelijkheid "${o.label}" staat er dubbel in.`);
     labels.add(o.label.toLowerCase());
   }
-  let volgend = Math.max(0, ...[...ids].map((x) => Number(x.slice(1)))) + 1;
-  for (const o of opties) if (!o.id) o.id = `o${volgend++}`;
+  // Nieuwe opties krijgen een willekeurig id, zodat een id nooit opnieuw wordt gebruikt
+  // (anders zouden oude antwoorden op een verwijderde optie bij een nieuwe optie gaan horen).
+  for (const o of opties) {
+    if (!o.id) {
+      do {
+        o.id = `o${[...crypto.getRandomValues(new Uint8Array(6))].map((b) => (b % 36).toString(36)).join('')}`;
+      } while (ids.has(o.id));
+      ids.add(o.id);
+    }
+  }
   return opties;
 }
 
@@ -279,7 +287,14 @@ export async function vraagWijzig({ request, env, params }) {
 export async function vraagVerwijder({ env, params }) {
   const id = v.id(params.id);
   await bewerkbaarVia(env, 'vraag', id);
-  await env.DB.prepare('DELETE FROM vragen WHERE id = ?').bind(id).run();
-  return json({ ok: true });
+  const vraag = await een(env, 'SELECT vragenlijst_id FROM vragen WHERE id = ?', id);
+  // Een open vragenlijst zonder vragen werkt niet voor respondenten: dan gaat hij dicht.
+  const res = await env.DB.batch([
+    env.DB.prepare('DELETE FROM vragen WHERE id = ?').bind(id),
+    env.DB.prepare(
+      "UPDATE vragenlijsten SET status = 'gesloten' WHERE id = ? AND status = 'open' AND NOT EXISTS (SELECT 1 FROM vragen WHERE vragenlijst_id = ?)",
+    ).bind(vraag.vragenlijst_id, vraag.vragenlijst_id),
+  ]);
+  return json({ ok: true, vragenlijst_gesloten: res[1].meta.changes > 0 });
 }
 

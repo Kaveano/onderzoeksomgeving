@@ -2,9 +2,12 @@
 // in het onderzoek gekopieerd; daarna zijn ze daar vrij aan te passen.
 // {bedrijf} wordt bij het toepassen vervangen door de bedrijfsnaam.
 
-const INTRO_ANONIEM =
-  'Je antwoorden zijn anoniem. We vragen niet naar je naam en slaan geen e-mailadres, IP-adres of tijdstip van invullen op. ' +
-  'Resultaten worden alleen getoond voor groepen van minimaal 5 personen, zodat niemand herkenbaar is. ' +
+// Eerlijke uitleg over anonimiteit (klopt met wat de app werkelijk opslaat en toont).
+export const INTRO_ANONIEM =
+  'Je antwoorden zijn anoniem. We vragen niet naar je naam en slaan geen e-mailadres of IP-adres op. ' +
+  'Van het invullen bewaren we alleen de datum, niet het tijdstip. ' +
+  'Resultaten per groep (bijvoorbeeld per afdeling) worden alleen getoond als minstens 5 personen uit die groep hebben gereageerd. ' +
+  'Antwoorden op open vragen worden letterlijk gelezen; noem daarin daarom geen namen. ' +
   'Deelname is vrijwillig en je kunt vragen overslaan die je niet wilt beantwoorden.';
 
 const BEDANKT =

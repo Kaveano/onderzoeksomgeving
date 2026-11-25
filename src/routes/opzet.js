@@ -145,13 +145,14 @@ export async function meetmomentVerwijder({ env, params }) {
 
 const VOLGORDE = {
   themas: { tabel: 'themas', ouder: 'onderzoek_id', soort: 'thema' },
+  meetmomenten: { tabel: 'meetmomenten', ouder: 'onderzoek_id', soort: 'meetmoment' },
   meetpunten: { tabel: 'meetpunten', ouder: 'thema_id', soort: 'meetpunt' },
   vragen: { tabel: 'vragen', ouder: 'vragenlijst_id', soort: 'vraag' },
   acties: { tabel: 'acties', ouder: 'onderzoek_id', soort: 'actie' },
   stukken: { tabel: 'stukken', ouder: 'onderzoek_id', soort: 'stuk' },
 };
 
-/** Body: { soort: 'themas'|'meetpunten'|'vragen'|'acties'|'stukken', ids: [..] } in de gewenste volgorde. */
+/** Body: { soort: 'themas'|'meetmomenten'|'meetpunten'|'vragen'|'acties'|'stukken', ids: [..] } in de gewenste volgorde. */
 export async function volgorde({ request, env }) {
   const body = await leesJson(request);
   const cfg = VOLGORDE[body.soort];

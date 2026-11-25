@@ -1,1 +1,144 @@
-/* Opmaak voor het scherm: invoer */
+/* Opmaak voor het scherm: invoer (Eigen invoer).
+   Alle klassen beginnen met "iv-" zodat ze niet botsen met andere schermen. */
+
+/* Knoppen minstens 36px hoog (prettig aanraken op een telefoon). */
+.iv-scherm .knop-klein,
+.iv-dialoog .knop-klein { min-height: 36px; }
+
+.iv-uitleg { max-width: 75ch; }
+.iv-uitleg > :last-child { margin-bottom: 0; }
+
+/* ---------- Werkbalk: filters en toevoegen ---------- */
+
+.iv-balk {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--ruimte-3);
+  margin: var(--ruimte-4) 0 var(--ruimte-3);
+}
+.iv-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--ruimte-2) var(--ruimte-3);
+  flex: 1 1 320px;
+  min-width: 0;
+}
+.iv-filter { flex: 1 1 160px; max-width: 260px; margin-bottom: 0; }
+.iv-filter > label { font-size: 0.85rem; color: var(--tekst-zacht); }
+.iv-toevoegen { margin-left: auto; }
+
+.iv-filterstatus { margin: 0 0 var(--ruimte-2); }
+.iv-filterstatus:empty { display: none; }
+
+/* ---------- Lijst ---------- */
+
+.iv-items { border-top: 1px solid var(--rand); }
+.iv-item { scroll-margin: 72px 0 var(--ruimte-4); border-radius: var(--radius-klein); }
+
+.iv-item-kop { gap: var(--ruimte-1) var(--ruimte-2); }
+.iv-datum { color: var(--tekst-zacht); font-size: 0.875rem; font-variant-numeric: tabular-nums; }
+
+.iv-soort { color: var(--tekst); }
+.iv-stip {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  background: var(--reeks-6);
+}
+.iv-soort-interview .iv-stip { background: var(--reeks-1); }
+.iv-soort-observatie .iv-stip { background: var(--reeks-3); }
+.iv-soort-cijfer .iv-stip { background: var(--reeks-2); }
+.iv-soort-document .iv-stip { background: var(--reeks-4); }
+
+.lijst-item-titel.iv-item-titel {
+  font-size: 1.05rem;
+  margin: var(--ruimte-1) 0 2px;
+}
+
+.iv-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px var(--ruimte-3);
+}
+.iv-plaats,
+.iv-meetmoment { overflow-wrap: anywhere; min-width: 0; }
+.iv-pijl { color: var(--rand-sterk); }
+
+/* Cijfer: de waarde groot in beeld */
+.iv-waarde {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  margin: var(--ruimte-2) 0 0;
+  line-height: 1.15;
+}
+.iv-waarde-getal { font-size: 1.75rem; font-weight: 700; }
+.iv-waarde-eenheid {
+  margin-left: 0.35em;
+  font-weight: 600;
+  color: var(--tekst-zacht);
+  overflow-wrap: anywhere;
+}
+.iv-waarde-procent { margin-left: 0.05em; font-size: 1.3rem; color: var(--tekst); }
+
+/* Aantekeningen: regelafbrekingen blijven staan */
+.iv-tekstblok { margin-top: var(--ruimte-2); max-width: 75ch; }
+.iv-tekst {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 0;
+  font-size: 0.95rem;
+}
+.iv-meer { margin: 2px 0 0 -10px; }
+
+.iv-knop-gevaar { color: var(--gevaar); }
+.iv-knop-gevaar:hover { background: var(--gevaar-zacht); color: var(--gevaar); }
+
+/* Net opgeslagen invoer licht even op */
+@keyframes iv-oplichten {
+  from { background: var(--primair-zacht); box-shadow: 0 0 0 8px var(--primair-zacht); }
+  to { background: transparent; box-shadow: 0 0 0 8px transparent; }
+}
+.iv-oplichten { animation: iv-oplichten 2.4s ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .iv-oplichten { animation: none; }
+}
+
+/* ---------- Dialoog ---------- */
+
+dialog.iv-dialoog {
+  width: min(600px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+}
+.iv-dialoog .dialoog-inhoud { max-height: calc(100dvh - 110px); }
+.iv-dialoog .formulier-rij { align-items: start; }
+.iv-dialoog .veld-fout:empty { display: none; }
+.iv-dlg-intro { margin-top: calc(-1 * var(--ruimte-2)); }
+
+.iv-dialoog .iv-privacy {
+  color: var(--tekst);
+  background: var(--waarschuwing-zacht);
+  border-left: 3px solid var(--waarschuwing);
+  border-radius: 0 var(--radius-klein) var(--radius-klein) 0;
+  padding: var(--ruimte-2) var(--ruimte-3);
+}
+
+.iv-dlg-fout {
+  padding: var(--ruimte-2) var(--ruimte-3);
+  background: var(--gevaar-zacht);
+  border: 1px solid var(--gevaar);
+  border-radius: var(--radius-klein);
+}
+
+/* ---------- Telefoon ---------- */
+
+@media (max-width: 640px) {
+  .iv-filter { max-width: none; }
+  .iv-toevoegen { order: -1; flex: 1 1 100%; }
+  .iv-waarde-getal { font-size: 1.5rem; }
+  .iv-dialoog .dialoog-voet { padding: var(--ruimte-3) var(--ruimte-4); }
+}
