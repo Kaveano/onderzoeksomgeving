@@ -17,6 +17,7 @@ import * as acties from './routes/acties.js';
 import * as exporteren from './routes/export.js';
 import * as delen from './routes/delen.js';
 import * as rapporten from './routes/rapporten.js';
+import * as inlezen from './routes/inlezen.js';
 
 const B = '/api/beheer';
 
@@ -96,6 +97,15 @@ const BEHEER_ROUTES = [
   ['PUT', `${B}/rapporten/:id`, rapporten.wijzig],
   ['PUT', `${B}/rapporten/:id/feiten`, rapporten.feiten],
   ['DELETE', `${B}/rapporten/:id`, rapporten.verwijder],
+
+  // Inlezen uit Excel of CSV (het bestand zelf wordt in de browser gelezen; hier komen alleen de gegevens)
+  ['POST', `${B}/onderzoeken/:id/invoer/reeks`, inlezen.cijfers],
+  ['POST', `${B}/vragenlijsten/:id/vragen/reeks`, inlezen.vragen],
+  ['POST', `${B}/vragenlijsten/:id/inzendingen/reeks`, inlezen.antwoorden],
+  ['GET', `${B}/onderzoeken/:id/datasets`, inlezen.datasetLijst],
+  ['POST', `${B}/onderzoeken/:id/datasets`, inlezen.datasetNieuw],
+  ['GET', `${B}/datasets/:id`, inlezen.datasetDetail],
+  ['DELETE', `${B}/datasets/:id`, inlezen.datasetVerwijder],
 
   ['GET', `${B}/onderzoeken/:id/deellinks`, delen.lijst],
   ['POST', `${B}/onderzoeken/:id/deellinks`, delen.nieuw],

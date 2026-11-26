@@ -22,6 +22,7 @@ import { h, vervang, leeg, laden, melding, getal, aantal } from '../ui.js';
 import * as S from '../statistiek.js';
 import { neemOpInStuk } from '../stukdialoog.js';
 import { bouwModel, schaalWaarde, isKeuzevraag, vragenVan, waardenVan } from '../analyse-model.js';
+import { maakDatasetKaart } from './analyse-dataset.js';
 
 const ALFA = 0.05; // grens voor "statistisch significant"
 const MIN_PAREN = 10; // samenhang, betrouwbaarheid en kruistabel: minstens zoveel respondenten
@@ -1134,6 +1135,21 @@ export async function toon(container, ctx) {
       'Gebruik dit voor vragen met vaste antwoorden, zoals ja/nee of afdeling. Je ziet of de antwoorden op de ene vraag samenhangen met die op de andere.'),
   };
 
+  // Onderdeel 6 werkt met een eigen, ingelezen bestand en dus ook als er nog geen antwoorden zijn.
+  const datasetKaart = maakDatasetKaart(ctx, {
+    nummer: 6,
+    maakKaart,
+    kiesVeld,
+    uitkomstKop,
+    beschrijfTabel,
+    uitkomsten,
+    conclusie,
+    stukKnop,
+    duidTweeGroepen,
+    duidMeerGroepen,
+    taal: { g, metTeken, pTekst, dfTekst, nTekst, bereik, LET_OP_VERSCHIL, LET_OP_VERBAND },
+  }, keuze);
+
   function tekenLijstKaarten() {
     vulGroepen(kaarten.groepen);
     vulSamenhang(kaarten.samenhang);
@@ -1147,6 +1163,7 @@ export async function toon(container, ctx) {
     [kaarten.samenhang, 'Hangen twee scores met elkaar samen?'],
     [kaarten.betrouwbaarheid, "Meten de vragen van een thema hetzelfde?"],
     [kaarten.keuzevragen, 'Hangen de antwoorden op twee keuzevragen met elkaar samen?'],
+    [datasetKaart, 'Wat laat mijn eigen Excel-bestand zien? (eigen dataset)'],
   ];
 
   const intro = h('section', { class: 'kaart an-intro', 'aria-labelledby': 'an-intro-kop' },
@@ -1154,7 +1171,7 @@ export async function toon(container, ctx) {
     h('p', { class: 'an-uitleg' },
       'Op het dashboard zie je wát de uitkomsten zijn. Hier toets je of een verschil of verband ook echt is, of dat het net zo goed toeval kan zijn. Bij elke uitkomst staat in gewone taal wat hij betekent.'),
     h('ol', { class: 'an-vragen' }, VRAGEN.map(([kaart, vraag]) => h('li', {},
-      lijstenMetData.length
+      lijstenMetData.length || kaart === datasetKaart
         ? h('button', { type: 'button', class: 'an-vraag-knop', onclick: () => scrollNaar(kaart.el) }, vraag)
         : vraag))),
     h('details', { class: 'an-uitklap' },
@@ -1180,12 +1197,14 @@ export async function toon(container, ctx) {
         model.lijsten.length
           ? `Er zijn nog geen antwoorden om te analyseren. Zodra een vragenlijst is ingevuld, kun je hier aan de slag: vanaf ${drempel} respondenten per groep of meetmoment kun je verschillen toetsen, vanaf ${MIN_PAREN} respondenten ook samenhang en betrouwbaarheid.`
           : 'Dit onderzoek heeft nog geen vragenlijst. Maak eerst een vragenlijst en zet hem uit; daarna kun je hier de antwoorden analyseren.',
-        ctx.alleenLezen ? null : h('a', { class: 'knop knop-primair', href: `${basis}/vragenlijsten` }, 'Naar Vragenlijsten'))));
+        ctx.alleenLezen ? null : h('a', { class: 'knop knop-primair', href: `${basis}/vragenlijsten` }, 'Naar Vragenlijsten')),
+      datasetKaart.el,
+      status));
     return;
   }
 
   if (!lijstenMetData.some((l) => l.id === keuze.lijst)) keuze.lijst = lijstenMetData[lijstenMetData.length - 1].id;
   vulMeetmomenten(kaarten.meetmomenten);
   tekenLijstKaarten();
-  vervang(container, h('div', { class: 'analyse' }, intro, Object.values(kaarten).map((k) => k.el), status));
+  vervang(container, h('div', { class: 'analyse' }, intro, Object.values(kaarten).map((k) => k.el), datasetKaart.el, status));
 }

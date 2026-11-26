@@ -120,8 +120,14 @@ export async function toon(container, ctx) {
       'Notities, bevindingen en rapport, plus de actielijst, in één tekstbestand.',
       h('button', { type: 'button', class: 'knop', onclick: () => download(downloadUrl(`/onderzoeken/${onderzoekId}/export/stukken.txt`)) }, 'Downloaden')),
     exportRegel('Alles samen (JSON)',
-      'Volledige kopie van dit onderzoek, voor je eigen archief. Bevat alles: opzet, vragen, antwoorden, eigen invoer, stukken, rapporten en acties.',
-      exportKnop('Downloaden', (d) => [exp.volledigeJson(d), exp.bestandsnaam(d, 'volledig', 'json'), 'application/json;charset=utf-8'])),
+      'Volledige kopie van dit onderzoek, voor je eigen archief. Bevat alles: opzet, vragen, antwoorden, eigen invoer, stukken, rapporten, acties en eigen datasets.',
+      exportKnop('Downloaden', async (d) => {
+        // Eigen datasets staan apart opgeslagen; voor de volledige kopie halen we ze erbij.
+        const { datasets } = await api.get(`/onderzoeken/${onderzoekId}/datasets`);
+        d.datasets = [];
+        for (const ds of datasets) d.datasets.push((await api.get(`/datasets/${ds.id}`)).dataset);
+        return [exp.volledigeJson(d), exp.bestandsnaam(d, 'volledig', 'json'), 'application/json;charset=utf-8'];
+      })),
   ]);
 
   const exportKaart = h('section', { class: 'kaart' },

@@ -244,15 +244,28 @@ function controleerOpties(ruw) {
 }
 
 async function vraagVelden(env, body, onderzoekId) {
-  const type = v.keuze(body.type, 'Vraagtype', ['schaal', 'meerkeuze', 'janee', 'open']);
   const themaId = v.id(body.thema_id, 'thema');
   const thema = await een(env, 'SELECT onderzoek_id FROM themas WHERE id = ?', themaId);
-  if (!thema || thema.onderzoek_id !== onderzoekId) throw new Fout(400, 'Kies een thema van dit onderzoek.');
   const meetpuntId = v.optioneelId(body.meetpunt_id, 'meetpunt');
-  if (meetpuntId) {
-    const mp = await een(env, 'SELECT thema_id FROM meetpunten WHERE id = ?', meetpuntId);
-    if (!mp || mp.thema_id !== themaId) throw new Fout(400, 'Het gekozen meetpunt hoort niet bij het gekozen thema.');
-  }
+  const mp = meetpuntId ? await een(env, 'SELECT thema_id FROM meetpunten WHERE id = ?', meetpuntId) : null;
+  return vraagVeldenUit(
+    body,
+    new Set(thema && thema.onderzoek_id === onderzoekId ? [themaId] : []),
+    new Map(mp ? [[meetpuntId, mp.thema_id]] : []),
+  );
+}
+
+/**
+ * Controleert de velden van één vraag. themaIds: de thema's van het onderzoek;
+ * meetpuntThema: per meetpunt-id het thema waar het bij hoort. Doet zelf geen databaseverzoeken,
+ * zodat ook een hele reeks vragen (inlezen uit Excel) in één keer te controleren is.
+ */
+export function vraagVeldenUit(body, themaIds, meetpuntThema) {
+  const type = v.keuze(body.type, 'Vraagtype', ['schaal', 'meerkeuze', 'janee', 'open']);
+  const themaId = v.id(body.thema_id, 'thema');
+  if (!themaIds.has(themaId)) throw new Fout(400, 'Kies een thema van dit onderzoek.');
+  const meetpuntId = v.optioneelId(body.meetpunt_id, 'meetpunt');
+  if (meetpuntId && meetpuntThema.get(meetpuntId) !== themaId) throw new Fout(400, 'Het gekozen meetpunt hoort niet bij het gekozen thema.');
   const meerdere = type === 'meerkeuze' ? v.vlag(body.meerdere_antwoorden) : 0;
   const uitsplitsen = (type === 'meerkeuze' && !meerdere) || type === 'janee' ? v.vlag(body.uitsplitsen) : 0;
   return {

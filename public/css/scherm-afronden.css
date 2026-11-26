@@ -16,3 +16,17 @@
   .im-koppeling { grid-template-columns: 1fr; }
   .im-koppeling > .im-kolomnaam { margin-top: var(--ruimte-2); }
 }
+
+.im-kop { font-size: 1rem; margin: var(--ruimte-4) 0 var(--ruimte-2); }
+.im-problemen { margin: var(--ruimte-2) 0 0; padding-left: 1.2em; font-size: 0.9rem; }
+.im-problemen li + li { margin-top: 3px; }
+.im-kolommen { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--ruimte-2) var(--ruimte-3); }
+dialog.im-dialoog { width: min(780px, calc(100vw - 24px)); }
+.im-koppeling select { min-width: 0; width: 100%; }
+.im-kaart { margin-top: var(--ruimte-4); }
+
+/* Analyse, onderdeel 6: eigen dataset */
+.an-ds-knoppen { align-self: end; margin-bottom: var(--ruimte-3); }
+.an-ds-uitkomst { margin-top: var(--ruimte-3); }
+.an-zacht-blok { background: var(--vlak-2); border-radius: var(--radius-klein); padding: var(--ruimte-3) var(--ruimte-4); }
+.an-zacht-blok p { margin: 0 0 var(--ruimte-2); }

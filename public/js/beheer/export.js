@@ -164,6 +164,7 @@ export function volledigeJson(data) {
       return { ...r, inhoud };
     }),
     acties: data.acties,
+    datasets: data.datasets || [],
   };
   return JSON.stringify(uit, null, 2);
 }

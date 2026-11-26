@@ -31,7 +31,7 @@ function isOpen(vl) {
   return vl.status === 'open' && vl.onderzoek_status === 'actief';
 }
 
-async function haalVragen(env, vragenlijstId) {
+export async function haalVragen(env, vragenlijstId) {
   return alle(
     env,
     `SELECT q.*, t.naam AS thema_naam, t.id AS t_id FROM vragen q JOIN themas t ON t.id = q.thema_id
@@ -74,7 +74,7 @@ export async function ophalen({ env, params }) {
 }
 
 /** Controleert één antwoord; geeft de schone waarde of undefined (= niet beantwoord). */
-function controleerAntwoord(vraag, waarde) {
+export function controleerAntwoord(vraag, waarde) {
   if (waarde === undefined || waarde === null || waarde === '') return undefined;
   switch (vraag.type) {
     case 'schaal': {
@@ -116,7 +116,7 @@ function controleerAntwoord(vraag, waarde) {
 }
 
 /** Willekeurig positief geheel getal (max. 2^53) als id, zodat ids niets zeggen over de volgorde. */
-function willekeurigId() {
+export function willekeurigId() {
   const [a, b] = crypto.getRandomValues(new Uint32Array(2));
   return (a & 0x1fffff) * 0x100000000 + b + 1;
 }

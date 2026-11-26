@@ -59,6 +59,7 @@ const ONDERZOEK_VIA = {
   stuk: 'SELECT onderzoek_id FROM stukken WHERE id = ?',
   actie: 'SELECT onderzoek_id FROM acties WHERE id = ?',
   rapport: 'SELECT onderzoek_id FROM rapporten WHERE id = ?',
+  dataset: 'SELECT onderzoek_id FROM datasets WHERE id = ?',
 };
 
 const NIET_GEVONDEN = {
@@ -71,6 +72,7 @@ const NIET_GEVONDEN = {
   stuk: 'Dit stuk bestaat niet (meer).',
   actie: 'Deze actie bestaat niet (meer).',
   rapport: 'Dit rapport bestaat niet (meer).',
+  dataset: 'Deze dataset bestaat niet (meer).',
 };
 
 export async function onderzoekVan(env, soort, itemId) {

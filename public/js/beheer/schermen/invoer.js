@@ -5,6 +5,7 @@
 
 import { api } from '../api.js';
 import { h, vervang, leeg, laden, melding, meld, meldFout, bevestig, getal, datum, vandaag, aantal } from '../ui.js';
+import { inleesKaart } from './inlezen-kaart.js';
 
 const STANDAARD_SOORTEN = {
   interview: 'Interview',
@@ -815,6 +816,8 @@ export async function toon(container, ctx) {
       statusEl,
       lijstEl,
     ),
+    // Gegevens die al in Excel staan, hoef je niet over te typen.
+    inleesKaart(ctx, { naInlezen: (soort) => { if (soort === 'cijfers') laad(); } }),
   );
   await laad();
 }
