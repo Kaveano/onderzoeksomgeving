@@ -1180,12 +1180,12 @@ export async function toon(container, ctx) {
             h('tbody', {}, rijen.map((r, i) => h('tr', {},
               h('th', { scope: 'row' }, r.label),
               kolommen.map((_, j) => {
-                if (masker[i][j] === 0) return h('td', { class: 'rechts getal' }, celTekst(i, j));
-                return h('td', { class: 'rechts getal an-cel-verborgen' },
+                if (!verborgen[i][j]) return h('td', { class: 'rechts getal' }, celTekst(i, j));
+                return h('td', { class: 'rechts getal an-cel-verborgen', title: 'Niet getoond' },
                   h('span', { 'aria-hidden': 'true' }, celTekst(i, j)),
-                  h('span', { class: 'sr-only' }, masker[i][j] === 1 ? `minder dan ${drempel}` : 'niet getoond'));
+                  h('span', { class: 'sr-only' }, 'niet getoond'));
               }))))))
-        : melding(`De kruistabel wordt niet getoond: de aantallen per combinatie zijn te klein (minder dan ${drempel}) of zouden terug te rekenen zijn.`),
+        : melding(`De kruistabel wordt niet getoond: de aantallen per combinatie zijn te klein (minder dan ${drempel} respondenten) of zouden terug te rekenen zijn.`),
       ietsZichtbaar && legenda ? h('p', { class: 'an-noot' }, legenda) : null,
       uitkomsten([
         ['Aantal respondenten', nTekst(n), 'Alleen respondenten die beide vragen beantwoordden, tellen mee. Antwoorden die niemand koos, zijn weggelaten.'],
