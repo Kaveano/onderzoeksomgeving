@@ -23,6 +23,7 @@ let weergaveAfgebroken = false; // laden van een scherm stopte omdat de sessie v
 
 const TABS = [
   ['dashboard', 'Dashboard'],
+  ['analyse', 'Analyse'],
   ['opzet', 'Opzet'],
   ['vragenlijsten', 'Vragenlijsten'],
   ['invoer', 'Eigen invoer'],
@@ -35,6 +36,8 @@ const SCHERMEN = {
   start: () => import('./schermen/start.js'),
   nieuw: () => import('./schermen/nieuw.js'),
   sjablonen: () => import('./schermen/sjablonen.js'),
+  sjabloon: () => import('./schermen/sjabloon-bewerken.js'),
+  analyse: () => import('./schermen/analyse.js'),
   dashboard: () => import('./schermen/dashboard.js'),
   opzet: () => import('./schermen/opzet.js'),
   vragenlijsten: () => import('./schermen/vragenlijsten.js'),
@@ -50,6 +53,7 @@ function leesAdres() {
   const delen = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean).map(decodeURIComponent);
   if (!delen.length) return { scherm: 'start', params: {} };
   if (delen[0] === 'nieuw') return { scherm: 'nieuw', params: {} };
+  if (delen[0] === 'sjablonen' && delen[1]) return { scherm: 'sjabloon', params: { sjabloonId: delen[1] } };
   if (delen[0] === 'sjablonen') return { scherm: 'sjablonen', params: {} };
   if (delen[0] === 'onderzoek' && /^\d+$/.test(delen[1] || '')) {
     const id = delen[1];
@@ -138,7 +142,7 @@ async function weergeven() {
 
   const adres = leesAdres();
   const hoofd = h('main', { class: 'inhoud', id: 'inhoud', tabindex: '-1' });
-  const kopActief = adres.scherm === 'sjablonen' ? 'sjablonen' : adres.tab ? null : 'start';
+  const kopActief = adres.scherm === 'sjablonen' || adres.scherm === 'sjabloon' ? 'sjablonen' : adres.tab ? null : 'start';
   const overslaan = h('a', {
     href: '#inhoud',
     class: 'sr-only overslaan',
