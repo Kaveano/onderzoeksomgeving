@@ -80,16 +80,29 @@ async function afzenderCode(env, request) {
   return naarHex(await sha256(`${rij.results[0].waarde}|${ip}`)).slice(0, 32);
 }
 
+/**
+ * De ingestelde beheerwachtwoorden: BEHEER_WACHTWOORD en optioneel BEHEER_WACHTWOORD_2
+ * (een tweede toegang, bijvoorbeeld voor ondersteuning; weg te halen door dat geheim in
+ * Cloudflare te verwijderen). Te korte wachtwoorden tellen niet mee.
+ */
+function wachtwoorden(env) {
+  return [env.BEHEER_WACHTWOORD, env.BEHEER_WACHTWOORD_2].filter((w) => typeof w === 'string' && w.length >= MIN_WACHTWOORD_LENGTE);
+}
+
 /** Geeft true als het verzoek bij een geldige sessie hoort. */
 export async function isIngelogd(request, env) {
   const token = leesCookie(request, COOKIE_NAAM);
-  if (!token || !/^[A-Za-z0-9_-]{30,60}$/.test(token) || !env.BEHEER_WACHTWOORD) return false;
+  const geldig = wachtwoorden(env);
+  if (!token || !/^[A-Za-z0-9_-]{30,60}$/.test(token) || !geldig.length) return false;
   const hash = naarHex(await sha256(token));
   const rij = await env.DB.prepare('SELECT verloopt_op, wachtwoord_kenmerk FROM sessies WHERE token_hash = ?')
     .bind(hash)
     .first();
   if (!rij || rij.verloopt_op <= Date.now()) return false;
-  return rij.wachtwoord_kenmerk === (await wachtwoordKenmerk(env.BEHEER_WACHTWOORD, token));
+  for (const w of geldig) {
+    if (rij.wachtwoord_kenmerk === (await wachtwoordKenmerk(w, token))) return true;
+  }
+  return false;
 }
 
 export async function vereisInlog(request, env) {
@@ -127,8 +140,12 @@ export async function inloggen(request, env, body) {
   }
 
   const invoer = typeof body.wachtwoord === 'string' ? body.wachtwoord.slice(0, 500) : '';
-  const klopt = invoer.length > 0 && (await gelijkInConstanteTijd(invoer, geheim));
-  if (!klopt) {
+  let gekozen = null;
+  for (const w of wachtwoorden(env)) {
+    // Altijd alle wachtwoorden vergelijken (geen verschil in tijd).
+    if (invoer.length > 0 && (await gelijkInConstanteTijd(invoer, w)) && !gekozen) gekozen = w;
+  }
+  if (!gekozen) {
     throw new Fout(401, 'Dit wachtwoord klopt niet.');
   }
 
@@ -136,7 +153,7 @@ export async function inloggen(request, env, body) {
   const hash = naarHex(await sha256(token));
   await env.DB.batch([
     env.DB.prepare('INSERT INTO sessies (token_hash, verloopt_op, wachtwoord_kenmerk) VALUES (?, ?, ?)')
-      .bind(hash, nu + SESSIEDUUR_SEC * 1000, await wachtwoordKenmerk(geheim, token)),
+      .bind(hash, nu + SESSIEDUUR_SEC * 1000, await wachtwoordKenmerk(gekozen, token)),
     env.DB.prepare('DELETE FROM inlogpogingen WHERE id = ?').bind(poging.results[0].id),
     env.DB.prepare('DELETE FROM sessies WHERE verloopt_op < ?').bind(nu),
   ]);
