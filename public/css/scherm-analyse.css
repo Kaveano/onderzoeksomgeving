@@ -269,8 +269,8 @@ table.an-kruistabel { width: auto; min-width: min(100%, 24rem); }
   }
   .an-themas tr {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: var(--ruimte-1) var(--ruimte-3);
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: var(--ruimte-1) var(--ruimte-5);
     padding: var(--ruimte-3) 0;
     border-bottom: 1px solid var(--rand);
   }
@@ -292,8 +292,9 @@ table.an-kruistabel { width: auto; min-width: min(100%, 24rem); }
     white-space: normal;
   }
   .an-themas td.rechts { text-align: left; }
-  .an-themas td[colspan],
-  .an-themas td[data-label='Effect (g)'] { grid-column: 1 / -1; }
+  .an-themas td { grid-column: 1 / -1; }
+  .an-themas td[data-label='Verschil'] { grid-column: 1; }
+  .an-themas td[data-label='p-waarde'] { grid-column: 2; }
   .an-themas td[data-label]::before {
     content: attr(data-label) ': ';
     color: var(--tekst-zacht);
