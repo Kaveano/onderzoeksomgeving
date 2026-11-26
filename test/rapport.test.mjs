@@ -104,7 +104,7 @@ test('voorbereiding: onderzoek met nulmeting (12), vervolgmeting (14) en een kle
   await roep(`${B}/onderzoeken/${s.onderzoek}/acties`, { methode: 'POST', body: { titel: 'Werkdruk bespreken in teamoverleg', status: 'te_doen', datum: '2027-01-15' } });
   await roep(`${B}/onderzoeken/${s.onderzoek}/acties`, { methode: 'POST', body: { titel: 'Resultaten delen met OR', status: 'klaar' } });
   await roep(`${B}/onderzoeken/${s.onderzoek}/invoer`, { methode: 'POST', body: { soort: 'cijfer', thema_id: s.themas[1].id, titel: 'Verzuim', datum: '2026-10-01', waarde: 6.4, eenheid: '%' } });
-  await roep(`${B}/onderzoeken/${s.onderzoek}/invoer`, { methode: 'POST', body: { soort: 'interview', thema_id: s.themas[0].id, titel: 'Gesprek teamleider', datum: '2026-10-05', inhoud: 'Vertrouwelijke gespreksnotitie' } });
+  await roep(`${B}/onderzoeken/${s.onderzoek}/invoer`, { methode: 'POST', body: { soort: 'interview', thema_id: s.themas[0].id, titel: 'Gesprek teamleider', datum: '2026-10-05', tekst: 'Vertrouwelijke gespreksnotitie' } });
 });
 
 test('feiten: cijfers komen overeen met het dashboard en kleine aantallen blijven weg', async () => {

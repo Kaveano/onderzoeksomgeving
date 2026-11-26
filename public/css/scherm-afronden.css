@@ -1,0 +1,18 @@
+/* Scherm Afronden: groepen met exportbestanden. Gebruikt de variabelen uit app.css. */
+
+.af-groep { margin-top: var(--ruimte-5); }
+.af-groep h3 { margin: 0 0 var(--ruimte-1); font-size: 1.05rem; }
+.af-groep > p { margin: 0 0 var(--ruimte-2); }
+
+/* Bestand inlezen (Excel of CSV) */
+.im-stappen { margin: 0 0 var(--ruimte-4); padding-left: 1.3em; color: var(--tekst-zacht); }
+.im-kies { display: flex; flex-wrap: wrap; gap: var(--ruimte-3); align-items: center; }
+.im-voorbeeld { margin-top: var(--ruimte-3); }
+.im-voorbeeld table { font-size: 0.85rem; }
+.im-koppeling { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--ruimte-2) var(--ruimte-3); align-items: center; margin: var(--ruimte-3) 0; }
+.im-koppeling > .im-kolomnaam { font-weight: 600; overflow-wrap: anywhere; }
+.im-kolomvoorbeeld { display: block; font-weight: 400; font-size: 0.8rem; color: var(--tekst-zacht); }
+@media (max-width: 640px) {
+  .im-koppeling { grid-template-columns: 1fr; }
+  .im-koppeling > .im-kolomnaam { margin-top: var(--ruimte-2); }
+}

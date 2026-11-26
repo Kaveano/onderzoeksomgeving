@@ -25,7 +25,7 @@ export async function toon(container, ctx) {
         knop.textContent = 'Bezig met maken…';
         try {
           const d = await haalGegevens();
-          const [inhoud, naam, type] = maak(d);
+          const [inhoud, naam, type] = await maak(d);
           exp.bewaar(inhoud, naam, type);
           meld(`${naam} is gedownload.`, 'succes');
         } catch (e) {
@@ -64,7 +64,47 @@ export async function toon(container, ctx) {
 
   // ---------- 1. Exporteren ----------
   const csv = 'text/csv;charset=utf-8';
-  const regels = [
+  // De bestanden voor Excel, Word, SPSS en de agenda worden pas geladen als je erom vraagt.
+  const metBestanden = (maak) => async (d) => maak(await import('../export-bestanden.js'), d);
+
+  const groep = (titel, uitleg, regels) => h('div', { class: 'af-groep' },
+    h('h3', {}, titel),
+    uitleg ? h('p', { class: 'klein zacht' }, uitleg) : null,
+    h('ul', { class: 'lijst' }, regels));
+
+  const kantoor = groep('Excel en Word', null, [
+    exportRegel('Excel-werkboek (.xlsx)',
+      'Alles in één Excel-bestand met tabbladen: de antwoorden per vragenlijst, scores per thema, het codeboek, eigen invoer, acties en meetmomenten.',
+      exportKnop('Downloaden', metBestanden((b, d) => [b.excelWerkboek(d), exp.bestandsnaam(d, 'werkboek', 'xlsx'), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']))),
+    exportRegel('Stukken als Word-bestanden (.zip)',
+      'Elk stuk (notities, bevindingen, rapport) als los Word-bestand, samen in één zip-bestand. Een rapport uit het tabblad Rapport download je daar als Word.',
+      exportKnop('Downloaden', metBestanden((b, d) => {
+        if (!d.stukken.length) throw new Error('Dit onderzoek heeft geen stukken.');
+        const z = b.stukkenAlsZip(d);
+        return [z.inhoud, z.naam, 'application/zip'];
+      }))),
+  ]);
+
+  const spss = groep('SPSS', 'Voor wie zelf verder wil rekenen in SPSS (of het gratis PSPP).', [
+    exportRegel('SPSS-pakket (.zip)',
+      'Het gegevensbestand met alle respondenten, een syntaxbestand dat de gegevens inleest en alle labels instelt, en een korte uitleg. Meetmomenten staan onder elkaar, zodat je ze kunt vergelijken.',
+      exportKnop('Downloaden', metBestanden((b, d) => {
+        if (!d.inzendingen.length) throw new Error('Er zijn nog geen antwoorden om naar SPSS te exporteren.');
+        const z = b.spssPakket(d);
+        return [z.inhoud, z.naam, 'application/zip'];
+      }))),
+  ]);
+
+  const agenda = groep('Agenda (Outlook)', null, [
+    exportRegel('Meetmomenten en acties in je agenda (.ics)',
+      'Een agendabestand met de meetmomenten en de openstaande acties die een datum hebben. Open het bestand en Outlook (of een andere agenda) vraagt of je de afspraken wilt toevoegen.',
+      exportKnop('Downloaden', metBestanden((b, d) => {
+        if (!b.agendaAfspraken(d).length) throw new Error('Er zijn geen meetmomenten of openstaande acties met een datum.');
+        return [b.agendaBestand(d, new Date()), exp.bestandsnaam(d, 'agenda', 'ics'), 'text/calendar;charset=utf-8'];
+      }))),
+  ]);
+
+  const overig = groep('Losse bestanden (CSV, tekst en JSON)', 'CSV-bestanden openen in Excel en in bijna elk ander programma.', [
     exportRegel('Alle antwoorden (CSV)',
       'Alle vragenlijsten samen, één regel per antwoord. Handig voor een draaitabel in Excel.',
       exportKnop('Downloaden', (d) => [exp.alleAntwoordenCsv(d), exp.bestandsnaam(d, 'alle-antwoorden', 'csv'), csv])),
@@ -80,16 +120,16 @@ export async function toon(container, ctx) {
       'Notities, bevindingen en rapport, plus de actielijst, in één tekstbestand.',
       h('button', { type: 'button', class: 'knop', onclick: () => download(downloadUrl(`/onderzoeken/${onderzoekId}/export/stukken.txt`)) }, 'Downloaden')),
     exportRegel('Alles samen (JSON)',
-      'Volledige kopie van dit onderzoek, voor je eigen archief. Bevat alles: opzet, vragen, antwoorden, eigen invoer, stukken en acties.',
+      'Volledige kopie van dit onderzoek, voor je eigen archief. Bevat alles: opzet, vragen, antwoorden, eigen invoer, stukken, rapporten en acties.',
       exportKnop('Downloaden', (d) => [exp.volledigeJson(d), exp.bestandsnaam(d, 'volledig', 'json'), 'application/json;charset=utf-8'])),
-  ];
+  ]);
 
   const exportKaart = h('section', { class: 'kaart' },
     h('h2', {}, 'Exporteren'),
-    h('p', {}, 'Download de resultaten en je stukken. CSV-bestanden openen in Excel; het tekstbestand opent in Kladblok of Word.'),
+    h('p', {}, 'Download de resultaten en je stukken om ze te bewaren of in een ander programma verder te gebruiken.'),
     h('p', { class: 'klein zacht' },
       'Let op: exportbestanden bevatten alle losse antwoorden, ook van kleine groepen. Bewaar ze op een veilige plek en deel ze niet zomaar.'),
-    h('ul', { class: 'lijst' }, regels),
+    kantoor, spss, agenda, overig,
   );
 
   // ---------- 2. Archiveren of 3. Verwijderen ----------

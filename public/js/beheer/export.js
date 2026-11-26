@@ -156,6 +156,13 @@ export function volledigeJson(data) {
     })),
     eigen_invoer: data.eigen_invoer,
     stukken: data.stukken,
+    rapporten: (data.rapporten || []).map((r) => {
+      let inhoud = r.inhoud;
+      try {
+        inhoud = typeof r.inhoud === 'string' ? JSON.parse(r.inhoud) : r.inhoud;
+      } catch { /* laat de tekst staan zoals hij is */ }
+      return { ...r, inhoud };
+    }),
     acties: data.acties,
   };
   return JSON.stringify(uit, null, 2);
