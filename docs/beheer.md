@@ -9,6 +9,8 @@ Dit document is voor onderhoud: waar staat wat, hoe zet je een nieuwe versie onl
 | App (Worker) | Cloudflare › Workers & Pages › **onderzoek** | Adres: https://onderzoek.af-partners.workers.dev |
 | Database | Cloudflare › Storage & Databases › D1 › **onderzoeksomgeving** | Jurisdictie **eu**: draait en bewaart gegevens alleen in de EU |
 | Wachtwoord | Geheim **BEHEER_WACHTWOORD** bij de Worker (Settings › Variables and Secrets) | Staat nergens in de code |
+| Tweede toegang | Geheim **BEHEER_WACHTWOORD_2** bij de Worker (optioneel) | Extra beheerwachtwoord voor ondersteuning; verwijder het geheim om die toegang in te trekken |
+| Sjablonen | In de database (tabel `sjablonen`) | De code bevat alleen de originelen van de meegeleverde sjablonen |
 | Code | GitHub-repository `onderzoeksomgeving` | |
 
 Je andere projecten (AF Partners-site, InterimRadar) staan los hiervan en worden niet geraakt.
@@ -101,7 +103,7 @@ Lokaal testen:
 npm test
 ```
 
-Database-aanpassingen doorvoeren, als er nieuwe bestanden in `migrations/` staan:
+Database-aanpassingen doorvoeren, als er nieuwe bestanden in `migrations/` staan. Doe dit altijd **vóór** het online zetten:
 
 ```bash
 npx wrangler d1 migrations apply DB --remote

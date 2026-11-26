@@ -23,15 +23,58 @@ Na 10 verkeerde pogingen moet je 15 minuten wachten.
 
 ## 2. Een onderzoek starten
 
-1. Klik op **Onderzoeken** en dan op **+ Nieuw onderzoek**.
-2. Vul de **bedrijfsnaam**, een **titel** (bijvoorbeeld "Medewerkersonderzoek 2026") en de **onderzoeksvraag** in.
-3. Kies eventueel één of meer **startsjablonen**: Medewerkerstevredenheid, HR-processen of Arbeidsvoorwaarden.
+Klik op **Onderzoeken** en dan op **+ Nieuw onderzoek**. Je doorloopt vier stappen:
+
+1. **Gegevens.** Vul de bedrijfsnaam, een titel (bijvoorbeeld "Medewerkersonderzoek 2026") en de onderzoeksvraag in.
+2. **Sjablonen kiezen.** Vink één of meer sjablonen aan, of kies **Zonder sjabloon beginnen**.
    - Met **Bekijk inhoud** zie je vooraf welke thema's en vragen erin zitten.
-   - Een sjabloon vult het onderzoek met thema's, meetpunten, een vragenlijst voor de **Nulmeting** en een actielijst.
-   - Alles is daarna aan te passen.
-4. Klik op **Onderzoek aanmaken**. Je komt nu op het tabblad **Opzet**.
+   - Kies je er meer dan één, dan worden ze samengevoegd: thema's met dezelfde naam vallen samen en dubbele vragen komen maar één keer voor.
+3. **Inhoud aanpassen.** Je ziet nu alles wat het onderzoek gaat bevatten, en je kunt het hier volledig aanpassen voordat er iets wordt aangemaakt:
+   - de uitleg voor respondenten;
+   - thema's en meetpunten;
+   - alle vragen, met hun antwoordmogelijkheden;
+   - de acties.
+
+   Vink **Bewaar dit ook als nieuw sjabloon** aan als je deze aangepaste versie later opnieuw wilt gebruiken.
+4. **Aanmaken.** Controleer de samenvatting en klik op **Onderzoek aanmaken**. Je komt op het tabblad **Opzet**.
+
+Het onderzoek krijgt automatisch een meetmoment **Nulmeting**, één vragenlijst met de gekozen vragen en drie stukken (Notities, Bevindingen, Conceptrapport). Ook daarna blijft alles aan te passen.
 
 Meerdere onderzoeken kunnen tegelijk lopen. Ze staan op het startscherm onder **Lopende onderzoeken**.
+
+### Sjablonen beheren
+
+Onder **Sjablonen** (bovenin het menu) staan alle sjablonen. Er worden er twaalf meegeleverd:
+
+- Medewerkerstevredenheid
+- HR-processen
+- Arbeidsvoorwaarden
+- Verzuim en vitaliteit
+- Werkdruk en werkstress
+- Leiderschap en leidinggeven
+- Onboarding van nieuwe medewerkers
+- Vertrekonderzoek (exitonderzoek)
+- Sociale veiligheid, diversiteit en inclusie
+- Hybride en plaatsonafhankelijk werken
+- Verandering en organisatiecultuur
+- Ontwikkeling en loopbaan
+
+Wat je met een sjabloon kunt doen:
+
+- **Bewerken:** alles aanpassen, ook bij de meegeleverde sjablonen. Dat geldt voor de naam, de uitleg, thema's, meetpunten, vragen, antwoordmogelijkheden en acties.
+- **Kopie maken:** een variant maken zonder het origineel te veranderen.
+- **+ Nieuw sjabloon:** helemaal zelf een sjabloon opbouwen.
+- **Herstel origineel:** een aangepast meegeleverd sjabloon terugzetten naar de oorspronkelijke versie.
+- **Standaardsjablonen terugzetten:** meegeleverde sjablonen terughalen die je hebt verwijderd.
+- **Gebruiken voor nieuw onderzoek:** direct een onderzoek starten met dit sjabloon.
+
+Typ in een tekst `{bedrijf}` op de plek waar de bedrijfsnaam moet komen. Die wordt bij het aanmaken van een onderzoek automatisch ingevuld.
+
+**Let op bij gevoelige onderwerpen**
+- **Sociale veiligheid:** zet in de uitleg voor respondenten de naam en contactgegevens van de vertrouwenspersoon voordat je de vragenlijst openzet.
+- **Vertrekonderzoek en onboarding:** het aantal respondenten is meestal klein. Houd de vragenlijst langere tijd open en rapporteer pas bij minimaal 5 respondenten. Overweeg de achtergrondvragen (afdeling, diensttijd) weg te laten.
+
+De vragen in de sjablonen zijn zelf geformuleerd als praktisch vertrekpunt. Het zijn geen wetenschappelijk gevalideerde meetinstrumenten.
 
 ### Opzet: thema's, meetpunten en meetmomenten
 
@@ -42,7 +85,7 @@ Meerdere onderzoeken kunnen tegelijk lopen. Ze staan op het startscherm onder **
 Je kunt alles toevoegen, wijzigen, verwijderen en in een andere volgorde zetten.
 
 - Een thema dat nog vragen of eigen invoer heeft, kun je pas verwijderen als je die eerst hebt verplaatst of verwijderd.
-- Met **Opslaan als sjabloon** bewaar je jouw verbeterde opzet voor het volgende bedrijf. De bedrijfsnaam wordt dan automatisch vervangen.
+- Met **Opslaan als sjabloon** (onderaan het tabblad Opzet) bewaar je de opzet van dit onderzoek als nieuw sjabloon voor het volgende bedrijf. De bedrijfsnaam wordt dan automatisch vervangen door `{bedrijf}`.
 
 ## 3. Een vragenlijst maken en uitzetten
 
