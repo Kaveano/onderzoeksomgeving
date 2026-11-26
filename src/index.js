@@ -15,6 +15,7 @@ import * as invoer from './routes/invoer.js';
 import * as stukken from './routes/stukken.js';
 import * as acties from './routes/acties.js';
 import * as exporteren from './routes/export.js';
+import * as delen from './routes/delen.js';
 
 const B = '/api/beheer';
 
@@ -86,6 +87,12 @@ const BEHEER_ROUTES = [
 
   ['GET', `${B}/onderzoeken/:id/export/data`, exporteren.data],
   ['GET', `${B}/onderzoeken/:id/export/stukken.txt`, exporteren.stukkenTxt],
+
+  ['GET', `${B}/onderzoeken/:id/deellinks`, delen.lijst],
+  ['POST', `${B}/onderzoeken/:id/deellinks`, delen.nieuw],
+  ['PUT', `${B}/deellinks/:id`, delen.wijzig],
+  ['DELETE', `${B}/deellinks/:id`, delen.verwijder],
+  ['POST', `${B}/deellinks/:id/nieuwe-toegangscode`, delen.nieuweCode],
 ];
 
 const PUBLIEKE_ROUTES = [
@@ -94,6 +101,13 @@ const PUBLIEKE_ROUTES = [
   ['GET', '/api/sessie', async ({ request, env }) => json({ ingelogd: await isIngelogd(request, env) })],
   ['GET', '/api/publiek/:code', publiek.ophalen],
   ['POST', '/api/publiek/:code', publiek.insturen],
+  // Alleen-lezen inzage via een deellink met toegangscode
+  ['GET', '/api/kijk/:code', delen.status],
+  ['POST', '/api/kijk/:code/toegang', delen.toegang],
+  ['POST', '/api/kijk/:code/sluiten', delen.sluiten],
+  ['GET', '/api/kijk/:code/overzicht', delen.overzicht],
+  ['GET', '/api/kijk/:code/dashboard', delen.dashboard],
+  ['GET', '/api/kijk/:code/stukken/:id', delen.stuk],
 ];
 
 function instellingen() {
@@ -164,6 +178,13 @@ export default {
     try {
       if (url.pathname.startsWith('/api/')) {
         return metKoppen(await api(request, env, url));
+      }
+      if (url.pathname.startsWith('/d/')) {
+        // Alleen-lezen inzage: altijd dezelfde pagina, het script vraagt om de toegangscode.
+        if (!/^\/d\/[A-Za-z0-9_-]{16,40}\/?$/.test(url.pathname)) {
+          return metKoppen(serveer(request, '/__bestaat-niet'));
+        }
+        return metKoppen(serveer(request, '/kijk.html'));
       }
       if (url.pathname.startsWith('/v/')) {
         // De openbare vragenlijstpagina: altijd dezelfde pagina, het script haalt de vragen op.

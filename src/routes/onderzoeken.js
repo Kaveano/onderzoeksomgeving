@@ -182,6 +182,9 @@ export async function verwijderen({ request, env, params }) {
     env.DB.prepare('DELETE FROM meetmomenten WHERE onderzoek_id = ?').bind(id),
     env.DB.prepare('DELETE FROM stukken WHERE onderzoek_id = ?').bind(id),
     env.DB.prepare('DELETE FROM acties WHERE onderzoek_id = ?').bind(id),
+    env.DB.prepare('DELETE FROM kijksessies WHERE deellink_id IN (SELECT id FROM deellinks WHERE onderzoek_id = ?)').bind(id),
+    env.DB.prepare('DELETE FROM kijkpogingen WHERE deellink_id IN (SELECT id FROM deellinks WHERE onderzoek_id = ?)').bind(id),
+    env.DB.prepare('DELETE FROM deellinks WHERE onderzoek_id = ?').bind(id),
     env.DB.prepare('DELETE FROM onderzoeken WHERE id = ?').bind(id),
   ]);
   return json({ ok: true });

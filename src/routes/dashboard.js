@@ -320,6 +320,18 @@ export async function dashboard({ request, env, params }) {
   const onderzoekId = v.id(params.id);
   const onderzoek = await haalOnderzoek(env, onderzoekId);
   const url = new URL(request.url);
+  return json(await berekenDashboard(env, onderzoek, {
+    vragenlijst: url.searchParams.get('vragenlijst'),
+    uitsplitsen: url.searchParams.get('uitsplitsen'),
+  }));
+}
+
+/**
+ * Berekent alle dashboardgegevens van een onderzoek. Ook gebruikt voor de alleen-lezen
+ * deellink (src/routes/delen.js), die er daarna nog onderdelen uit weglaat.
+ */
+export async function berekenDashboard(env, onderzoek, keuze = {}) {
+  const onderzoekId = onderzoek.id;
 
   const [themasR, meetpuntenR, meetmomentenR, lijstenR, vragenR, inzR, invoerR] = await env.DB.batch([
     env.DB.prepare('SELECT id, naam FROM themas WHERE onderzoek_id = ? ORDER BY volgorde, id').bind(onderzoekId),
@@ -392,7 +404,7 @@ export async function dashboard({ request, env, params }) {
 
   // 2. Gekozen vragenlijst
   let gekozen = null;
-  const param = Number(url.searchParams.get('vragenlijst'));
+  const param = Number(keuze.vragenlijst);
   if (lijstInfo.has(param)) gekozen = param;
   if (!gekozen) {
     const metAntwoorden = lijsten.filter((l) => inzPerLijst.get(l.id).length).map((l) => l.id);
@@ -446,7 +458,7 @@ export async function dashboard({ request, env, params }) {
     const meetpuntIds = [...new Set(schaalVragen.map((q) => q.meetpunt_id).filter(Boolean))];
 
     const uitsplitsvragen = lv.filter((q) => q.uitsplitsen && (q.type === 'janee' || (q.type === 'meerkeuze' && !q.meerdere_antwoorden)));
-    const uitsplitsVraag = uitsplitsvragen.find((q) => q.id === Number(url.searchParams.get('uitsplitsen'))) || null;
+    const uitsplitsVraag = uitsplitsvragen.find((q) => q.id === Number(keuze.uitsplitsen)) || null;
 
     selectie = {
       vragenlijst_id: gekozen,
@@ -549,7 +561,7 @@ export async function dashboard({ request, env, params }) {
     });
   }
 
-  return json({
+  return {
     onderzoek: { id: onderzoek.id, bedrijfsnaam: onderzoek.bedrijfsnaam, titel: onderzoek.titel, status: onderzoek.status },
     drempel: DREMPEL,
     respons,
@@ -562,5 +574,5 @@ export async function dashboard({ request, env, params }) {
     },
     eigen_cijfers: [...reeksen.values()],
     eigen_invoer_telling: invoerTelling,
-  });
+  };
 }
