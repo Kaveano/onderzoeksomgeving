@@ -159,12 +159,66 @@
   .start-archief-meta { text-align: right; flex: 0 1 auto; }
 }
 
-/* ============ Nieuw onderzoek ============ */
+/* ============ Nieuw onderzoek (vier stappen) ============ */
 
+.nieuw { max-width: 980px; }
 .nieuw-kruimel { margin-bottom: 0; }
 .nieuw-kruimel a { display: inline-flex; align-items: center; min-height: 36px; }
-.nieuw-formulier { max-width: 860px; }
-.nieuw-formulier .veld-fout:empty { display: none; }
+.nieuw .veld-fout:empty { display: none; }
+.nieuw-stap[hidden] { display: none; }
+.nieuw-stap h2:focus { outline: none; }
+.nieuw-stap h2:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.nieuw-stap-intro { max-width: 80ch; }
+.nieuw-laatste { margin-bottom: 0; }
+
+/* De stappen bovenaan */
+.nieuw-stappen {
+  list-style: none;
+  margin: 0 0 var(--ruimte-4);
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--ruimte-2);
+  scroll-margin-top: 72px;
+}
+.nieuw-stapknop {
+  width: 100%;
+  height: 100%;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  gap: var(--ruimte-2);
+  padding: var(--ruimte-2) var(--ruimte-3);
+  border: 1px solid var(--rand);
+  border-bottom: 3px solid var(--rand-sterk);
+  border-radius: var(--radius-klein);
+  background: var(--vlak);
+  color: var(--tekst-zacht);
+  font: inherit;
+  font-size: 0.925rem;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+.nieuw-stapknop:hover { background: var(--vlak-hover); color: var(--tekst); }
+.nieuw-stapknop-nr {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--vlak-2);
+  border: 1px solid var(--rand-sterk);
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+.nieuw-stapknop-naam { min-width: 0; overflow-wrap: anywhere; line-height: 1.25; }
+.is-nu > .nieuw-stapknop { border-color: var(--primair); border-bottom-color: var(--primair); color: var(--tekst); font-weight: 700; }
+.is-nu .nieuw-stapknop-nr { background: var(--primair); border-color: var(--primair); color: var(--tekst-omgekeerd); }
+.is-klaar > .nieuw-stapknop { border-bottom-color: var(--succes); color: var(--tekst); }
+.is-klaar .nieuw-stapknop-nr { background: var(--succes-zacht); border-color: var(--succes); color: var(--succes); }
+
 .nieuw-rij {
   display: grid;
   gap: 0 var(--ruimte-4);
@@ -177,7 +231,7 @@
 }
 .nieuw-uitleg li + li { margin-top: 4px; }
 
-.nieuw-sjablonen-veld { margin-bottom: 0; }
+.nieuw-sjablonen-veld { margin-bottom: var(--ruimte-3); }
 .nieuw-sjablonen-veld > legend { margin-bottom: var(--ruimte-2); padding: 0; }
 .nieuw-sjablonen {
   list-style: none;
@@ -212,42 +266,61 @@
   /* uitgelijnd met de tekst naast het vinkje: rand + vinkje + tussenruimte */
   padding: 0 var(--ruimte-4) var(--ruimte-2) calc(var(--ruimte-4) + 20px + var(--ruimte-2));
 }
-
-.nieuw-voet {
-  background: var(--vlak);
-  border: 1px solid var(--rand);
+.nieuw-zonder {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ruimte-2) var(--ruimte-3);
+  padding: var(--ruimte-3) var(--ruimte-4);
+  margin-bottom: var(--ruimte-3);
+  border: 1px dashed var(--rand-sterk);
   border-radius: var(--radius);
-  box-shadow: var(--schaduw);
-  padding: var(--ruimte-4);
+  color: var(--tekst-zacht);
 }
-.nieuw-keuze { margin: 0 0 var(--ruimte-3); font-weight: 500; }
+.nieuw-keuze { margin: 0; font-weight: 500; }
+
+.nieuw-bewaar > h3 { margin-bottom: var(--ruimte-2); }
+.nieuw-bewaar > .veld:has(+ .verborgen), .nieuw-bewaar-velden > .veld:last-child { margin-bottom: 0; }
+.nieuw-bewaar-velden {
+  border-left: 3px solid var(--primair-zacht);
+  padding-left: var(--ruimte-3);
+}
+.nieuw-bewaar-velden textarea { min-height: 64px; }
+
+.nieuw-overzicht {
+  display: grid;
+  grid-template-columns: minmax(120px, 200px) minmax(0, 1fr);
+  gap: var(--ruimte-2) var(--ruimte-4);
+  margin: 0;
+}
+.nieuw-overzicht dt { font-weight: 600; color: var(--tekst-zacht); }
+.nieuw-overzicht dd { margin: 0; overflow-wrap: anywhere; white-space: pre-line; }
+
+/* Balk met Vorige/Volgende: blijft onderaan in beeld. */
+.nieuw-voet {
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  background: var(--vlak);
+  border: 1px solid var(--rand-sterk);
+  border-radius: var(--radius) var(--radius) 0 0;
+  box-shadow: 0 -4px 16px rgba(16, 24, 40, 0.12);
+  padding: var(--ruimte-3) var(--ruimte-4);
+}
+.nieuw-voet-knoppen {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ruimte-2);
+}
+/* Korte meldingen onderin (toasts) blijven boven deze balk. */
+body:has(.nieuw-voet) .toasts { bottom: 84px; }
+.nieuw-knop-kort { display: none; }
 .nieuw-algemene-fout:empty { display: none; }
 .nieuw-algemene-fout .melding { margin-bottom: var(--ruimte-3); }
 
-/* ============ Sjablonen (overzicht en inhoud) ============ */
-
-.sjabloon-sectie-uitleg { margin-bottom: var(--ruimte-2); }
-
-.sjabloon-item {
-  padding: var(--ruimte-4) 0;
-  border-bottom: 1px solid var(--rand);
-}
-.sjabloon-item:last-child { border-bottom: 0; padding-bottom: 0; }
-.sjabloon-item-kop { display: flex; align-items: flex-start; gap: var(--ruimte-3); }
-.sjabloon-item-hoofd { flex: 1 1 auto; min-width: 0; }
-.sjabloon-item-titelrij { margin-bottom: 4px; }
-.sjabloon-item-naam { margin: 0; font-size: 1.05rem; overflow-wrap: anywhere; }
-.sjabloon-item-oms { margin: 0 0 4px; overflow-wrap: anywhere; }
-.sjabloon-item-meta { margin: 0; }
-.sjabloon-item-acties {
-  flex: 0 1 auto;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: var(--ruimte-1);
-}
-.sjabloon-item-acties .knop { min-height: 36px; }
-.sjabloon-item-voorbeeld { margin-top: var(--ruimte-2); }
+/* ============ Sjablonen: inhoud bekijken (overzicht en bewerken: zie scherm-sjablonen.css) ============ */
 
 /* Knop "Bekijk inhoud" met een pijltje */
 .knop.sjabloon-schakel { min-height: 36px; margin-left: -10px; }
@@ -346,10 +419,31 @@
   .keuze.nieuw-sjabloon-keuze { padding: var(--ruimte-3) var(--ruimte-3) var(--ruimte-1); }
   .nieuw-sjabloon-voorbeeld { padding: 0 var(--ruimte-3) var(--ruimte-2) calc(var(--ruimte-3) + 20px + var(--ruimte-2)); }
   .sjabloon-inhoud { padding: var(--ruimte-3); }
-  .nieuw-voet { padding: var(--ruimte-3); }
-  .nieuw-voet .knoppen .knop { flex: 1 1 auto; }
-  .sjabloon-item-kop { flex-direction: column; gap: var(--ruimte-2); }
-  .sjabloon-item-acties { justify-content: flex-start; }
+  .nieuw-zonder { padding: var(--ruimte-3); }
+
+  /* Stappen: alleen de nummers, met de naam van de huidige stap erbij. */
+  .nieuw-stappen { display: flex; gap: var(--ruimte-1); }
+  .nieuw-stapknop-item { flex: 0 0 auto; min-width: 48px; }
+  .nieuw-stapknop-item.is-nu { flex: 1 1 auto; min-width: 0; }
+  .nieuw-stapknop { justify-content: center; padding: var(--ruimte-2); }
+  .is-nu > .nieuw-stapknop { justify-content: flex-start; }
+  .nieuw-stapknop-naam { display: none; }
+  .is-nu .nieuw-stapknop-naam { display: block; }
+
+  .nieuw-overzicht { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .nieuw-overzicht dd { margin-bottom: var(--ruimte-3); }
+  .nieuw-voet {
+    margin: 0 calc(-1 * var(--ruimte-3));
+    padding: var(--ruimte-2) var(--ruimte-3);
+    border-radius: 0;
+    border-left: 0;
+    border-right: 0;
+  }
+  body:has(.nieuw-voet) .toasts { bottom: 72px; }
+  .nieuw-voet-knoppen { flex-wrap: nowrap; }
+  .nieuw-voet-knoppen > .knoppen { flex: 1 1 auto; justify-content: flex-end; flex-wrap: nowrap; }
+  .nieuw-knop-lang { display: none; }
+  .nieuw-knop-kort { display: inline; }
 }
 
 @media (max-width: 400px) {

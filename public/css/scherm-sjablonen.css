@@ -1,1 +1,373 @@
-/* Opmaak voor de sjablonen-editor */
+/* Opmaak voor de sjablonen: het overzicht (sjo-), het scherm "Sjabloon bewerken" (sjb-)
+   en de gedeelde sjablooneditor (sje-), die ook in "Nieuw onderzoek" wordt gebruikt.
+   De klassen sjabloon-… (inhoud bekijken) staan in scherm-start.css. */
+
+/* ================= Overzicht (sjo-) ================= */
+
+.sjo-kopknoppen { justify-content: flex-end; }
+.sjo-groep { margin-bottom: var(--ruimte-6); }
+.sjo-groep-kop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--ruimte-2);
+}
+.sjo-groep-kop h2 { margin: 0; }
+.sjo-groep-uitleg { margin: var(--ruimte-1) 0 var(--ruimte-3); max-width: 80ch; }
+
+.sjo-kaarten {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--ruimte-4);
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 440px), 1fr));
+  align-items: start;
+}
+.sjo-kaart { margin: 0; display: flex; flex-direction: column; gap: var(--ruimte-2); }
+.sjo-kaart-kop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ruimte-1) var(--ruimte-2);
+}
+.sjo-naam { margin: 0; font-size: 1.1rem; overflow-wrap: anywhere; }
+.sjo-naam-link { color: var(--tekst); text-decoration: none; }
+.sjo-naam-link:hover { color: var(--primair); text-decoration: underline; }
+.sjo-labels { display: flex; flex-wrap: wrap; gap: var(--ruimte-1); }
+.sjo-oms { margin: 0; overflow-wrap: anywhere; }
+.sjo-meta { margin: 0; }
+.sjo-acties {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ruimte-1);
+  margin-top: var(--ruimte-1);
+}
+.sjo-acties .knop { min-height: 36px; }
+.sjo-knop-gevaar, .sjb-knop-gevaar, .sje-knop-gevaar { color: var(--gevaar); }
+.sjo-knop-gevaar:hover, .sjb-knop-gevaar:hover, .sje-knop-gevaar:hover { background: var(--gevaar-zacht); color: var(--gevaar); }
+.sjo-voorbeeld { border-top: 1px solid var(--rand); padding-top: var(--ruimte-1); }
+
+@keyframes sje-oplichten {
+  from { background-color: var(--primair-zacht); }
+  to { background-color: transparent; }
+}
+.sje-oplichten { animation: sje-oplichten 1.6s ease-out; }
+@keyframes sjo-oplichten {
+  from { box-shadow: 0 0 0 3px var(--primair); }
+  to { box-shadow: var(--schaduw); }
+}
+.sjo-oplichten { animation: sjo-oplichten 2s ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .sje-oplichten { animation: none; outline: 2px solid var(--primair-zacht); }
+  .sjo-oplichten { animation: none; outline: 2px solid var(--primair); }
+}
+
+/* ================= Sjabloon bewerken (sjb-) ================= */
+
+.sjb-kop { align-items: center; }
+.sjb-kop-hoofd { min-width: 0; }
+.sjb-kop-labels { margin-top: var(--ruimte-1); }
+.sjb-laatste-veld { margin-bottom: 0; }
+.sjb textarea[rows='2'] { min-height: 64px; }
+
+/* Balk met Opslaan: blijft onderaan in beeld. */
+.sjb-opslaanbalk {
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  margin: var(--ruimte-4) calc(-1 * var(--ruimte-2)) 0;
+  padding: var(--ruimte-3) var(--ruimte-4);
+  background: var(--vlak);
+  border: 1px solid var(--rand-sterk);
+  border-radius: var(--radius) var(--radius) 0 0;
+  box-shadow: 0 -4px 16px rgba(16, 24, 40, 0.12);
+}
+.sjb-opslaanbalk-rij {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ruimte-2) var(--ruimte-4);
+}
+.sjb-status { margin: 0; color: var(--tekst-zacht); font-size: 0.925rem; }
+.sjb-status-vuil { color: var(--waarschuwing); font-weight: 600; }
+/* Korte meldingen onderin (toasts) blijven boven de balk met Opslaan. */
+body:has(.sjb-opslaanbalk) .toasts { bottom: 84px; }
+.sjb-fout:empty { display: none; }
+.sjb-fout .melding { margin-bottom: var(--ruimte-3); }
+
+/* ================= Editor (sje-) ================= */
+
+.sje .knop-klein,
+.sje-dialoog .knop-klein { min-height: 36px; }
+.sje .knop-icoon,
+.sje-dialoog .knop-icoon { min-width: 36px; }
+.sje .veld > label.keuze,
+.sje-dialoog .veld > label.keuze { display: flex; font-weight: 500; }
+.sje .melding { margin-bottom: var(--ruimte-4); }
+
+.sje-overzicht {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ruimte-1) var(--ruimte-4);
+  margin-bottom: var(--ruimte-3);
+}
+.sje-tellers { font-weight: 600; font-variant-numeric: tabular-nums; }
+.sje-snelnaar { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; }
+.sje-snelnaar-label { color: var(--tekst-zacht); font-size: 0.875rem; margin-right: var(--ruimte-1); }
+
+.sje-sectie { scroll-margin-top: 72px; }
+.sje-sectie-titel { margin: 0; scroll-margin-top: 80px; }
+.sje-sectie-titel:focus { outline: none; }
+.sje-sectie-titel:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.sje-sectie-titelblok { min-width: 0; flex: 1 1 320px; }
+.sje-onderkop { margin: var(--ruimte-1) 0 0; color: var(--tekst-zacht); font-size: 0.9rem; max-width: 75ch; }
+.sje-sectie > .veld:last-child { margin-bottom: 0; }
+
+.sje-sublabel {
+  display: block;
+  margin: 0 0 var(--ruimte-1);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--tekst-zacht);
+}
+.sje-geen { margin: 0 0 var(--ruimte-1); }
+.sje-toevoegen { margin-top: var(--ruimte-1); }
+
+.sje-acties {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--ruimte-1);
+}
+.sje-pijlen { display: inline-flex; gap: var(--ruimte-1); }
+
+/* ----- Thema's en meetpunten ----- */
+
+.sje-themas { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--ruimte-3); }
+.sje-thema {
+  border: 1px solid var(--rand);
+  border-radius: var(--radius);
+  background: var(--vlak);
+  min-width: 0;
+}
+.sje-thema-kop {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--ruimte-3);
+  padding: var(--ruimte-3) var(--ruimte-4);
+  background: var(--vlak-2);
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+.sje-thema-hoofd { flex: 1 1 auto; min-width: 0; }
+.sje-thema-naam { margin: 0; font-size: 1.05rem; overflow-wrap: anywhere; }
+.sje-thema-oms { margin: 2px 0 0; color: var(--tekst-zacht); font-size: 0.925rem; overflow-wrap: anywhere; white-space: pre-line; }
+.sje-thema-meta { margin: 2px 0 0; color: var(--tekst-zacht); font-size: 0.85rem; }
+.sje-meetpunten { padding: var(--ruimte-3) var(--ruimte-4); }
+.sje-meetpunt-lijst { list-style: none; margin: 0; padding: 0; }
+.sje-meetpunt {
+  display: flex;
+  align-items: center;
+  gap: var(--ruimte-3);
+  padding: var(--ruimte-2) 0;
+  border-bottom: 1px solid var(--rand);
+  border-radius: var(--radius-klein);
+}
+.sje-meetpunt-hoofd {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px var(--ruimte-2);
+}
+.sje-meetpunt-naam { font-weight: 600; overflow-wrap: anywhere; }
+.sje-meetpunt-vragen { color: var(--tekst-zacht); font-size: 0.85rem; }
+.sje-meetpunt-oms { flex: 1 1 100%; color: var(--tekst-zacht); font-size: 0.875rem; overflow-wrap: anywhere; }
+
+/* ----- Vragen ----- */
+
+.sje-vraaggroep + .sje-vraaggroep { margin-top: var(--ruimte-5); }
+.sje-vraaggroep-kop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--ruimte-1) var(--ruimte-3);
+  margin: 0;
+  padding: var(--ruimte-2) var(--ruimte-3);
+  background: var(--vlak-2);
+  border-radius: var(--radius-klein);
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}
+.sje-vraaggroep-aantal { font-weight: 400; font-size: 0.85rem; color: var(--tekst-zacht); }
+.sje-vragen { list-style: none; margin: 0; padding: 0; }
+.sje-vraag {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--ruimte-3);
+  padding: var(--ruimte-3) var(--ruimte-2);
+  border-bottom: 1px solid var(--rand);
+  border-radius: var(--radius-klein);
+}
+.sje-vraag-nr {
+  flex: 0 0 auto;
+  min-width: 30px;
+  height: 30px;
+  padding: 0 6px;
+  border-radius: 15px;
+  display: grid;
+  place-items: center;
+  background: var(--primair-zacht);
+  color: var(--primair);
+  font-weight: 700;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+.sje-vraag-hoofd { flex: 1 1 auto; min-width: 0; }
+.sje-vraag-hoofd p { margin: 0; }
+.sje-vraag-type {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--tekst-zacht);
+}
+.sje-vraag-tekst { font-weight: 600; overflow-wrap: anywhere; white-space: pre-line; }
+.sje-vraag-toelichting { color: var(--tekst-zacht); font-size: 0.9rem; overflow-wrap: anywhere; white-space: pre-line; }
+.sje-opties-lijst {
+  list-style: none;
+  margin: var(--ruimte-2) 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ruimte-1);
+}
+.sje-opties-lijst li {
+  padding: 1px 10px;
+  border: 1px solid var(--rand);
+  border-radius: var(--radius-klein);
+  font-size: 0.85rem;
+  background: var(--vlak);
+  overflow-wrap: anywhere;
+}
+.sje-vraag-tags { display: flex; flex-wrap: wrap; gap: var(--ruimte-1); margin-top: var(--ruimte-2); }
+.sje-vraag-tags .label { white-space: normal; font-weight: 500; }
+.sje-andere-themas {
+  margin-top: var(--ruimte-5);
+  padding-top: var(--ruimte-3);
+  border-top: 1px dashed var(--rand-sterk);
+}
+.sje-andere-themas p { margin-bottom: var(--ruimte-2); }
+.sje-andere-themas .knop { white-space: normal; text-align: left; }
+
+/* ----- Regels met een tekstvak (acties, antwoordmogelijkheden) ----- */
+
+.sje-regels { list-style: none; margin: 0 0 var(--ruimte-2); padding: 0; display: grid; gap: var(--ruimte-2); }
+.sje-regel { display: flex; align-items: center; gap: var(--ruimte-2); min-width: 0; border-radius: var(--radius-klein); }
+.sje-regel-nr { flex: 0 0 1.8em; text-align: right; color: var(--tekst-zacht); font-variant-numeric: tabular-nums; }
+.sje-regel input { flex: 1 1 auto; min-width: 0; }
+.sje-regel-knoppen { flex: 0 0 auto; display: inline-flex; gap: 2px; }
+.sje-regels-veld { margin-bottom: var(--ruimte-3); }
+.sje-regels-uitleg { margin: 0 0 var(--ruimte-2); }
+.sje-sectie > .sje-regels-uitleg { margin: var(--ruimte-2) 0 0; }
+
+/* ----- Vraagdialoog ----- */
+
+dialog.sje-dialoog { width: min(700px, calc(100vw - 24px)); }
+.sje-dialoog textarea[rows='2'] { min-height: 64px; }
+.sje-dialoog .formulier-rij { align-items: start; }
+.sje-typekeuzes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ruimte-2); }
+.sje-typekeuze {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--ruimte-2);
+  padding: var(--ruimte-2) var(--ruimte-3);
+  border: 1px solid var(--rand-sterk);
+  border-radius: var(--radius-klein);
+  cursor: pointer;
+  min-height: 44px;
+  font-weight: 400;
+}
+.sje-typekeuze:hover { background: var(--vlak-2); }
+.sje-typekeuze:has(input:checked) { border-color: var(--primair); background: var(--primair-zacht); box-shadow: inset 0 0 0 1px var(--primair); }
+.sje-typekeuze:has(input:focus-visible) { outline: 3px solid var(--focus); outline-offset: 2px; }
+.sje-typekeuze input { width: 18px; height: 18px; margin: 2px 0 0; flex: 0 0 auto; accent-color: var(--primair); }
+.sje-typekeuze-tekst { display: flex; flex-direction: column; min-width: 0; }
+.sje-typekeuze-naam { font-weight: 600; }
+.sje-typekeuze-uitleg { font-size: 0.82rem; color: var(--tekst-zacht); line-height: 1.35; }
+.sje-typeblok { border-left: 3px solid var(--primair-zacht); padding-left: var(--ruimte-3); margin-bottom: var(--ruimte-4); }
+.sje-typeblok > .veld:last-child { margin-bottom: 0; }
+.sje-open-uitleg { margin: 0; }
+.sje-schaal-vb {
+  list-style: none;
+  margin: var(--ruimte-2) 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--ruimte-1);
+}
+.sje-schaal-vb li {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: var(--ruimte-1);
+  border: 1px solid var(--rand);
+  border-radius: var(--radius-klein);
+  background: var(--vlak-2);
+  text-align: center;
+  font-size: 0.8rem;
+  line-height: 1.25;
+  min-width: 0;
+}
+.sje-schaal-nr { font-weight: 700; color: var(--primair); }
+.sje-schaal-label { overflow-wrap: anywhere; }
+
+/* ================= Telefoon ================= */
+
+@media (max-width: 640px) {
+  .sjo-kopknoppen { width: 100%; justify-content: flex-start; }
+  .sjb-kop-acties { width: 100%; }
+  .sjb-opslaanbalk { margin-left: calc(-1 * var(--ruimte-3)); margin-right: calc(-1 * var(--ruimte-3)); padding: var(--ruimte-2) var(--ruimte-3); border-radius: 0; border-left: 0; border-right: 0; }
+  body:has(.sjb-opslaanbalk) .toasts { bottom: 116px; }
+  .sjb-opslaanbalk-rij .knoppen { width: 100%; }
+  .sjb-opslaanbalk-rij .knoppen .knop { flex: 1 1 auto; }
+
+  .sje-snelnaar-label { display: none; }
+  .sje-snelnaar { margin-left: -10px; }
+  .sje-sectie-kop .knoppen, .sje-sectie-kop .knoppen .knop { width: 100%; }
+
+  .sje-thema-kop { flex-direction: column; gap: var(--ruimte-2); padding: var(--ruimte-3); }
+  .sje-meetpunten { padding: var(--ruimte-3); }
+  .sje-meetpunt { flex-direction: column; align-items: stretch; gap: var(--ruimte-2); }
+  .sje-thema-kop .sje-acties, .sje-meetpunt .sje-acties { justify-content: flex-start; }
+
+  .sje-vraag { flex-wrap: wrap; gap: var(--ruimte-2) var(--ruimte-3); padding-left: 0; padding-right: 0; }
+  .sje-vraag-hoofd { flex: 1 1 calc(100% - 50px); }
+  .sje-vraag .sje-acties { width: 100%; justify-content: flex-start; padding-left: 42px; }
+
+  .sje-regel-nr { display: none; }
+  .sje-regel { gap: var(--ruimte-1); }
+  .sje-typekeuzes { grid-template-columns: minmax(0, 1fr); }
+  .sje-schaal-vb { grid-template-columns: minmax(0, 1fr); }
+  .sje-schaal-vb li { flex-direction: row; justify-content: flex-start; gap: var(--ruimte-2); text-align: left; }
+  .sje-dialoog .dialoog-voet {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding: var(--ruimte-3) var(--ruimte-4);
+  }
+  .sje-dialoog .dialoog-voet .sje-nog-een { grid-column: 1 / -1; order: -1; }
+}
+
+@media print {
+  .sje-acties, .sje-snelnaar, .sjb-opslaanbalk, .sjo-acties { display: none !important; }
+}

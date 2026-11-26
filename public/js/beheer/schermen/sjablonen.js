@@ -1,6 +1,7 @@
-// Scherm: Sjablonen – overzicht van standaard- en eigen sjablonen.
-// Exporteert ook de onderdelen die het scherm "Nieuw onderzoek" gebruikt:
-// samenvattingTekst(), inhoudSchakelaar() en sjabloonInhoud().
+// Scherm: Sjablonen – overzicht van alle sjablonen (standaard en eigen).
+// Alle sjablonen zijn volledig te bewerken; een standaardsjabloon kun je terugzetten naar het origineel.
+// Exporteert ook onderdelen voor andere schermen: samenvattingTekst(), sjabloonInhoud(),
+// inhoudSchakelaar(), zetVoorkeuze()/neemVoorkeuze() en lokaleDatum().
 
 import { api } from '../api.js';
 import { h, vervang, leeg, laden, melding, meld, meldFout, bevestig, formulierDialoog, aantal, datum } from '../ui.js';
@@ -15,14 +16,31 @@ const SCHAAL_NAMEN = {
 };
 const PLEK = '{bedrijf}';
 
-// Sjabloon dat vanuit dit scherm is gekozen om een nieuw onderzoek mee te starten.
+// Sjabloon dat op dit scherm is gekozen om een nieuw onderzoek mee te starten. Staat ook even in
+// het geheugen van het tabblad, zodat de keuze een herlaadbeurt van de pagina overleeft.
+const VOORKEUZE = 'onderzoek-nieuw-sjabloon';
 let voorkeuze = null;
 
-/** Geeft (eenmalig) het sjabloon-id dat op dit scherm is gekozen voor een nieuw onderzoek. */
+export function zetVoorkeuze(id) {
+  voorkeuze = String(id);
+  try {
+    sessionStorage.setItem(VOORKEUZE, voorkeuze);
+  } catch {
+    /* geen opslag beschikbaar: de keuze staat nog in het geheugen */
+  }
+}
+
+/** Geeft (eenmalig) het id van het sjabloon dat is gekozen voor een nieuw onderzoek, of null. */
 export function neemVoorkeuze() {
-  const v = voorkeuze;
+  let v = voorkeuze;
   voorkeuze = null;
-  return v;
+  try {
+    v = v ?? sessionStorage.getItem(VOORKEUZE);
+    sessionStorage.removeItem(VOORKEUZE);
+  } catch {
+    /* geen opslag beschikbaar */
+  }
+  return v ? String(v) : null;
 }
 
 /** "8 thema's · 13 meetpunten · 25 vragen · 7 acties" */
@@ -33,6 +51,15 @@ export function samenvattingTekst(s = {}) {
     aantal(s.vragen || 0, 'vraag', 'vragen'),
     aantal(s.acties || 0, 'actie', 'acties'),
   ].join(' · ');
+}
+
+/** Labels bij een sjabloon: Standaard / Aangepast / Eigen sjabloon. */
+export function sjabloonLabels(s) {
+  if (!s.standaard) return [h('span', { class: 'label' }, 'Eigen sjabloon')];
+  return [
+    h('span', { class: 'label label-primair' }, 'Standaard'),
+    s.gewijzigd ? h('span', { class: 'label label-waarschuwing', title: 'Je hebt dit standaardsjabloon aangepast' }, 'Aangepast') : null,
+  ];
 }
 
 /** Tekst uit een sjabloon, met {bedrijf} zichtbaar als "[bedrijfsnaam]". */
@@ -136,7 +163,7 @@ export function sjabloonInhoud(inhoud, { instellingen = null, niveau = 4 } = {})
           ' komt straks de naam van het bedrijf.') : null,
       )
       : null,
-    blokken.length ? blokken : h('p', { class: 'klein zacht' }, 'Dit sjabloon bevat geen thema\'s.'),
+    blokken.length ? blokken : h('p', { class: 'klein zacht' }, 'Dit sjabloon bevat nog geen thema\'s.'),
     acties.length
       ? h('section', { class: 'sjabloon-thema sjabloon-acties' },
         h(kop, { class: 'sjabloon-thema-naam' }, 'Acties'),
@@ -147,7 +174,6 @@ export function sjabloonInhoud(inhoud, { instellingen = null, niveau = 4 } = {})
 }
 
 let teller = 0;
-const cache = new Map();
 
 /**
  * Knop "Bekijk inhoud" met een uitklapbaar paneel dat de inhoud van het sjabloon laadt.
@@ -175,12 +201,7 @@ export function inhoudSchakelaar(sjabloon, { instellingen = null, niveau = 4 } =
       bezig = true;
       vervang(paneel, laden('Inhoud wordt geladen…'));
       try {
-        let inhoud = cache.get(sjabloon.id);
-        if (!inhoud) {
-          ({ inhoud } = await api.get(`/sjablonen/${encodeURIComponent(sjabloon.id)}`));
-          // Alleen standaardsjablonen bewaren: die veranderen nooit.
-          if (sjabloon.standaard) cache.set(sjabloon.id, inhoud);
-        }
+        const { inhoud } = await api.get(`/sjablonen/${encodeURIComponent(sjabloon.id)}`);
         vervang(paneel, sjabloonInhoud(inhoud, { instellingen, niveau }));
         gevuld = true;
       } catch (e) {
@@ -198,31 +219,87 @@ export function inhoudSchakelaar(sjabloon, { instellingen = null, niveau = 4 } =
 
 export async function toon(container, ctx) {
   ctx.zetTitel('Sjablonen');
-  const standaardEl = h('div', {}, laden());
-  const eigenEl = h('div', {}, laden());
+  const inhoudEl = h('div', {}, laden());
+  const kopKnoppen = h('div', { class: 'knoppen sjo-kopknoppen' });
+  let bezig = false;
 
-  async function laad() {
+  function tekenKopKnoppen(ontbrekend = []) {
+    vervang(kopKnoppen,
+      ontbrekend.length
+        ? h('button', {
+          type: 'button',
+          class: 'knop',
+          title: `Ontbreekt nu: ${ontbrekend.map((o) => o.naam).join(', ')}`,
+          onclick: zetStandaardTerug,
+        }, 'Standaardsjablonen terugzetten')
+        : null,
+      h('a', { class: 'knop knop-primair', href: '#/sjablonen/nieuw' }, '+ Nieuw sjabloon'),
+    );
+  }
+
+  async function laad({ focus = null } = {}) {
     try {
-      const { sjablonen } = await api.get('/sjablonen');
-      teken(sjablonen || []);
+      const data = await api.get('/sjablonen');
+      teken(data.sjablonen || [], data.ontbrekend || []);
+      if (focus) {
+        const el = inhoudEl.querySelector(`[data-sjabloon="${focus}"]`);
+        if (el) {
+          el.classList.add('sjo-oplichten');
+          el.scrollIntoView({ block: 'nearest' });
+          const link = el.querySelector('a.sjo-naam-link');
+          if (link) link.focus({ preventScroll: true });
+        }
+      }
     } catch (e) {
-      const opnieuw = h('button', { type: 'button', class: 'knop knop-klein', onclick: () => { vervang(standaardEl, laden()); vervang(eigenEl, laden()); laad(); } }, 'Opnieuw proberen');
-      vervang(standaardEl, melding([h('p', {}, `De sjablonen konden niet worden geladen. ${e.message || ''}`), opnieuw], 'gevaar'));
-      vervang(eigenEl);
+      if (e.status === 401) return;
+      vervang(inhoudEl, melding([
+        h('p', {}, h('strong', {}, 'De sjablonen konden niet worden geladen. '), e.message || ''),
+        h('button', { type: 'button', class: 'knop knop-klein', onclick: () => { vervang(inhoudEl, laden()); laad(); } }, 'Opnieuw proberen'),
+      ], 'gevaar'));
     }
   }
 
+  /** Voert een actie op de server uit en ververst daarna de lijst; voorkomt dubbel klikken. */
+  async function voerUit(actie, { focus = null } = {}) {
+    if (bezig) return false;
+    bezig = true;
+    try {
+      const r = await actie();
+      await laad({ focus: typeof focus === 'function' ? focus(r) : focus });
+      return true;
+    } catch (e) {
+      meldFout(e);
+      await laad();
+      return false;
+    } finally {
+      bezig = false;
+    }
+  }
+
+  async function zetStandaardTerug() {
+    let namen = [];
+    const ok = await voerUit(async () => {
+      namen = (await api.post('/sjablonen/herstellen', {})).toegevoegd || [];
+    });
+    if (!ok) return;
+    meld(namen.length
+      ? `${aantal(namen.length, 'standaardsjabloon', 'standaardsjablonen')} teruggezet: ${namen.join(', ')}.`
+      : 'Alle standaardsjablonen staan er al.', 'succes');
+  }
+
   function gebruik(s) {
-    voorkeuze = s.id;
+    zetVoorkeuze(s.id);
     ctx.navigeer('#/nieuw');
   }
 
-  async function wijzig(s) {
-    const resultaat = await formulierDialoog({
-      titel: 'Sjabloon wijzigen',
-      intro: 'Je wijzigt hier alleen de naam en omschrijving. De inhoud pas je aan in een onderzoek, dat je daarna opnieuw opslaat als sjabloon.',
+  async function maakKopie(s) {
+    let nieuwId = null;
+    const w = await formulierDialoog({
+      titel: 'Kopie maken',
+      knop: 'Kopie maken',
+      intro: `Je maakt een eigen sjabloon met dezelfde inhoud als "${s.naam}". Het origineel blijft zoals het is.`,
       velden: [
-        { naam: 'naam', label: 'Naam van het sjabloon', verplicht: true, max: 150, waarde: s.naam },
+        { naam: 'naam', label: 'Naam van de kopie', verplicht: true, max: 150, waarde: `${s.naam.slice(0, 140)} (kopie)` },
         {
           naam: 'omschrijving',
           label: 'Omschrijving',
@@ -233,11 +310,29 @@ export async function toon(container, ctx) {
           hulp: 'Waar is dit sjabloon voor bedoeld? Je ziet dit bij het kiezen van een sjabloon.',
         },
       ],
-      opslaan: (w) => api.put(`/sjablonen/${encodeURIComponent(s.id)}`, { naam: w.naam, omschrijving: w.omschrijving }),
+      opslaan: async (waarden) => {
+        nieuwId = (await api.post('/sjablonen', { naam: waarden.naam, omschrijving: waarden.omschrijving, kopie_van: s.id })).id;
+      },
     });
-    if (resultaat) {
-      meld('Sjabloon opgeslagen.', 'succes');
-      laad();
+    if (!w) return;
+    meld('Kopie gemaakt. Je vindt hem bij Eigen sjablonen.', 'succes');
+    laad({ focus: nieuwId });
+  }
+
+  async function herstel(s) {
+    const ok = await bevestig({
+      titel: 'Origineel herstellen?',
+      tekst: [
+        `"${s.naam}" wordt teruggezet naar de oorspronkelijke versie. Alles wat je aan dit sjabloon hebt veranderd, gaat verloren.`,
+        'Wil je jouw versie bewaren? Maak dan eerst een kopie.',
+        'Onderzoeken die je al met dit sjabloon hebt gemaakt, veranderen niet.',
+      ],
+      knop: 'Origineel herstellen',
+      gevaar: true,
+    });
+    if (!ok) return;
+    if (await voerUit(() => api.post(`/sjablonen/${s.id}/origineel`, {}), { focus: s.id })) {
+      meld('Het originele sjabloon is teruggezet.', 'succes');
     }
   }
 
@@ -245,105 +340,92 @@ export async function toon(container, ctx) {
     const ok = await bevestig({
       titel: 'Sjabloon verwijderen?',
       tekst: [
-        `"${s.naam}" wordt verwijderd. Dit kun je niet ongedaan maken.`,
+        `"${s.naam}" wordt verwijderd.`,
+        s.herstelbaar
+          ? 'Dit is een standaardsjabloon. Je kunt het later terugzetten met "Standaardsjablonen terugzetten"; je eigen aanpassingen zijn dan wel weg.'
+          : 'Dit kun je niet ongedaan maken.',
         'Onderzoeken die je al met dit sjabloon hebt gemaakt, blijven gewoon bestaan.',
       ],
       knop: 'Verwijderen',
       gevaar: true,
     });
     if (!ok) return;
-    try {
-      await api.del(`/sjablonen/${encodeURIComponent(s.id)}`);
-      meld('Sjabloon verwijderd.');
-      laad();
-    } catch (e) {
-      meldFout(e);
-      laad();
-    }
+    if (await voerUit(() => api.del(`/sjablonen/${s.id}`))) meld('Sjabloon verwijderd.');
   }
 
-  function item(s) {
+  function kaart(s) {
     const { knop, paneel } = inhoudSchakelaar(s, { instellingen: ctx.instellingen, niveau: 4 });
-    return h('li', { class: 'sjabloon-item' },
-      h('div', { class: 'sjabloon-item-kop' },
-        h('div', { class: 'sjabloon-item-hoofd' },
-          h('div', { class: 'rij sjabloon-item-titelrij' },
-            h('h3', { class: 'sjabloon-item-naam' }, s.naam),
-            s.standaard
-              ? h('span', { class: 'label label-primair' }, 'Standaard')
-              : h('span', { class: 'label' }, 'Eigen sjabloon'),
-          ),
-          s.omschrijving ? h('p', { class: 'sjabloon-item-oms' }, s.omschrijving) : null,
-          h('p', { class: 'klein zacht sjabloon-item-meta' },
-            samenvattingTekst(s.samenvatting),
-            !s.standaard && s.aangemaakt_op ? ` · opgeslagen op ${lokaleDatum(s.aangemaakt_op)}` : '',
-          ),
-        ),
-        h('div', { class: 'sjabloon-item-acties' },
-          h('button', {
-            type: 'button',
-            class: 'knop knop-klein',
-            'aria-label': `Gebruik voor nieuw onderzoek: ${s.naam}`,
-            onclick: () => gebruik(s),
-          }, 'Gebruik voor nieuw onderzoek'),
-          s.standaard ? null : h('button', {
-            type: 'button',
-            class: 'knop knop-klein',
-            'aria-label': `Wijzigen: ${s.naam}`,
-            onclick: () => wijzig(s),
-          }, 'Wijzigen'),
-          s.standaard ? null : h('button', {
-            type: 'button',
-            class: 'knop knop-klein knop-licht sjabloon-verwijder',
-            'aria-label': `Verwijderen: ${s.naam}`,
-            onclick: () => verwijder(s),
-          }, 'Verwijderen'),
-        ),
+    const gewijzigdOp = s.bijgewerkt_op ? lokaleDatum(s.bijgewerkt_op) : '';
+    const gemaaktOp = !s.standaard && s.aangemaakt_op ? lokaleDatum(s.aangemaakt_op) : '';
+    return h('li', { class: 'kaart sjo-kaart', 'data-sjabloon': String(s.id) },
+      h('div', { class: 'sjo-kaart-kop' },
+        h('h3', { class: 'sjo-naam' },
+          h('a', { class: 'sjo-naam-link', href: `#/sjablonen/${s.id}` }, s.naam)),
+        h('div', { class: 'sjo-labels' }, sjabloonLabels(s)),
       ),
-      h('div', { class: 'sjabloon-item-voorbeeld' }, knop, paneel),
+      s.omschrijving ? h('p', { class: 'sjo-oms' }, s.omschrijving) : null,
+      h('p', { class: 'klein zacht sjo-meta' },
+        samenvattingTekst(s.samenvatting),
+        gewijzigdOp ? ` · gewijzigd op ${gewijzigdOp}` : gemaaktOp ? ` · gemaakt op ${gemaaktOp}` : ''),
+      h('div', { class: 'sjo-acties' },
+        h('a', { class: 'knop knop-klein', href: `#/sjablonen/${s.id}`, 'aria-label': `Bewerken: ${s.naam}` }, 'Bewerken'),
+        h('button', { type: 'button', class: 'knop knop-klein', 'aria-label': `Kopie maken van ${s.naam}`, onclick: () => maakKopie(s) }, 'Kopie maken'),
+        h('button', {
+          type: 'button', class: 'knop knop-klein', 'aria-label': `Gebruiken voor nieuw onderzoek: ${s.naam}`, onclick: () => gebruik(s),
+        }, 'Gebruiken voor nieuw onderzoek'),
+        s.herstelbaar && s.gewijzigd
+          ? h('button', { type: 'button', class: 'knop knop-klein', 'aria-label': `Herstel origineel: ${s.naam}`, onclick: () => herstel(s) }, 'Herstel origineel')
+          : null,
+        h('button', {
+          type: 'button', class: 'knop knop-klein knop-licht sjo-knop-gevaar', 'aria-label': `Verwijderen: ${s.naam}`, onclick: () => verwijder(s),
+        }, 'Verwijderen'),
+      ),
+      h('div', { class: 'sjo-voorbeeld' }, knop, paneel),
     );
   }
 
-  function teken(sjablonen) {
+  function teken(sjablonen, ontbrekend) {
+    tekenKopKnoppen(ontbrekend);
     const standaard = sjablonen.filter((s) => s.standaard);
     const eigen = sjablonen.filter((s) => !s.standaard);
-    vervang(standaardEl, standaard.length
-      ? h('ul', { class: 'lijst sjabloon-lijst' }, standaard.map(item))
-      : leeg('Er zijn geen standaardsjablonen.'));
-    vervang(eigenEl, eigen.length
-      ? h('ul', { class: 'lijst sjabloon-lijst' }, eigen.map(item))
-      : leeg('Je hebt nog geen eigen sjablonen. Open een onderzoek, ga naar Opzet en kies "Opslaan als sjabloon" om de opzet van dat onderzoek te bewaren.'));
+    const groep = (id, titel, uitleg, lijst, leegTekst, leegKnop = null) => h('section', { class: 'sjo-groep', 'aria-labelledby': id },
+      h('div', { class: 'sjo-groep-kop' },
+        h('h2', { id }, titel),
+        lijst.length ? h('span', { class: 'zacht klein' }, aantal(lijst.length, 'sjabloon', 'sjablonen')) : null),
+      h('p', { class: 'zacht klein sjo-groep-uitleg' }, uitleg),
+      lijst.length ? h('ul', { class: 'sjo-kaarten' }, lijst.map(kaart)) : leeg(leegTekst, leegKnop),
+    );
+    vervang(inhoudEl,
+      groep('sjablonen-standaard', 'Standaardsjablonen',
+        'Deze sjablonen horen bij de onderzoeksomgeving. Je kunt ze net als je eigen sjablonen aanpassen of verwijderen. '
+        + 'Met "Herstel origineel" zet je een aangepast standaardsjabloon terug zoals het was.',
+        standaard,
+        'Er staan nu geen standaardsjablonen. Zet ze terug als je ze weer wilt gebruiken.',
+        ontbrekend.length ? h('button', { type: 'button', class: 'knop', onclick: zetStandaardTerug }, 'Standaardsjablonen terugzetten') : null),
+      groep('sjablonen-eigen', 'Eigen sjablonen',
+        'Sjablonen die je zelf hebt gemaakt: nieuw, als kopie, of opgeslagen vanuit een onderzoek (Opzet → "Opslaan als sjabloon").',
+        eigen,
+        'Je hebt nog geen eigen sjablonen. Maak een nieuw sjabloon, of maak een kopie van een standaardsjabloon en pas die aan.',
+        h('a', { class: 'knop knop-primair', href: '#/sjablonen/nieuw' }, '+ Nieuw sjabloon')),
+    );
   }
 
+  tekenKopKnoppen();
   vervang(container,
     h('div', { class: 'paginakop' },
       h('div', {},
         h('h1', {}, 'Sjablonen'),
         h('p', { class: 'ondertitel' }, 'Kant-en-klare opzetten om een onderzoek snel mee te beginnen.'),
       ),
-      h('a', { class: 'knop knop-primair', href: '#/nieuw' }, '+ Nieuw onderzoek'),
+      kopKnoppen,
     ),
     melding([
       h('p', {}, h('strong', {}, 'Wat is een sjabloon? '),
         'Een sjabloon is een opzet voor een onderzoek: thema\'s met meetpunten, een vragenlijst en een lijst met acties. '
-        + 'Je kiest een of meer sjablonen als je een nieuw onderzoek aanmaakt.'),
-      h('p', {}, 'De inhoud wordt dan in het onderzoek gezet. Daarna kun je alles in het onderzoek vrij aanpassen. '
-        + 'Wat je in een onderzoek verandert, verandert het sjabloon niet.'),
+        + 'Bij een nieuw onderzoek kies je een of meer sjablonen. Daarna pas je alles nog aan voordat het onderzoek wordt aangemaakt.'),
+      h('p', {}, 'Wat je hier in een sjabloon verandert, geldt voor onderzoeken die je daarna maakt. Bestaande onderzoeken veranderen niet mee.'),
     ]),
-    h('section', { class: 'kaart', 'aria-labelledby': 'sjablonen-standaard' },
-      h('h2', { id: 'sjablonen-standaard' }, 'Standaardsjablonen'),
-      h('p', { class: 'zacht klein sjabloon-sectie-uitleg' },
-        'Deze sjablonen horen bij de onderzoeksomgeving en kun je niet wijzigen of verwijderen. Wil je een eigen versie? '
-        + 'Kies het sjabloon bij een nieuw onderzoek, pas het onderzoek naar wens aan en bewaar het via Opzet → "Opslaan als sjabloon".'),
-      standaardEl,
-    ),
-    h('section', { class: 'kaart', 'aria-labelledby': 'sjablonen-eigen' },
-      h('h2', { id: 'sjablonen-eigen' }, 'Eigen sjablonen'),
-      h('p', { class: 'zacht klein sjabloon-sectie-uitleg' },
-        'Sjablonen die je zelf hebt opgeslagen vanuit een onderzoek. Je kunt de naam en omschrijving wijzigen of een sjabloon verwijderen. '
-        + 'De inhoud pas je aan in een onderzoek, dat je daarna opnieuw opslaat als sjabloon.'),
-      eigenEl,
-    ),
+    inhoudEl,
   );
   await laad();
 }

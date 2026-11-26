@@ -713,7 +713,7 @@ export async function toon(container, ctx) {
       groep('Standaardsjablonen', sjablonen.filter((s) => s.standaard)),
       groep('Eigen sjablonen', sjablonen.filter((s) => !s.standaard)),
     );
-    sjabloonKeuze.value = sjablonen.some((s) => s.id === vorige) ? vorige : '';
+    sjabloonKeuze.value = sjablonen.some((s) => String(s.id) === vorige) ? vorige : '';
   }
 
   function werkMeetmomentKeuzeBij() {
@@ -775,7 +775,7 @@ export async function toon(container, ctx) {
       sjabloonKeuze.removeAttribute('aria-invalid');
       foutEl.textContent = '';
       const id = sjabloonKeuze.value;
-      const s = sjablonen.find((x) => x.id === id);
+      const s = sjablonen.find((x) => String(x.id) === id);
       if (!s) {
         vervang(info);
         info.classList.add('verborgen');
@@ -802,7 +802,7 @@ export async function toon(container, ctx) {
       e.preventDefault();
       foutEl.textContent = '';
       const id = sjabloonKeuze.value;
-      const s = sjablonen.find((x) => x.id === id);
+      const s = sjablonen.find((x) => String(x.id) === id);
       if (!s) {
         foutEl.textContent = 'Kies eerst een sjabloon.';
         sjabloonKeuze.setAttribute('aria-invalid', 'true');
@@ -853,7 +853,8 @@ export async function toon(container, ctx) {
       h('p', { class: 'opzet-uitleg' },
         "Een sjabloon voegt in één keer thema's, meetpunten, één nieuwe vragenlijst en acties toe. " +
         "Thema's en meetpunten met dezelfde naam als hier al staan, worden samengevoegd in plaats van dubbel aangemaakt. " +
-        'Acties die al op je lijst staan, worden overgeslagen. Wat er al in dit onderzoek staat, blijft gewoon staan.'),
+        'Acties die al op je lijst staan, worden overgeslagen. Wat er al in dit onderzoek staat, blijft gewoon staan. ',
+        h('a', { href: '#/sjablonen' }, 'Sjablonen bekijken of aanpassen')),
       h('form', { novalidate: true, onsubmit: voegToe },
         h('div', { class: 'veld' },
           h('label', { for: 'opzet-sjabloon-keuze' }, 'Sjabloon'),
@@ -911,7 +912,7 @@ export async function toon(container, ctx) {
       knop.disabled = true;
       vervang(resultaat);
       try {
-        await api.post(`/onderzoeken/${onderzoekId}/als-sjabloon`, {
+        const nieuw = await api.post(`/onderzoeken/${onderzoekId}/als-sjabloon`, {
           naam,
           omschrijving: omschrijvingInvoer.value.trim(),
           vragenlijst_id: vragenlijsten.length && vragenlijstKeuze.value ? Number(vragenlijstKeuze.value) : null,
@@ -922,7 +923,9 @@ export async function toon(container, ctx) {
         const kopTekst = h('strong', { tabindex: '-1' }, `Sjabloon "${naam}" is opgeslagen.`);
         vervang(resultaat, melding([
           h('p', {}, kopTekst, ' Je kunt het voortaan kiezen als je een nieuw onderzoek start, of het toevoegen aan een bestaand onderzoek.'),
-          h('p', {}, h('a', { href: '#/sjablonen' }, 'Bekijk al je sjablonen')),
+          h('p', {},
+            nieuw && nieuw.id ? [h('a', { href: `#/sjablonen/${nieuw.id}` }, 'Bekijk of bewerk dit sjabloon'), ' · '] : null,
+            h('a', { href: '#/sjablonen' }, 'Alle sjablonen')),
         ], 'succes'));
         kopTekst.focus();
         try {

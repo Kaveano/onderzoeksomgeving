@@ -32,9 +32,13 @@ const BEHEER_ROUTES = [
   ['POST', `${B}/onderzoeken/:id/als-sjabloon`, onderzoeken.alsSjabloon],
 
   ['GET', `${B}/sjablonen`, onderzoeken.sjablonenLijst],
+  ['POST', `${B}/sjablonen`, onderzoeken.sjabloonNieuw],
+  ['POST', `${B}/sjablonen/herstellen`, onderzoeken.sjablonenHerstellen],
+  ['POST', `${B}/sjablonen/samenvoegen`, onderzoeken.sjablonenSamenvoegen],
   ['GET', `${B}/sjablonen/:sjabloon`, onderzoeken.sjabloonDetail],
   ['PUT', `${B}/sjablonen/:sjabloon`, onderzoeken.sjabloonWijzig],
   ['DELETE', `${B}/sjablonen/:sjabloon`, onderzoeken.sjabloonVerwijder],
+  ['POST', `${B}/sjablonen/:sjabloon/origineel`, onderzoeken.sjabloonOrigineel],
 
   ['POST', `${B}/onderzoeken/:id/themas`, opzet.themaNieuw],
   ['PUT', `${B}/themas/:id`, opzet.themaWijzig],

@@ -10,6 +10,7 @@ import { join } from 'node:path';
 const POORT = 8799;
 const BASIS = `http://127.0.0.1:${POORT}`;
 const WACHTWOORD = 'test-wachtwoord-voor-tests';
+const WACHTWOORD_2 = 'tweede-toegang-voor-tests';
 let server;
 let map;
 let cookie = '';
@@ -27,7 +28,8 @@ before(async () => {
   server = spawn(
     'npx',
     ['wrangler', 'dev', '--port', String(POORT), '--ip', '127.0.0.1', '--persist-to', map,
-      '--var', `BEHEER_WACHTWOORD:${WACHTWOORD}`, '--show-interactive-dev-session=false'],
+      '--var', `BEHEER_WACHTWOORD:${WACHTWOORD}`, '--var', `BEHEER_WACHTWOORD_2:${WACHTWOORD_2}`,
+      '--show-interactive-dev-session=false'],
     { stdio: 'ignore', env: { ...process.env, WRANGLER_SEND_METRICS: 'false' }, detached: true },
   );
   for (let i = 0; i < 60; i++) {
@@ -119,8 +121,9 @@ test('beveiligingskoppen staan op API-antwoorden', async () => {
 test('sjablonen zijn beschikbaar', async () => {
   const r = await api('/api/beheer/sjablonen');
   assert.equal(r.status, 200);
-  const namen = r.data.sjablonen.map((s) => s.id);
-  assert.deepEqual(namen, ['medewerkerstevredenheid', 'hr-processen', 'arbeidsvoorwaarden']);
+  // Sjablonen hebben een nummer als id; "bron" is het kenmerk van het standaardsjabloon.
+  const namen = r.data.sjablonen.filter((s) => s.standaard).map((s) => s.bron);
+  assert.deepEqual(namen.slice(0, 3), ['medewerkerstevredenheid', 'hr-processen', 'arbeidsvoorwaarden']);
 });
 
 test('invoer wordt gecontroleerd', async () => {
@@ -441,8 +444,10 @@ test('opslaan als eigen sjabloon en weer toepassen op een nieuw onderzoek', asyn
   const v = await api(`/api/beheer/vragenlijsten/${vl.data.vragenlijsten[0].id}`);
   assert.ok(v.data.vragen.some((q) => q.tekst === 'Aangepaste vraagtekst'));
   assert.match(v.data.vragenlijst.introtekst, /Ander Bedrijf/);
-  const standaard = await api('/api/beheer/sjablonen/medewerkerstevredenheid', { methode: 'DELETE' });
-  assert.equal(standaard.status, 400);
+  // Standaardsjablonen staan ook in de database en zijn onder hun oude kenmerk op te vragen.
+  const standaard = await api('/api/beheer/sjablonen/medewerkerstevredenheid');
+  assert.equal(standaard.status, 200);
+  assert.equal(standaard.data.bron, 'medewerkerstevredenheid');
   ids.tweede = n.data.id;
 });
 
@@ -626,6 +631,22 @@ test('sjabloon opslaan en toepassen met "B.V." in de naam houdt de zinspunt', as
     await api(`/api/beheer/onderzoeken/${id}`, { methode: 'DELETE', body: { bevestiging: o.bedrijfsnaam } });
   }
   await api(`/api/beheer/sjablonen/${s.data.id}`, { methode: 'DELETE' });
+});
+
+test('tweede beheerwachtwoord (optioneel) geeft een eigen, volwaardige sessie', async () => {
+  const r = await fetch(`${BASIS}/api/inloggen`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': '198.51.100.77' },
+    body: JSON.stringify({ wachtwoord: WACHTWOORD_2 }),
+  });
+  assert.equal(r.status, 200);
+  const tweede = r.headers.get('set-cookie').split(';')[0];
+  const lijst = await fetch(`${BASIS}/api/beheer/onderzoeken`, { headers: { Cookie: tweede } });
+  assert.equal(lijst.status, 200);
+  const uit = await fetch(`${BASIS}/api/uitloggen`, { method: 'POST', headers: { Cookie: tweede, 'Content-Type': 'application/json' }, body: '{}' });
+  assert.equal(uit.status, 200);
+  // De sessie van het eerste wachtwoord blijft gewoon geldig.
+  assert.equal((await api('/api/sessie')).data.ingelogd, true);
 });
 
 test('meerdere onderzoeken naast elkaar', async () => {

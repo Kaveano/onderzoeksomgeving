@@ -2,21 +2,26 @@
 
 import { Fout, json, leesJson } from '../lib/http.js';
 import * as v from '../lib/validatie.js';
-import { alle, een, haalOnderzoek, haalBewerkbaarOnderzoek, nuIso } from '../lib/db.js';
-import { pasSjablonenToe, maakSjabloonInhoud, controleerSjablonen } from '../lib/sjabloon-toepassen.js';
-import { STANDAARD_SJABLONEN, STANDAARD_STUKKEN } from '../sjablonen.js';
+import { een, haalOnderzoek, haalBewerkbaarOnderzoek, nuIso, alle } from '../lib/db.js';
+import {
+  MAX_VRAGEN, pasSjablonenToe, maakSjabloonInhoud, controleerSjablonen, voegSjablonenSamen, legeInhoud,
+} from '../lib/sjabloon-toepassen.js';
+import {
+  MAX_SAMENVOEGEN, MAX_SJABLONEN, controleerSjabloonInhoud, controleerSjabloonGegevens, haalSjabloon, haalSjablonen,
+  inhoudVan, sjabloonUit, lijstSjablonen, nieuwSjabloon, opdrachtNieuwSjabloon, nieuwSjabloonId, wijzigSjabloon,
+  verwijderSjabloon, zetOrigineelTerug, herstelStandaard,
+} from '../lib/sjablonen-beheer.js';
+import { STANDAARD_STUKKEN } from '../sjablonen.js';
 
-/** Zoekt sjablooninhoud op id: 'medewerkerstevredenheid' of 'eigen-12'. */
-async function zoekSjabloon(env, sjabloonId) {
-  if (typeof sjabloonId !== 'string' || sjabloonId.length > 60) throw new Fout(400, 'Ongeldig sjabloon.');
-  const standaard = STANDAARD_SJABLONEN.find((s) => s.id === sjabloonId);
-  if (standaard) return standaard.inhoud;
-  const m = /^eigen-(\d+)$/.exec(sjabloonId);
-  if (m) {
-    const rij = await een(env, 'SELECT inhoud FROM sjablonen WHERE id = ?', Number(m[1]));
-    if (rij) return JSON.parse(rij.inhoud);
-  }
-  throw new Fout(404, 'Dit sjabloon bestaat niet (meer).');
+const isObject = (x) => x !== null && typeof x === 'object' && !Array.isArray(x);
+
+/** Lijst met verwijzingen naar sjablonen uit een verzoek (zonder dubbele, hooguit MAX_SAMENVOEGEN). */
+function sjabloonVerwijzingen(waarde) {
+  if (waarde === undefined || waarde === null) return [];
+  if (!Array.isArray(waarde)) throw new Fout(400, 'Geef de sjablonen op als lijst.');
+  const uniek = [...new Set(waarde.map((x) => (typeof x === 'number' ? String(x) : x)))];
+  if (uniek.length > MAX_SAMENVOEGEN) throw new Fout(400, `Je kunt maximaal ${MAX_SAMENVOEGEN} sjablonen tegelijk kiezen.`);
+  return uniek;
 }
 
 export async function lijst({ env }) {
@@ -42,12 +47,37 @@ function velden(body) {
   };
 }
 
+/**
+ * Nieuw onderzoek. Naast de gegevens mag meekomen:
+ * - sjablonen: [id, ...]   – sjablonen die worden samengevoegd en toegepast;
+ * - inhoud: {...}          – inhoud die je zelf hebt samengesteld (zelfde opbouw als een sjabloon);
+ * - opslaan_als_sjabloon: { naam, omschrijving } – bewaart die inhoud ook als nieuw eigen sjabloon.
+ * Alles wordt gecontroleerd vóór er iets wordt aangemaakt.
+ */
 export async function nieuw({ request, env }) {
   const body = await leesJson(request);
   const f = velden(body);
-  const sjabloonIds = Array.isArray(body.sjablonen) ? body.sjablonen.slice(0, 10) : [];
+
   const inhouden = [];
-  for (const sid of [...new Set(sjabloonIds)]) inhouden.push(await zoekSjabloon(env, sid));
+  const refs = sjabloonVerwijzingen(body.sjablonen);
+  if (refs.length) inhouden.push(...(await haalSjablonen(env, refs)).map(inhoudVan));
+
+  let eigenInhoud = null;
+  if (body.inhoud !== undefined && body.inhoud !== null) {
+    eigenInhoud = controleerSjabloonInhoud(body.inhoud);
+    inhouden.push(eigenInhoud);
+  }
+
+  let bewaren = null;
+  if (body.opslaan_als_sjabloon !== undefined && body.opslaan_als_sjabloon !== null && body.opslaan_als_sjabloon !== false) {
+    if (!isObject(body.opslaan_als_sjabloon)) throw new Fout(400, 'De gegevens van het nieuwe sjabloon zijn ongeldig.');
+    if (!eigenInhoud) throw new Fout(400, 'Er is geen inhoud meegestuurd om als sjabloon te bewaren.');
+    bewaren = controleerSjabloonGegevens(body.opslaan_als_sjabloon);
+    const tel = await een(env, 'SELECT COUNT(*) AS n FROM sjablonen');
+    if (tel.n >= MAX_SJABLONEN) {
+      throw new Fout(409, `Je hebt het maximum van ${MAX_SJABLONEN} sjablonen bereikt. Verwijder eerst een sjabloon, of maak het onderzoek aan zonder het als sjabloon te bewaren.`);
+    }
+  }
   controleerSjablonen(inhouden, f.bedrijfsnaam);
 
   const nu = nuIso();
@@ -57,7 +87,7 @@ export async function nieuw({ request, env }) {
   ).bind(f.bedrijfsnaam, f.titel, f.onderzoeksvraag, f.toelichting, nu).first();
 
   // Standaard: één meetmoment "Nulmeting" en drie lege stukken.
-  const [mm] = await env.DB.batch([
+  const res = await env.DB.batch([
     env.DB.prepare('INSERT INTO meetmomenten (onderzoek_id, naam, datum, omschrijving, volgorde) VALUES (?, ?, NULL, ?, 1) RETURNING id')
       .bind(o.id, 'Nulmeting', 'Eerste meting'),
     ...STANDAARD_STUKKEN.map((s, i) =>
@@ -65,12 +95,13 @@ export async function nieuw({ request, env }) {
         'INSERT INTO stukken (onderzoek_id, soort, titel, inhoud, volgorde, aangemaakt_op, bijgewerkt_op) VALUES (?, ?, ?, ?, ?, ?, ?)',
       ).bind(o.id, s.soort, s.titel, s.inhoud, i + 1, nu, nu),
     ),
+    ...(bewaren ? [opdrachtNieuwSjabloon(env, bewaren, JSON.stringify(eigenInhoud))] : []),
   ]);
 
   if (inhouden.length) {
-    await pasSjablonenToe(env, o, inhouden, { meetmomentId: mm.results[0].id });
+    await pasSjablonenToe(env, o, inhouden, { meetmomentId: res[0].results[0].id });
   }
-  return json({ id: o.id }, 201);
+  return json({ id: o.id, sjabloon_id: bewaren ? nieuwSjabloonId(res[res.length - 1]) : null }, 201);
 }
 
 export async function detail({ env, params }) {
@@ -160,12 +191,12 @@ export async function sjabloonToepassen({ request, env, params }) {
   const id = v.id(params.id);
   const o = await haalBewerkbaarOnderzoek(env, id);
   const body = await leesJson(request);
-  const inhoud = await zoekSjabloon(env, body.sjabloon);
   const meetmomentId = v.optioneelId(body.meetmoment_id, 'meetmoment');
   if (meetmomentId) {
     const mm = await een(env, 'SELECT onderzoek_id FROM meetmomenten WHERE id = ?', meetmomentId);
     if (!mm || mm.onderzoek_id !== id) throw new Fout(400, 'Het gekozen meetmoment hoort niet bij dit onderzoek.');
   }
+  const inhoud = inhoudVan(await haalSjabloon(env, body.sjabloon));
   const vragenlijstId = await pasSjablonenToe(env, o, [inhoud], { meetmomentId });
   return json({ ok: true, vragenlijst_id: vragenlijstId });
 }
@@ -174,78 +205,91 @@ export async function alsSjabloon({ request, env, params }) {
   const id = v.id(params.id);
   const o = await haalOnderzoek(env, id);
   const body = await leesJson(request);
-  const naam = v.tekst(body.naam, 'Naam van het sjabloon', { verplicht: true, max: 150 });
-  const omschrijving = v.tekst(body.omschrijving, 'Omschrijving', { max: 1000 });
+  const gegevens = controleerSjabloonGegevens(body);
   const vragenlijstId = v.optioneelId(body.vragenlijst_id, 'vragenlijst');
   if (vragenlijstId) {
     const vl = await een(env, 'SELECT onderzoek_id FROM vragenlijsten WHERE id = ?', vragenlijstId);
     if (!vl || vl.onderzoek_id !== id) throw new Fout(400, 'De gekozen vragenlijst hoort niet bij dit onderzoek.');
   }
   const inhoud = await maakSjabloonInhoud(env, o, vragenlijstId);
-  const rij = await env.DB.prepare(
-    'INSERT INTO sjablonen (naam, omschrijving, inhoud, aangemaakt_op) VALUES (?, ?, ?, ?) RETURNING id',
-  ).bind(naam, omschrijving, JSON.stringify(inhoud), nuIso()).first();
-  return json({ id: `eigen-${rij.id}` }, 201);
+  // Zo mogelijk in de vaste, gecontroleerde vorm bewaren. Lukt dat niet (bijv. twee thema's met
+  // dezelfde naam in het onderzoek), dan toch bewaren; bij het bewerken zie je wat er moet veranderen.
+  let schoon = inhoud;
+  try {
+    schoon = controleerSjabloonInhoud(inhoud);
+  } catch {
+    /* ongecontroleerd bewaren */
+  }
+  const sjabloonId = await nieuwSjabloon(env, gegevens, JSON.stringify(schoon));
+  return json({ id: sjabloonId }, 201);
 }
 
 // ---- Sjablonen beheren ----
-
-function samenvatting(inhoud) {
-  return {
-    themas: (inhoud.themas || []).length,
-    meetpunten: (inhoud.themas || []).reduce((n, t) => n + (t.meetpunten || []).length, 0),
-    vragen: (inhoud.vragen || []).length,
-    acties: (inhoud.acties || []).length,
-  };
-}
+// Alle sjablonen staan in de database en zijn volledig te wijzigen en te verwijderen, ook de
+// standaardsjablonen. Een sjabloon is aan te wijzen met zijn nummer (12), de oude vorm 'eigen-12'
+// of het kenmerk van een standaardsjabloon ('medewerkerstevredenheid').
 
 export async function sjablonenLijst({ env }) {
-  const eigen = await alle(env, 'SELECT id, naam, omschrijving, inhoud, aangemaakt_op FROM sjablonen ORDER BY naam');
-  return json({
-    sjablonen: [
-      ...STANDAARD_SJABLONEN.map((s) => ({
-        id: s.id,
-        naam: s.naam,
-        omschrijving: s.omschrijving,
-        standaard: true,
-        samenvatting: samenvatting(s.inhoud),
-      })),
-      ...eigen.map((s) => ({
-        id: `eigen-${s.id}`,
-        naam: s.naam,
-        omschrijving: s.omschrijving,
-        standaard: false,
-        aangemaakt_op: s.aangemaakt_op,
-        samenvatting: samenvatting(JSON.parse(s.inhoud)),
-      })),
-    ],
-  });
+  return json(await lijstSjablonen(env));
 }
 
 export async function sjabloonDetail({ env, params }) {
-  const inhoud = await zoekSjabloon(env, params.sjabloon);
-  return json({ id: params.sjabloon, inhoud });
+  return json(sjabloonUit(await haalSjabloon(env, params.sjabloon)));
 }
 
-function eigenSjabloonId(waarde) {
-  const m = /^eigen-(\d+)$/.exec(String(waarde || ''));
-  if (!m) throw new Fout(400, 'Standaardsjablonen kunnen niet worden gewijzigd of verwijderd. Pas ze toe en sla het resultaat op als eigen sjabloon.');
-  return Number(m[1]);
+/** Nieuw eigen sjabloon: leeg, met meegestuurde inhoud, of als kopie van een bestaand sjabloon. */
+export async function sjabloonNieuw({ request, env }) {
+  const body = await leesJson(request);
+  let gegevens;
+  let inhoudJson;
+  if (body.kopie_van !== undefined && body.kopie_van !== null && body.kopie_van !== '') {
+    const bron = await haalSjabloon(env, body.kopie_van);
+    gegevens = controleerSjabloonGegevens({
+      naam: body.naam === undefined || body.naam === null || body.naam === '' ? `${bron.naam.slice(0, 140)} (kopie)` : body.naam,
+      omschrijving: body.omschrijving === undefined || body.omschrijving === null ? bron.omschrijving : body.omschrijving,
+    });
+    inhoudJson = bron.inhoud;
+  } else {
+    gegevens = controleerSjabloonGegevens(body);
+    inhoudJson = JSON.stringify(
+      body.inhoud === undefined || body.inhoud === null ? legeInhoud() : controleerSjabloonInhoud(body.inhoud),
+    );
+  }
+  return json({ id: await nieuwSjabloon(env, gegevens, inhoudJson) }, 201);
 }
 
 export async function sjabloonWijzig({ request, env, params }) {
-  const id = eigenSjabloonId(params.sjabloon);
   const body = await leesJson(request);
-  const naam = v.tekst(body.naam, 'Naam van het sjabloon', { verplicht: true, max: 150 });
-  const omschrijving = v.tekst(body.omschrijving, 'Omschrijving', { max: 1000 });
-  const res = await env.DB.prepare('UPDATE sjablonen SET naam = ?, omschrijving = ? WHERE id = ?').bind(naam, omschrijving, id).run();
-  if (!res.meta.changes) throw new Fout(404, 'Dit sjabloon bestaat niet (meer).');
-  return json({ ok: true });
+  const gegevens = controleerSjabloonGegevens(body);
+  // Zonder "inhoud" wijzig je alleen de naam en omschrijving.
+  const inhoud = body.inhoud === undefined || body.inhoud === null ? null : controleerSjabloonInhoud(body.inhoud);
+  return json({ ok: true, ...(await wijzigSjabloon(env, params.sjabloon, gegevens, inhoud)) });
 }
 
 export async function sjabloonVerwijder({ env, params }) {
-  const id = eigenSjabloonId(params.sjabloon);
-  const res = await env.DB.prepare('DELETE FROM sjablonen WHERE id = ?').bind(id).run();
-  if (!res.meta.changes) throw new Fout(404, 'Dit sjabloon bestaat niet (meer).');
+  await verwijderSjabloon(env, params.sjabloon);
   return json({ ok: true });
+}
+
+/** Zet een (aangepast) standaardsjabloon terug naar de oorspronkelijke versie. */
+export async function sjabloonOrigineel({ env, params }) {
+  return json({ ok: true, id: await zetOrigineelTerug(env, params.sjabloon) });
+}
+
+/** Zet standaardsjablonen terug die je eerder hebt verwijderd. */
+export async function sjablonenHerstellen({ env }) {
+  return json({ ok: true, toegevoegd: await herstelStandaard(env) });
+}
+
+/**
+ * Voegt de gekozen sjablonen samen tot één inhoud (zonder iets op te slaan), met precies dezelfde
+ * regels als bij het toepassen. Het scherm "Nieuw onderzoek" laat je die inhoud daarna aanpassen.
+ */
+export async function sjablonenSamenvoegen({ request, env }) {
+  const body = await leesJson(request);
+  const refs = sjabloonVerwijzingen(body.ids);
+  const inhoud = refs.length
+    ? voegSjablonenSamen((await haalSjablonen(env, refs)).map(inhoudVan))
+    : legeInhoud();
+  return json({ inhoud, aantal_vragen: inhoud.vragen.length, max_vragen: MAX_VRAGEN });
 }
