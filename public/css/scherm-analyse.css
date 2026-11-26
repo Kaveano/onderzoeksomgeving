@@ -1,1 +1,254 @@
-/* Opmaak voor het scherm: analyse */
+/* Opmaak voor het scherm: analyse (en de dialoog "Neem op in stuk" uit stukdialoog.js) */
+
+.analyse .kaart { padding-bottom: var(--ruimte-5); }
+.analyse h2:focus { outline: none; }
+.analyse h2:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.an-kaart { scroll-margin-top: 72px; }
+
+.an-uitleg {
+  color: var(--tekst-zacht);
+  max-width: 75ch;
+}
+
+/* ---------- Inleiding ---------- */
+
+.an-vragen {
+  margin: 0 0 var(--ruimte-3);
+  padding-left: 1.5rem;
+  max-width: 75ch;
+}
+.an-vragen li { padding: 1px 0; }
+.an-vraag-knop {
+  background: none;
+  border: 0;
+  padding: 4px 0;
+  min-height: 32px;
+  font: inherit;
+  color: var(--primair);
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.an-vraag-knop:hover { color: var(--primair-hover); }
+
+.an-uitklap > summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--primair);
+  padding: 6px 0;
+  width: fit-content;
+}
+.an-begrippen {
+  margin: var(--ruimte-2) 0 0;
+  max-width: 75ch;
+}
+.an-begrippen dt { font-weight: 600; margin-top: var(--ruimte-3); }
+.an-begrippen dd { margin: 2px 0 0; color: var(--tekst-zacht); }
+
+/* ---------- Keuzes boven een uitkomst ---------- */
+
+.an-keuzes {
+  display: grid;
+  gap: var(--ruimte-2) var(--ruimte-4);
+  grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
+  align-items: start;
+  padding: var(--ruimte-3) var(--ruimte-4) 0;
+  margin: var(--ruimte-3) 0 var(--ruimte-4);
+  background: var(--vlak-2);
+  border: 1px solid var(--rand);
+  border-radius: var(--radius);
+}
+.an-keuzes .veld { margin-bottom: var(--ruimte-3); max-width: 34rem; }
+.an-keuzes select { min-width: 0; text-overflow: ellipsis; }
+
+/* ---------- Uitkomst ---------- */
+
+.an-resultaat { min-width: 0; }
+.an-resultaat + .an-resultaat:not(:empty) {
+  margin-top: var(--ruimte-5);
+  padding-top: var(--ruimte-4);
+  border-top: 1px solid var(--rand);
+}
+.an-resultaat > .melding { margin-bottom: var(--ruimte-3); }
+
+.an-uitkomst-kop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--ruimte-2) var(--ruimte-3);
+  margin-bottom: var(--ruimte-3);
+}
+.an-uitkomst-kop h3 {
+  margin: 0;
+  flex: 1 1 16rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.an-stukknop { flex: none; }
+
+.an-tabel th[scope='row'] {
+  font-size: 0.95rem;
+  color: var(--tekst);
+  font-weight: 600;
+  background: none;
+  overflow-wrap: anywhere;
+}
+.analyse .tabel-wrapper { margin-bottom: var(--ruimte-3); }
+.an-n {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--tekst-zacht);
+  white-space: nowrap;
+}
+.an-themas td { white-space: nowrap; }
+.an-themas td[colspan] { white-space: normal; }
+.an-themas th[scope='row'] { min-width: 9rem; }
+.an-themas .label { vertical-align: 1px; }
+
+.an-uitkomsten { margin: 0 0 var(--ruimte-3); }
+.an-uitkomst {
+  display: grid;
+  grid-template-columns: minmax(0, 17rem) minmax(0, 1fr);
+  gap: 2px var(--ruimte-4);
+  padding: var(--ruimte-2) 0;
+  border-bottom: 1px solid var(--rand);
+}
+.an-uitkomst:first-child { border-top: 1px solid var(--rand); }
+.an-uitkomst dt { color: var(--tekst-zacht); font-size: 0.95rem; }
+.an-uitkomst dd { margin: 0; min-width: 0; }
+.an-waarde { font-weight: 600; overflow-wrap: anywhere; }
+.an-toelichting {
+  display: block;
+  color: var(--tekst-zacht);
+  font-size: 0.875rem;
+  max-width: 65ch;
+}
+
+.an-conclusie {
+  margin: var(--ruimte-4) 0 0;
+  padding: var(--ruimte-3) var(--ruimte-4);
+  border: 1px solid var(--rand);
+  border-left: 4px solid var(--rand-sterk);
+  border-radius: var(--radius);
+  background: var(--vlak-2);
+  max-width: 85ch;
+}
+.an-conclusie-sig { border-left-color: var(--primair); }
+.an-conclusie-kop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ruimte-2);
+  margin-bottom: var(--ruimte-2);
+}
+.an-conclusie-kop strong { margin-right: var(--ruimte-1); }
+.an-conclusie p { margin-bottom: var(--ruimte-2); }
+.an-conclusie > :last-child { margin-bottom: 0; }
+.an-letop { color: var(--tekst-zacht); font-size: 0.9rem; }
+
+.an-noot {
+  color: var(--tekst-zacht);
+  font-size: 0.9rem;
+  max-width: 85ch;
+  margin: var(--ruimte-3) 0 0;
+}
+.an-noot strong { color: var(--tekst); }
+
+.an-weggelaten {
+  margin: 0 0 var(--ruimte-3);
+  padding: var(--ruimte-2) var(--ruimte-3);
+  border: 1px dashed var(--rand-sterk);
+  border-radius: var(--radius-klein);
+  font-size: 0.9rem;
+  color: var(--tekst-zacht);
+  max-width: 85ch;
+}
+.an-weggelaten p { margin: 0; }
+.an-weggelaten p + p { margin-top: var(--ruimte-1); }
+
+/* ---------- Samenhang tussen alle thema's ---------- */
+
+table.an-matrix { width: auto; max-width: 100%; }
+.an-matrix th[scope='row'] {
+  font-size: 0.9rem;
+  color: var(--tekst);
+  font-weight: 500;
+  background: none;
+  min-width: 9rem;
+  max-width: 18rem;
+}
+.an-matrix-nr { color: var(--tekst-zacht); }
+.an-matrix .an-matrix-kop { text-align: center; min-width: 3.4rem; }
+.an-matrix .an-matrix-cel {
+  text-align: center;
+  vertical-align: middle;
+  border: 2px solid var(--vlak);
+  white-space: nowrap;
+  color: var(--tekst);
+}
+.an-matrix tbody tr:hover { background: none; }
+
+/* Kleur volgt de schaalkleuren: oranje/rood = negatief, blauw = positief; de r staat altijd als tekst in de cel. */
+.an-r-zelf, .an-r-leeg { color: var(--tekst-zacht); }
+.an-r-0 { background: var(--vlak-2); }
+.an-r-p1 { background: color-mix(in srgb, var(--schaal-4) 28%, var(--vlak)); }
+.an-r-p2 { background: color-mix(in srgb, var(--schaal-4) 65%, var(--vlak)); }
+.an-r-p3 { background: color-mix(in srgb, var(--schaal-5) 60%, var(--vlak)); }
+.an-r-n1 { background: color-mix(in srgb, var(--schaal-2) 28%, var(--vlak)); }
+.an-r-n2 { background: color-mix(in srgb, var(--schaal-2) 65%, var(--vlak)); }
+.an-r-n3 { background: color-mix(in srgb, var(--schaal-1) 55%, var(--vlak)); }
+
+.an-legenda {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ruimte-1) var(--ruimte-3);
+  margin: 0 0 var(--ruimte-2);
+  padding: 0;
+  font-size: 0.85rem;
+  color: var(--tekst-zacht);
+}
+.an-legenda li { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.an-swatch {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  border: 1px solid var(--rand-sterk);
+  flex: none;
+}
+
+/* ---------- Betrouwbaarheid ---------- */
+
+.an-alfa-uitleg {
+  list-style: none;
+  margin: 0 0 var(--ruimte-2);
+  padding: 0;
+}
+.an-alfa-uitleg li { padding: 3px 0; }
+
+/* ---------- Kruistabel ---------- */
+
+.an-kruis-vragen { margin-bottom: var(--ruimte-2); font-size: 0.95rem; }
+.an-kruis-vragen > span { display: block; overflow-wrap: anywhere; }
+table.an-kruistabel { width: auto; min-width: min(100%, 24rem); }
+.an-cel-verborgen { color: var(--tekst-zacht); font-style: italic; }
+
+/* ---------- Dialoog "Neem op in stuk" ---------- */
+
+.stukdialoog textarea { min-height: 180px; }
+
+/* ---------- Telefoon ---------- */
+
+@media (max-width: 640px) {
+  .an-keuzes { padding: var(--ruimte-3) var(--ruimte-3) 0; }
+  .an-uitkomst { grid-template-columns: minmax(0, 1fr); }
+  .an-conclusie { padding: var(--ruimte-3); }
+  .an-matrix th[scope='row'] { min-width: 7.5rem; }
+  .an-matrix .an-matrix-kop { min-width: 3rem; }
+}
+
+@media print {
+  .an-keuzes, .an-stukknop { display: none !important; }
+}
