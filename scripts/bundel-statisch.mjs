@@ -17,6 +17,11 @@ const TYPEN = {
   '.txt': 'text/plain; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
 };
+// Binaire bestanden (lettertypen, afbeeldingen) gaan als base64 mee.
+const BINAIR = {
+  '.woff2': 'font/woff2',
+  '.png': 'image/png',
+};
 
 function bestanden(map) {
   return readdirSync(map).flatMap((naam) => {
@@ -27,11 +32,15 @@ function bestanden(map) {
 
 const uit = {};
 for (const pad of bestanden(PUBLIC).sort()) {
-  const type = TYPEN[extname(pad)];
-  if (!type) continue; // alleen bekende teksttypen
-  const inhoud = readFileSync(pad, 'utf8');
-  const etag = `"${createHash('sha256').update(inhoud).digest('hex').slice(0, 20)}"`;
-  uit[`/${relative(PUBLIC, pad).split('\\').join('/')}`] = { type, etag, inhoud };
+  const ext = extname(pad);
+  const type = TYPEN[ext] || BINAIR[ext];
+  if (!type) continue; // alleen bekende bestandstypen
+  const binair = !!BINAIR[ext];
+  const ruw = readFileSync(pad);
+  const etag = `"${createHash('sha256').update(ruw).digest('hex').slice(0, 20)}"`;
+  const item = { type, etag, inhoud: binair ? ruw.toString('base64') : ruw.toString('utf8') };
+  if (binair) item.b64 = true;
+  uit[`/${relative(PUBLIC, pad).split('\\').join('/')}`] = item;
 }
 
 mkdirSync(join(ROOT, 'gen'), { recursive: true });
