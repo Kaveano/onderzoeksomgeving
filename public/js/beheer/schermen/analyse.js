@@ -346,6 +346,12 @@ function duidMeerGroepen(r, groepen) {
   const effect = S.effectGrootte(r.anova.etaKwadraat, 'eta2');
   if (effect) {
     zinnen.push(`De verschillen tussen de groepen zijn ${effectWoord(effect)} (eta² = ${g(r.anova.etaKwadraat)}).`);
+    if (!significant && (effect === 'middelgroot' || effect === 'groot')) {
+      zinnen.push('Met meer respondenten zijn zulke verschillen mogelijk wel aan te tonen.');
+    }
+    if (significant && (effect === 'verwaarloosbaar' || effect === 'klein')) {
+      zinnen.push('Bedenk wel of zulke kleine verschillen in de praktijk iets uitmaken.');
+    }
   }
   if (significant) zinnen.push('De toets zegt niet wélke groepen van elkaar verschillen; kijk daarvoor naar de gemiddelden.');
   if ([r.welch, r.kw].some((c) => c && (c.p < ALFA) !== significant)) {
@@ -761,6 +767,7 @@ export async function toon(container, ctx) {
         h('strong', {}, 'Anonimiteit: '),
         `groepen met minder dan ${drempel} respondenten doen niet mee en krijgen nooit een getal. `,
         'Zo nodig blijft ook de kleinste andere groep weg, omdat een kleine groep anders uit het totaal is terug te rekenen. ',
+        'Wie de vraag voor de groepsindeling oversloeg, telt niet mee. ',
         'Leg uitkomsten van verschillende uitsplitsingen niet naast elkaar om kleinere groepen af te leiden.'));
     teken();
   }
@@ -943,7 +950,7 @@ export async function toon(container, ctx) {
     if (!paren.length) {
       return [
         uitkomstKop("Samenhang tussen alle thema's"),
-        melding(`Te weinig antwoorden: per tweetal thema's zijn minstens ${MIN_PAREN} respondenten nodig met een score op beide.`),
+        melding(`Niet te berekenen: per tweetal thema's zijn minstens ${MIN_PAREN} respondenten nodig met een score op beide, en hun scores mogen niet allemaal gelijk zijn.`),
       ];
     }
     paren.sort((p, q) => Math.abs(q.pr.r) - Math.abs(p.pr.r));
@@ -957,7 +964,7 @@ export async function toon(container, ctx) {
     return [
       uitkomstKop("Samenhang tussen alle thema's", stukKnop(tekst, "samenhang tussen alle thema's")),
       h('p', { class: 'an-uitleg' },
-        'Per tweetal thema’s de correlatie (r) tussen de themascores. Blauw betekent: de scores gaan samen omhoog. Oranje of rood: als de ene hoger is, is de andere meestal lager. Hoe donkerder, hoe sterker.'),
+        'Per tweetal thema’s de correlatie (r) tussen de themascores. Blauw betekent: de scores gaan samen omhoog. Rood betekent: als de ene hoger is, is de andere meestal lager. Hoe meer kleur, hoe sterker het verband.'),
       h('div', { class: 'tabel-wrapper' },
         h('table', { class: 'tabel an-matrix' },
           h('caption', { class: 'sr-only' }, `Correlatie tussen de themascores, ${lijstNaam(lijst)}`),
@@ -1050,12 +1057,12 @@ export async function toon(container, ctx) {
         negatief
           ? melding('Een negatieve alfa betekent dat vragen tegen elkaar in gaan. Staat er in dat thema een vraag die andersom is geformuleerd (hoog = ongunstig)?', 'waarschuwing')
           : null,
-        h('div', { class: 'an-conclusie' },
+        berekend.length ? h('div', { class: 'an-conclusie' },
           h('div', { class: 'an-conclusie-kop' }, h('strong', {}, 'Wat betekent dit?')),
           h('p', {}, 'Cronbachs alfa loopt meestal van 0 tot 1. Hoe hoger, hoe meer de vragen van een thema hetzelfde meten, en hoe beter je de themascore als één cijfer kunt gebruiken.'),
           h('ul', { class: 'an-alfa-uitleg' }, ALFA_UITLEG.map(([oordeel, grens, uitleg]) =>
             h('li', {}, h('span', { class: `label ${ALFA_KLASSE[oordeel]}` }, oordeel), ` ${grens}: ${uitleg}`))),
-          h('p', { class: 'an-letop' }, 'Let op: alfa wordt vanzelf hoger bij meer vragen en lager bij maar twee of drie vragen. Een lage alfa bij een thema met weinig vragen is dus minder erg. Alleen respondenten die alle vragen van het thema invulden, tellen mee.'))));
+          h('p', { class: 'an-letop' }, 'Let op: alfa wordt vanzelf hoger bij meer vragen en lager bij maar twee of drie vragen. Een lage alfa bij een thema met weinig vragen is dus minder erg. Alleen respondenten die alle vragen van het thema invulden, tellen mee.')) : null));
   }
 
   // ---------- 5. Verband tussen twee keuzevragen ----------
@@ -1148,7 +1155,7 @@ export async function toon(container, ctx) {
       : null;
     const waarschuwing = kleinVerwacht
       ? `In ${kleinVerwacht} van de ${cellen} cellen is het aantal dat je zonder verband zou verwachten kleiner dan 5. ${onbetrouwbaar
-        ? 'De toets is daardoor niet betrouwbaar. Wacht op meer respondenten of gebruik vragen met minder antwoordmogelijkheden.'
+        ? `De toets is daardoor niet betrouwbaar. Wacht op meer respondenten${cellen > 4 ? ' of gebruik vragen met minder antwoordmogelijkheden' : ''}.`
         : 'De uitkomst is daardoor iets minder betrouwbaar.'}`
       : null;
     const toetsTekst = `chi²(${dfTekst(uit.df)}) = ${g(uit.chi2)}; ${pTekst(uit.p)}`;
