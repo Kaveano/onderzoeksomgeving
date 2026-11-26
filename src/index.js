@@ -16,6 +16,7 @@ import * as stukken from './routes/stukken.js';
 import * as acties from './routes/acties.js';
 import * as exporteren from './routes/export.js';
 import * as delen from './routes/delen.js';
+import * as rapporten from './routes/rapporten.js';
 
 const B = '/api/beheer';
 
@@ -89,6 +90,13 @@ const BEHEER_ROUTES = [
   ['GET', `${B}/onderzoeken/:id/export/data`, exporteren.data],
   ['GET', `${B}/onderzoeken/:id/export/stukken.txt`, exporteren.stukkenTxt],
 
+  ['GET', `${B}/onderzoeken/:id/rapporten`, rapporten.lijst],
+  ['POST', `${B}/onderzoeken/:id/rapporten`, rapporten.nieuw],
+  ['GET', `${B}/rapporten/:id`, rapporten.detail],
+  ['PUT', `${B}/rapporten/:id`, rapporten.wijzig],
+  ['PUT', `${B}/rapporten/:id/feiten`, rapporten.feiten],
+  ['DELETE', `${B}/rapporten/:id`, rapporten.verwijder],
+
   ['GET', `${B}/onderzoeken/:id/deellinks`, delen.lijst],
   ['POST', `${B}/onderzoeken/:id/deellinks`, delen.nieuw],
   ['PUT', `${B}/deellinks/:id`, delen.wijzig],
@@ -109,6 +117,7 @@ const PUBLIEKE_ROUTES = [
   ['GET', '/api/kijk/:code/overzicht', delen.overzicht],
   ['GET', '/api/kijk/:code/dashboard', delen.dashboard],
   ['GET', '/api/kijk/:code/stukken/:id', delen.stuk],
+  ['GET', '/api/kijk/:code/rapporten/:id', delen.rapport],
 ];
 
 function instellingen() {

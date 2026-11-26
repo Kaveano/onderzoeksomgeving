@@ -13,7 +13,7 @@ import { SCHALEN, VRAAGTYPEN, INVOERSOORTEN, STUKSOORTEN, ACTIESTATUSSEN } from 
 export async function data({ env, params }) {
   const onderzoekId = v.id(params.id);
   const o = await haalOnderzoek(env, onderzoekId);
-  const [themas, meetpunten, meetmomenten, lijsten, vragen, inzendingen, invoer, stukken, acties] = await env.DB.batch([
+  const [themas, meetpunten, meetmomenten, lijsten, vragen, inzendingen, invoer, stukken, acties, rapporten] = await env.DB.batch([
     env.DB.prepare('SELECT * FROM themas WHERE onderzoek_id = ? ORDER BY volgorde, id').bind(onderzoekId),
     env.DB.prepare(
       'SELECT m.* FROM meetpunten m JOIN themas t ON t.id = m.thema_id WHERE t.onderzoek_id = ? ORDER BY m.volgorde, m.id',
@@ -32,6 +32,8 @@ export async function data({ env, params }) {
     env.DB.prepare('SELECT * FROM eigen_invoer WHERE onderzoek_id = ? ORDER BY datum, id').bind(onderzoekId),
     env.DB.prepare('SELECT * FROM stukken WHERE onderzoek_id = ? ORDER BY volgorde, id').bind(onderzoekId),
     env.DB.prepare('SELECT * FROM acties WHERE onderzoek_id = ? ORDER BY volgorde, id').bind(onderzoekId),
+    // Rapporten: de eigen tekst; de vastgelegde cijfers zijn opnieuw te maken uit de gegevens hierboven.
+    env.DB.prepare('SELECT id, soort, titel, inhoud, aangemaakt_op, bijgewerkt_op FROM rapporten WHERE onderzoek_id = ? ORDER BY id').bind(onderzoekId),
   ]);
 
   const kop = JSON.stringify({
@@ -46,6 +48,7 @@ export async function data({ env, params }) {
     eigen_invoer: invoer.results,
     stukken: stukken.results,
     acties: acties.results,
+    rapporten: rapporten.results,
   });
   // De antwoorden staan al als JSON in de database; die plakken we er ongewijzigd in.
   const inz = inzendingen.results

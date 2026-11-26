@@ -107,6 +107,7 @@ export async function toon(container, ctx) {
   const vlEl = h('div', {}, laden());
   const linksEl = h('div', {}, laden());
   let stukken = [];
+  let rapporten = [];
 
   // ===== 1. Uitnodigen voor een vragenlijst =====
 
@@ -329,9 +330,23 @@ export async function toon(container, ctx) {
   function watGedeeld(l) {
     const delen = [];
     if (l.onderdelen.dashboard) delen.push(l.onderdelen.open_antwoorden ? 'resultaten met open antwoorden' : 'resultaten zonder open antwoorden');
+    const nr = (l.onderdelen.rapporten || []).filter((id) => rapporten.some((r) => r.id === id)).length;
+    if (nr) delen.push(aantal(nr, 'rapport', 'rapporten'));
     const n = l.onderdelen.stukken.filter((id) => stukken.some((s) => s.id === id)).length;
     if (n) delen.push(aantal(n, 'stuk', 'stukken'));
-    return delen.length ? delen.join(' en ') : 'niets (de gedeelde stukken bestaan niet meer)';
+    if (!delen.length) return 'niets (de gedeelde documenten bestaan niet meer)';
+    return delen.length > 1 ? `${delen.slice(0, -1).join(', ')} en ${delen[delen.length - 1]}` : delen[0];
+  }
+
+  /** Onderdelen zonder stukken of rapporten die intussen zijn verwijderd (de server weigert die). */
+  function geldigeOnderdelen(l) {
+    const od = {
+      dashboard: l.onderdelen.dashboard,
+      open_antwoorden: l.onderdelen.open_antwoorden,
+      stukken: l.onderdelen.stukken.filter((id) => stukken.some((s) => s.id === id)),
+      rapporten: (l.onderdelen.rapporten || []).filter((id) => rapporten.some((r) => r.id === id)),
+    };
+    return od;
   }
 
   function linkStatus(l) {
@@ -341,7 +356,7 @@ export async function toon(container, ctx) {
   }
 
   function linkFormulier(l = null) {
-    const onderdelen = l ? l.onderdelen : { dashboard: true, open_antwoorden: false, stukken: [] };
+    const onderdelen = l ? { rapporten: [], ...l.onderdelen } : { dashboard: true, open_antwoorden: false, stukken: [], rapporten: [] };
     return formulierDialoog({
       titel: l ? 'Deellink wijzigen' : 'Nieuwe deellink',
       knop: l ? 'Opslaan' : 'Deellink maken',
@@ -350,7 +365,7 @@ export async function toon(container, ctx) {
         : 'Met een deellink kan iemand de resultaten bekijken, maar niets wijzigen. Diegene heeft de link én een toegangscode nodig; die krijg je in de volgende stap te zien.',
       velden: [
         { naam: 'naam', label: 'Voor wie is deze link?', verplicht: true, max: 150, waarde: l?.naam, hulp: 'Bijvoorbeeld "Directie" of "Ondernemingsraad". Alleen jij ziet deze naam.' },
-        { naam: 'dashboard', type: 'checkbox', label: 'Resultaten: respons, scores per thema, antwoorden per vraag, verloop en cijfers', waarde: onderdelen.dashboard },
+        { naam: 'dashboard', type: 'checkbox', label: 'Resultaten (het dashboard): respons, scores per thema, antwoorden per vraag, verloop en cijfers', waarde: onderdelen.dashboard },
         {
           naam: 'open_antwoorden',
           type: 'checkbox',
@@ -358,6 +373,12 @@ export async function toon(container, ctx) {
           waarde: onderdelen.open_antwoorden,
           hulp: 'Open antwoorden kunnen herkenbaar zijn voor collega\'s. Deel ze alleen als dat zo is afgesproken.',
         },
+        ...rapporten.map((r) => ({
+          naam: `rapport_${r.id}`,
+          type: 'checkbox',
+          label: `Rapport: ${r.titel}`,
+          waarde: onderdelen.rapporten.includes(r.id),
+        })),
         ...stukken.map((s) => ({
           naam: `stuk_${s.id}`,
           type: 'checkbox',
@@ -374,7 +395,8 @@ export async function toon(container, ctx) {
       ],
       controle: (w) => {
         const gekozenStukken = stukken.filter((s) => w[`stuk_${s.id}`]);
-        if (!w.dashboard && !gekozenStukken.length) return 'Kies minstens één onderdeel dat de kijker mag zien.';
+        const gekozenRapporten = rapporten.filter((r) => w[`rapport_${r.id}`]);
+        if (!w.dashboard && !gekozenStukken.length && !gekozenRapporten.length) return 'Kies minstens één onderdeel dat de kijker mag zien.';
         if (w.open_antwoorden && !w.dashboard) return 'Open antwoorden horen bij de resultaten. Vink ook "Resultaten" aan, of zet de open antwoorden uit.';
         return null;
       },
@@ -386,6 +408,7 @@ export async function toon(container, ctx) {
             dashboard: w.dashboard,
             open_antwoorden: w.dashboard && w.open_antwoorden,
             stukken: stukken.filter((s) => w[`stuk_${s.id}`]).map((s) => s.id),
+            rapporten: rapporten.filter((r) => w[`rapport_${r.id}`]).map((r) => r.id),
           },
         };
         if (l) {
@@ -451,11 +474,13 @@ export async function toon(container, ctx) {
 
   async function laadLinks() {
     try {
-      const [{ deellinks }, st] = await Promise.all([
+      const [{ deellinks }, st, rp] = await Promise.all([
         api.get(`/onderzoeken/${onderzoekId}/deellinks`),
         api.get(`/onderzoeken/${onderzoekId}/stukken`),
+        api.get(`/onderzoeken/${onderzoekId}/rapporten`),
       ]);
       stukken = st.stukken || [];
+      rapporten = rp.rapporten || [];
       tekenLinks(deellinks);
     } catch (e) {
       vervang(linksEl, melding([h('strong', {}, 'De deellinks konden niet worden geladen. '), e.message || ''], 'gevaar'));
@@ -478,7 +503,7 @@ export async function toon(container, ctx) {
     vervang(linksEl, h('ul', { class: 'lijst' }, links.map((l) => {
       const zetIngetrokken = async (ingetrokken) => {
         try {
-          await api.put(`/deellinks/${l.id}`, { naam: l.naam, verloopt_op: l.verloopt_op, onderdelen: l.onderdelen, ingetrokken });
+          await api.put(`/deellinks/${l.id}`, { naam: l.naam, verloopt_op: l.verloopt_op, onderdelen: geldigeOnderdelen(l), ingetrokken });
           meld(ingetrokken ? 'De link is ingetrokken en werkt niet meer.' : 'De link werkt weer.', 'succes');
           laadLinks();
         } catch (e) {

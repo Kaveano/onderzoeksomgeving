@@ -1,10 +1,13 @@
 // Bestanden uitwisselen met andere programma's, zonder bibliotheken:
 //   Excel    maakXlsx, leesXlsx en leesCsv
-//   Word     maakDocx (van de eenvoudige Markdown-opmaak uit de schrijfomgeving)
+//   Word     maakDocx (van de eenvoudige Markdown-opmaak uit de schrijfomgeving, of van losse blokken
+//            met tabellen voor een rapport)
 //   Outlook  maakIcs (agenda-afspraken voor de hele dag)
 //   SPSS     spssNaam en maakSpssSyntax (een syntaxbestand dat een CSV-bestand inleest)
-// Een .xlsx en een .docx zijn zip-bestanden met XML erin; daarom staan hier ook maakZip en leesZip.
-// Alles werkt in moderne browsers en in Node 22 (voor de tests). Alleen bewaarBestand gebruikt de pagina.
+//   Zip      maakZip, leesZip en crc32: een .xlsx en een .docx zijn zip-bestanden met XML erin
+//   Opslaan  bewaarBestand (laat de browser een gemaakt bestand downloaden)
+// Dit zijn alle functies die de module naar buiten geeft. Alles werkt in moderne browsers en in Node 22
+// (voor de tests). Alleen bewaarBestand gebruikt de pagina.
 
 // ---------- Algemene hulpfuncties ----------
 
@@ -688,6 +691,7 @@ function csvScheiding(tekst) {
 /**
  * Leest een CSV-bestand (tekst of bytes) naar rijen met teksten. Herkent zelf het scheidingsteken (; , tab),
  * aanhalingstekens ("a ""b"" c", ook met regeleinden erin) en de tekenset (UTF-8 of die van oude Excel-versies).
+ * Lege regels achteraan vervallen; een regel met alleen "" is geen lege regel maar een rij met één lege cel.
  */
 export function leesCsv(invoer) {
   let tekst = typeof invoer === 'string' ? invoer : csvTekst(alsBytes(invoer));
@@ -700,6 +704,7 @@ export function leesCsv(invoer) {
   let veld = '';
   let tussen = false; // binnen aanhalingstekens
   let begin = true; // aan het begin van een veld
+  let leegAchteraan = 0; // aantal lege regels (helemaal niets, ook geen "") aan het eind
   for (let i = 0; i < tekst.length; i++) {
     const c = tekst[i];
     if (tussen) {
@@ -717,6 +722,7 @@ export function leesCsv(invoer) {
       begin = true;
     } else if (c === '\n' || c === '\r') {
       if (c === '\r' && tekst[i + 1] === '\n') i++;
+      leegAchteraan = !rij.length && begin ? leegAchteraan + 1 : 0;
       rij.push(veld);
       rijen.push(rij);
       rij = [];
@@ -727,11 +733,12 @@ export function leesCsv(invoer) {
       begin = false;
     }
   }
-  if (rij.length || veld !== '' || !begin) {
+  if (rij.length || !begin) {
     rij.push(veld);
     rijen.push(rij);
+    leegAchteraan = 0;
   }
-  while (rijen.length && rijen[rijen.length - 1].length === 1 && rijen[rijen.length - 1][0] === '') rijen.pop();
+  rijen.length -= leegAchteraan;
   return rijen;
 }
 
@@ -739,8 +746,14 @@ export function leesCsv(invoer) {
 
 const NS_W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 const TYPE_W = 'application/vnd.openxmlformats-officedocument.wordprocessingml';
+// Maten in twips (een twintigste punt; 567 twips is 1 cm).
+const PAGINA_BREEDTE = 11906; // A4
+const PAGINA_HOOGTE = 16838;
+const PAGINA_MARGE = 1417; // 2,5 cm
+const TEKSTBREEDTE = PAGINA_BREEDTE - 2 * PAGINA_MARGE; // 16 cm
 const INSPRING_CITAAT = 567; // 1 cm per niveau
 const MAX_CITAAT_DIEPTE = 6;
+const MAX_TABELKOLOMMEN = 63; // meer kan Word niet aan
 
 // Dezelfde patronen als het voorbeeld in de schrijfomgeving (schermen/stuk-bewerken.js).
 const P_KOP = /^[ \t]{0,3}(#{1,6})[ \t]+(.*)$/;
@@ -852,10 +865,13 @@ function mdStukjes(t, vet = false, cursief = false, uit = []) {
 
 const wTekst = (tekst) => `<w:t xml:space="preserve">${xmlTekst(tekst)}</w:t>`;
 
-/** Eén Word-alinea van een of meer regels (met regeleinden ertussen). */
-function wAlinea(regels, eigenschappen = '', plat = false) {
+/**
+ * Eén Word-alinea van een of meer regels (met regeleinden ertussen). Met vast wordt de tekst letterlijk
+ * overgenomen, zonder op ** en * te letten; { vet: true } maakt dan alle tekst vet.
+ */
+function wAlinea(regels, eigenschappen = '', vast = null) {
   const stukjes = regels.map((regel) => {
-    const delen = plat ? [{ tekst: regel }] : mdStukjes(regel);
+    const delen = !vast ? mdStukjes(regel) : regel ? [{ tekst: regel, vet: vast.vet }] : [];
     return delen
       .map((s) => {
         const opmaak = s.vet || s.cursief ? `<w:rPr>${s.vet ? '<w:b/>' : ''}${s.cursief ? '<w:i/>' : ''}</w:rPr>` : '';
@@ -866,12 +882,119 @@ function wAlinea(regels, eigenschappen = '', plat = false) {
   return `<w:p>${eigenschappen ? `<w:pPr>${eigenschappen}</w:pPr>` : ''}${stukjes.join('<w:r><w:br/></w:r>')}</w:p>`;
 }
 
+/** De regels van een tekst; elk regeleinde wordt in Word een nieuwe regel binnen dezelfde alinea. */
+const tekstRegels = (tekst) => String(tekst ?? '').replace(/\r\n?/g, '\n').split('\n');
+
+/**
+ * Zet de blokken van een rapport (zie maakDocx) om naar de vorm die mdBlokken ook geeft. De teksten van
+ * koppen, alinea's, lijsten en citaten mogen **vet** en *cursief* bevatten; een onbekend blok is een fout.
+ */
+function rapportBlokken(blokken) {
+  const uit = [];
+  blokken.forEach((blok, i) => {
+    const soort = blok?.soort;
+    if (soort === 'kop') {
+      const niveau = Math.min(Math.max(Math.round(Number(blok.niveau)) || 1, 1), 3);
+      uit.push({ soort, niveau, regels: [tekstRegels(blok.tekst).join(' ').trim()] });
+    } else if (soort === 'alinea') uit.push({ soort, regels: tekstRegels(blok.tekst) });
+    else if (soort === 'citaat') uit.push({ soort, blokken: [{ soort: 'alinea', regels: tekstRegels(blok.tekst) }] });
+    else if (soort === 'lijst') {
+      const punten = (Array.isArray(blok.items) ? blok.items : []).map(tekstRegels);
+      if (punten.length) uit.push({ soort, genummerd: Boolean(blok.genummerd), start: 1, punten });
+    } else if (soort === 'tabel' || soort === 'paginaeinde') uit.push(blok);
+    else throw new TypeError(`Onbekend soort blok op plaats ${i + 1} van het document: "${soort}".`);
+  });
+  return uit;
+}
+
+// Een getal als tekst, zoals in een Nederlands rapport: 12 · -3,5 · 1.250 · 45% · € 12,50 (ook met een punt als decimaalteken).
+const P_GETAL = /^[-+−]?(?:€\s?)?(?:\d{1,3}(?:\.\d{3})+|\d+)(?:[.,]\d+)?\s?[%‰]?$/;
+const P_STREEPJE = /^[-–—]$/; // "geen waarde" in een kolom met getallen
+const RAND = 'w:val="single" w:sz="4" w:space="0" w:color="808080"'; // dunne lijn van een halve punt
+const TABEL_OPMAAK =
+  `<w:tblW w:w="${TEKSTBREEDTE}" w:type="dxa"/><w:tblBorders>` +
+  ['top', 'left', 'bottom', 'right', 'insideH', 'insideV'].map((kant) => `<w:${kant} ${RAND}/>`).join('') +
+  '</w:tblBorders><w:tblLayout w:type="fixed"/><w:tblCellMar><w:top w:w="0" w:type="dxa"/><w:left w:w="100" w:type="dxa"/>' +
+  '<w:bottom w:w="0" w:type="dxa"/><w:right w:w="100" w:type="dxa"/></w:tblCellMar>';
+// Word plakt twee tabellen direct na elkaar aan elkaar en wil na een tabel altijd een alinea: een smalle lege regel.
+const NA_TABEL = '<w:p><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/><w:rPr><w:sz w:val="12"/><w:szCs w:val="12"/></w:rPr></w:pPr></w:p>';
+const PAGINA_EINDE = '<w:p><w:pPr><w:spacing w:after="0"/></w:pPr><w:r><w:br w:type="page"/></w:r></w:p>';
+
+/** Eén cel van een tabel: de tekst, en of het een getal is. Een getal krijgt een komma als decimaalteken. */
+function tabelCel(waarde) {
+  if (typeof waarde === 'number') {
+    return Number.isFinite(waarde) ? { tekst: String(waarde === 0 ? 0 : waarde).replace('.', ','), getal: true } : { tekst: '', getal: false };
+  }
+  const tekst = waarde === null || waarde === undefined ? '' : String(waarde);
+  return { tekst, getal: P_GETAL.test(tekst.trim()) };
+}
+
+/**
+ * Kolombreedtes in twips, samen precies de breedte van de tekst op de pagina. Opgegeven breedtes gelden als
+ * verhouding ([3, 1, 1] en [60, 20, 20] geven hetzelfde); een kolom zonder geldige breedte krijgt het gemiddelde.
+ * Is er niets opgegeven, dan bepaalt de langste inhoud van elke kolom de verhouding.
+ */
+function tabelBreedtes(langste, opgegeven) {
+  const eigen = langste.map((x, k) => Number(Array.isArray(opgegeven) ? opgegeven[k] : NaN));
+  const geldig = eigen.filter((b) => b > 0 && Number.isFinite(b));
+  const gemiddeld = geldig.reduce((som, b) => som + b, 0) / (geldig.length || 1);
+  let gewicht = eigen.map((b, k) => (!geldig.length ? Math.min(Math.max(langste[k] + 2, 6), 40) : b > 0 && Number.isFinite(b) ? b : gemiddeld));
+  const grootste = gewicht.reduce((a, b) => Math.max(a, b), 0);
+  gewicht = gewicht.map((g) => Math.max(g, grootste / 20)); // geen kolom smaller dan een twintigste van de breedste
+  const totaal = gewicht.reduce((som, g) => som + g, 0);
+  const uit = gewicht.map((g) => Math.floor((TEKSTBREEDTE * g) / totaal));
+  uit[uit.length - 1] += TEKSTBREEDTE - uit.reduce((som, b) => som + b, 0); // wat door afronden overblijft
+  return uit;
+}
+
+/**
+ * Een tabel met dunne randen over de hele breedte van de tekst. De kopregel is vet en komt op elke nieuwe
+ * pagina terug. Getallen staan rechts; van een kolom met alleen getallen ook de kop en een los streepje.
+ * De inhoud van een cel wordt letterlijk overgenomen (** en * zijn daar gewone tekens).
+ */
+function wTabel(blok) {
+  const kop = (Array.isArray(blok.kop) ? blok.kop : []).map((waarde) => tabelCel(waarde).tekst);
+  const rijen = (Array.isArray(blok.rijen) ? blok.rijen : []).map((rij) => (Array.isArray(rij) ? rij : []).map(tabelCel));
+  const aantal = rijen.reduce((n, rij) => Math.max(n, rij.length), kop.length);
+  if (!aantal) return '';
+  if (aantal > MAX_TABELKOLOMMEN) {
+    throw new Error(`Een tabel in Word kan hooguit ${MAX_TABELKOLOMMEN} kolommen hebben; deze tabel heeft er ${aantal}.`);
+  }
+  const isStreepje = (cel) => P_STREEPJE.test(cel.tekst.trim());
+  const kolommen = Array.from({ length: aantal }, (x, k) => {
+    const gevuld = rijen.map((rij) => rij[k]).filter((cel) => cel && cel.tekst.trim() && !isStreepje(cel));
+    return {
+      getallen: gevuld.length > 0 && gevuld.every((cel) => cel.getal),
+      langste: rijen.reduce((n, rij) => Math.max(n, rij[k]?.tekst.length ?? 0), (kop[k]?.length ?? 0) * 1.15),
+    };
+  });
+  const breedtes = tabelBreedtes(kolommen.map((kolom) => kolom.langste), blok.breedtes);
+  const cel = (k, tekst, rechts, vet) =>
+    `<w:tc><w:tcPr><w:tcW w:w="${breedtes[k]}" w:type="dxa"/></w:tcPr>` +
+    `${wAlinea(tekstRegels(tekst), `<w:pStyle w:val="TableText"/>${rechts ? '<w:jc w:val="right"/>' : ''}`, { vet })}</w:tc>`;
+  let uit = `<w:tbl><w:tblPr>${TABEL_OPMAAK}</w:tblPr><w:tblGrid>${breedtes.map((b) => `<w:gridCol w:w="${b}"/>`).join('')}</w:tblGrid>`;
+  if (kop.length) {
+    // tblHeader: Word herhaalt deze rij bovenaan elke pagina waarop de tabel doorloopt.
+    uit += `<w:tr><w:trPr><w:cantSplit/><w:tblHeader/></w:trPr>${kolommen.map((kolom, k) => cel(k, kop[k] ?? '', kolom.getallen, true)).join('')}</w:tr>`;
+  }
+  for (const rij of rijen) {
+    const cellen = kolommen.map((kolom, k) => {
+      const c = rij[k] ?? { tekst: '', getal: false };
+      return cel(k, c.tekst, c.getal || (kolom.getallen && isStreepje(c)), false);
+    });
+    uit += `<w:tr><w:trPr><w:cantSplit/></w:trPr>${cellen.join('')}</w:tr>`;
+  }
+  return `${uit}</w:tbl>${NA_TABEL}`;
+}
+
 /** Zet blokken om naar Word-alinea's. Elke genummerde lijst krijgt een eigen nummering (in lijsten). */
 function wBlokken(blokken, lijsten, diepte = 0) {
   const inspring = diepte * INSPRING_CITAAT;
   let uit = '';
   for (const blok of blokken) {
     if (blok.soort === 'kop') uit += wAlinea(blok.regels, `<w:pStyle w:val="Heading${blok.niveau}"/>`);
+    else if (blok.soort === 'tabel') uit += wTabel(blok);
+    else if (blok.soort === 'paginaeinde') uit += PAGINA_EINDE;
     else if (blok.soort === 'citaat') uit += wBlokken(blok.blokken, lijsten, diepte + 1);
     else if (blok.soort === 'lijst') {
       let nummering = 1; // 1 = opsommingstekens
@@ -896,7 +1019,7 @@ function wBlokken(blokken, lijsten, diepte = 0) {
 function wStijl(id, naam, alinea, tekens, basis = 'Normal') {
   return (
     `<w:style w:type="paragraph" w:styleId="${id}"><w:name w:val="${naam}"/><w:basedOn w:val="${basis}"/>` +
-    `${id === 'ListParagraph' || id === 'Footer' ? '' : '<w:next w:val="Normal"/>'}<w:qFormat/>` +
+    `${['ListParagraph', 'Footer', 'TableText'].includes(id) ? '' : '<w:next w:val="Normal"/>'}<w:qFormat/>` +
     `${alinea ? `<w:pPr>${alinea}</w:pPr>` : ''}${tekens ? `<w:rPr>${tekens}</w:rPr>` : ''}</w:style>`
   );
 }
@@ -916,6 +1039,7 @@ const DOCX_STIJLEN =
   wKop(3, 240, 24) +
   wStijl('Quote', 'Quote', `<w:ind w:left="${INSPRING_CITAAT}" w:right="${INSPRING_CITAAT}"/>`, '<w:i/><w:color w:val="404040"/>') +
   wStijl('ListParagraph', 'List Paragraph', '<w:spacing w:after="60"/><w:ind w:left="720"/>', '') +
+  wStijl('TableText', 'Tabeltekst', '<w:spacing w:before="40" w:after="40" w:line="240" w:lineRule="auto"/>', '<w:sz w:val="20"/><w:szCs w:val="20"/>') +
   wStijl('Footer', 'footer', '<w:spacing w:after="0" w:line="240" w:lineRule="auto"/>', '<w:color w:val="6B7280"/><w:sz w:val="18"/><w:szCs w:val="18"/>') +
   '</w:styles>';
 
@@ -936,25 +1060,39 @@ function docxNummering(lijsten) {
 }
 
 /**
- * Maakt een Word-document (.docx) op A4 van een tekst met de eenvoudige opmaak uit de schrijfomgeving:
- * # ## ### koppen, **vet**, *cursief*, opsommingen (- * +), genummerde lijsten (1.) en > citaten.
+ * Maakt een Word-document (.docx) op A4: { titel?, markdown?, blokken?, voettekst? }.
+ * markdown is een tekst met de eenvoudige opmaak uit de schrijfomgeving: # ## ### koppen, **vet**, *cursief*,
+ * opsommingen (- * +), genummerde lijsten (1.) en > citaten.
+ * blokken is voor rapporten met tabellen en komt, als het een lijst is, in de plaats van markdown:
+ *   { soort: 'kop', niveau: 1 | 2 | 3, tekst }
+ *   { soort: 'alinea', tekst }                      met **vet** en *cursief*; een regeleinde blijft een regeleinde
+ *   { soort: 'lijst', genummerd?, items: [tekst] }  opsomming, of met genummerd een lijst 1. 2. 3.
+ *   { soort: 'citaat', tekst }
+ *   { soort: 'tabel', kop: [tekst], rijen: [[tekst of getal]], breedtes?: [getal] }
+ *   { soort: 'paginaeinde' }
+ * Een tabel is zo breed als de tekst en heeft dunne randen. De kopregel is vet en komt terug op elke pagina
+ * waarop de tabel doorloopt. Getallen staan rechts en krijgen een komma als decimaalteken; ook tekst die een
+ * getal is ('7,4', '45%') staat rechts. Wil je een vast aantal decimalen, geef het getal dan als tekst ('7,40').
+ * De tekst in een cel wordt letterlijk overgenomen. breedtes is de verhouding tussen de kolommen, bijvoorbeeld
+ * [3, 1, 1]; zonder breedtes volgt de verhouding uit de inhoud. Een onbekend soort blok geeft een foutmelding.
  */
-export function maakDocx({ titel = '', markdown = '', voettekst = '' } = {}) {
+export function maakDocx({ titel = '', markdown = '', blokken, voettekst = '' } = {}) {
   const lijsten = [];
-  let inhoud = titel ? wAlinea([String(titel)], '<w:pStyle w:val="Title"/>', true) : '';
-  inhoud += wBlokken(mdBlokken(String(markdown ?? '')), lijsten);
+  let inhoud = titel ? wAlinea([String(titel)], '<w:pStyle w:val="Title"/>', {}) : '';
+  inhoud += wBlokken(Array.isArray(blokken) ? rapportBlokken(blokken) : mdBlokken(String(markdown ?? '')), lijsten);
   const voet = String(voettekst ?? '').trim();
   const deel = (naam, soort, xml) => ({ naam: `word/${naam}.xml`, soort, type: `${TYPE_W}.${soort}+xml`, inhoud: XML_KOP + xml });
   const pagina =
-    `<w:sectPr>${voet ? '<w:footerReference w:type="default" r:id="rId4"/>' : ''}<w:pgSz w:w="11906" w:h="16838"/>` + // A4
-    '<w:pgMar w:top="1417" w:right="1417" w:bottom="1417" w:left="1417" w:header="708" w:footer="708" w:gutter="0"/></w:sectPr>';
+    `<w:sectPr>${voet ? '<w:footerReference w:type="default" r:id="rId4"/>' : ''}<w:pgSz w:w="${PAGINA_BREEDTE}" w:h="${PAGINA_HOOGTE}"/>` +
+    `<w:pgMar w:top="${PAGINA_MARGE}" w:right="${PAGINA_MARGE}" w:bottom="${PAGINA_MARGE}" w:left="${PAGINA_MARGE}" ` +
+    'w:header="708" w:footer="708" w:gutter="0"/></w:sectPr>';
   // compatibilityMode 15: Word opent het bestand dan niet in de "compatibiliteitsmodus".
   const instellingen =
     `<w:settings xmlns:w="${NS_W}"><w:defaultTabStop w:val="708"/><w:compat><w:compatSetting w:name="compatibilityMode" ` +
     'w:uri="http://schemas.microsoft.com/office/word" w:val="15"/></w:compat><w:themeFontLang w:val="nl-NL"/></w:settings>';
   const rest = [deel('styles', 'styles', DOCX_STIJLEN), deel('numbering', 'numbering', docxNummering(lijsten)), deel('settings', 'settings', instellingen)];
   if (voet) {
-    const alinea = wAlinea(voet.replace(/\r\n?/g, '\n').split('\n'), '<w:pStyle w:val="Footer"/>', true);
+    const alinea = wAlinea(tekstRegels(voet), '<w:pStyle w:val="Footer"/>', {});
     rest.push(deel('footer1', 'footer', `<w:ftr xmlns:w="${NS_W}">${alinea}</w:ftr>`)); // wordt rId4, zie pagina
   }
   return officeZip([
@@ -1122,6 +1260,8 @@ export function maakSpssSyntax({ databestand, variabelen, titel = '' }) {
     const breedte = Math.min(Math.max(Math.round(v.breedte ?? 8), decimalen + 2), 40);
     return `F${breedte}.${decimalen}`;
   };
+  // Elke regel met uitleg is een eigen opmerking: ze begint met * en eindigt met een punt. Zonder die punt
+  // loopt een opmerking in SPSS door tot de volgende punt aan het eind van een regel, of tot een lege regel.
   const uit = [
     '* Encoding: UTF-8.',
     '* =====================================================================.',
@@ -1136,10 +1276,11 @@ export function maakSpssSyntax({ databestand, variabelen, titel = '' }) {
     '* 4. Kies in het syntaxvenster Run > All (Uitvoeren > Alles).',
     '* 5. Bewaar de gegevens daarna als SPSS-bestand: File > Save As (Bestand > Opslaan als).',
     '*.',
-    '* Het gegevensbestand gebruikt een punt als decimaalteken. SET DECIMAL=DOT zorgt dat SPSS dat goed',
-    '* leest, ook op een Nederlandse computer. RESTORE zet aan het eind je eigen instelling terug.',
-    '* Zie je vreemde tekens in plaats van letters met accenten? Sluit dan alle gegevens, voer eenmalig',
-    '* SET UNICODE=ON uit en voer daarna deze syntax opnieuw uit.',
+    '* Het gegevensbestand gebruikt een punt als decimaalteken.',
+    '* SET DECIMAL=DOT zorgt dat SPSS dat goed leest, ook op een Nederlandse computer.',
+    '* RESTORE zet aan het eind je eigen instelling terug.',
+    '* Zie je vreemde tekens in plaats van letters met accenten? Sluit dan alle gegevens.',
+    '* Voer daarna eenmalig SET UNICODE=ON uit en voer deze syntax opnieuw uit.',
     '* =====================================================================.',
     '',
     'PRESERVE.',

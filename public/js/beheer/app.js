@@ -28,6 +28,7 @@ const TABS = [
   ['vragenlijsten', 'Vragenlijsten'],
   ['invoer', 'Eigen invoer'],
   ['stukken', 'Stukken'],
+  ['rapport', 'Rapport'],
   ['acties', 'Acties'],
   ['delen', 'Delen'],
   ['afronden', 'Afronden'],
@@ -46,6 +47,8 @@ const SCHERMEN = {
   invoer: () => import('./schermen/invoer.js'),
   stukken: () => import('./schermen/stukken.js'),
   stuk: () => import('./schermen/stuk-bewerken.js'),
+  rapport: () => import('./schermen/rapporten.js'),
+  rapportBewerken: () => import('./schermen/rapport-bewerken.js'),
   acties: () => import('./schermen/acties.js'),
   delen: () => import('./schermen/delen.js'),
   afronden: () => import('./schermen/afronden.js'),
@@ -65,6 +68,9 @@ function leesAdres() {
     }
     if (tab === 'stukken' && /^\d+$/.test(delen[3] || '')) {
       return { scherm: 'stuk', tab, params: { id, stukId: delen[3] } };
+    }
+    if (tab === 'rapport' && /^\d+$/.test(delen[3] || '')) {
+      return { scherm: 'rapportBewerken', tab, params: { id, rapportId: delen[3] } };
     }
     if (TABS.some(([t]) => t === tab)) return { scherm: tab, tab, params: { id } };
   }

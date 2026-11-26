@@ -16,6 +16,7 @@ import * as v from '../lib/validatie.js';
 import { alle, een, haalOnderzoek, nuIso, vandaagNL } from '../lib/db.js';
 import { willekeurigeCode } from '../lib/auth.js';
 import { berekenDashboard } from './dashboard.js';
+import { rapportVoorKijker } from './rapporten.js';
 import { DREMPEL } from '../lib/schalen.js';
 
 const SESSIEDUUR_SEC = 8 * 60 * 60;
@@ -64,7 +65,7 @@ function leesCookie(request, naam) {
 // ---------------------------------------------------------------------------
 
 /** Controleert en normaliseert wat een kijker mag zien. */
-async function controleerOnderdelen(env, ruw, onderzoekId) {
+async function controleerOnderdelen(env, ruw, onderzoekId, { magLeeg = false } = {}) {
   const o = ruw && typeof ruw === 'object' && !Array.isArray(ruw) ? ruw : {};
   const stukIds = Array.isArray(o.stukken) ? v.idLijst(o.stukken, 'Stukken', { max: 50 }) : [];
   if (stukIds.length) {
@@ -72,12 +73,19 @@ async function controleerOnderdelen(env, ruw, onderzoekId) {
     const eigen = new Set(rijen.map((r) => r.id));
     if (stukIds.some((id) => !eigen.has(id))) throw new Fout(400, 'Een gekozen stuk hoort niet bij dit onderzoek.');
   }
+  const rapportIds = Array.isArray(o.rapporten) ? v.idLijst(o.rapporten, 'Rapporten', { max: 20 }) : [];
+  if (rapportIds.length) {
+    const rijen = await alle(env, 'SELECT id FROM rapporten WHERE onderzoek_id = ?', onderzoekId);
+    const eigen = new Set(rijen.map((r) => r.id));
+    if (rapportIds.some((id) => !eigen.has(id))) throw new Fout(400, 'Een gekozen rapport hoort niet bij dit onderzoek.');
+  }
   const onderdelen = {
     dashboard: o.dashboard !== false,
-    open_antwoorden: o.open_antwoorden === true,
+    open_antwoorden: o.open_antwoorden === true && o.dashboard !== false,
     stukken: stukIds,
+    rapporten: rapportIds,
   };
-  if (!onderdelen.dashboard && !onderdelen.stukken.length) {
+  if (!magLeeg && !onderdelen.dashboard && !onderdelen.stukken.length && !onderdelen.rapporten.length) {
     throw new Fout(400, 'Kies minstens één onderdeel dat de kijker mag zien.');
   }
   return onderdelen;
@@ -95,7 +103,7 @@ function linkVoorBeheer(rij) {
     id: rij.id,
     naam: rij.naam,
     code: rij.code,
-    onderdelen: { dashboard: onderdelen.dashboard !== false, open_antwoorden: onderdelen.open_antwoorden === true, stukken: onderdelen.stukken || [] },
+    onderdelen: { dashboard: onderdelen.dashboard === true, open_antwoorden: onderdelen.dashboard === true && onderdelen.open_antwoorden === true, stukken: onderdelen.stukken || [], rapporten: onderdelen.rapporten || [] },
     verloopt_op: rij.verloopt_op,
     ingetrokken: !!rij.ingetrokken,
     verlopen,
@@ -146,8 +154,9 @@ export async function wijzig({ request, env, params }) {
   const body = await leesJson(request);
   const naam = v.tekst(body.naam, 'Voor wie', { verplicht: true, max: 150 });
   const verlooptOp = v.datum(body.verloopt_op, 'Verloopdatum');
-  const onderdelen = await controleerOnderdelen(env, body.onderdelen, huidig.onderzoek_id);
   const ingetrokken = v.vlag(body.ingetrokken);
+  // Intrekken moet altijd kunnen, ook als alles wat gedeeld was intussen is verwijderd.
+  const onderdelen = await controleerOnderdelen(env, body.onderdelen, huidig.onderzoek_id, { magLeeg: !!ingetrokken });
   const stmts = [
     env.DB.prepare('UPDATE deellinks SET naam = ?, verloopt_op = ?, onderdelen = ?, ingetrokken = ? WHERE id = ?')
       .bind(naam, verlooptOp, JSON.stringify(onderdelen), ingetrokken, id),
@@ -199,7 +208,7 @@ async function werkendeLink(env, code) {
   } catch {
     onderdelen = {};
   }
-  rij.mag = { dashboard: onderdelen.dashboard !== false, open_antwoorden: onderdelen.open_antwoorden === true, stukken: onderdelen.stukken || [] };
+  rij.mag = { dashboard: onderdelen.dashboard === true, open_antwoorden: onderdelen.dashboard === true && onderdelen.open_antwoorden === true, stukken: onderdelen.stukken || [], rapporten: onderdelen.rapporten || [] };
   return rij;
 }
 
@@ -277,6 +286,11 @@ export async function overzicht({ request, env, params }) {
     const rijen = await alle(env, 'SELECT id, titel, soort, bijgewerkt_op FROM stukken WHERE onderzoek_id = ? ORDER BY volgorde, id', o.id);
     stukken = rijen.filter((s) => link.mag.stukken.includes(s.id));
   }
+  let rapporten = [];
+  if (link.mag.rapporten.length) {
+    const rijen = await alle(env, 'SELECT id, titel, soort, bijgewerkt_op FROM rapporten WHERE onderzoek_id = ? ORDER BY id', o.id);
+    rapporten = rijen.filter((r) => link.mag.rapporten.includes(r.id));
+  }
   // Namen van thema's zijn nodig om de resultaten te kunnen tonen.
   const themas = link.mag.dashboard
     ? await alle(env, 'SELECT id, naam FROM themas WHERE onderzoek_id = ? ORDER BY volgorde, id', o.id)
@@ -286,6 +300,7 @@ export async function overzicht({ request, env, params }) {
     onderdelen: { dashboard: link.mag.dashboard, open_antwoorden: link.mag.open_antwoorden },
     themas,
     stukken,
+    rapporten,
     drempel: DREMPEL,
   });
 }
@@ -369,4 +384,14 @@ export async function stuk({ request, env, params }) {
   const rij = await een(env, 'SELECT id, titel, soort, inhoud, bijgewerkt_op FROM stukken WHERE id = ? AND onderzoek_id = ?', id, link.onderzoek_id);
   if (!rij) throw new Fout(404, 'Dit stuk bestaat niet (meer).');
   return json({ stuk: rij });
+}
+
+export async function rapport({ request, env, params }) {
+  const link = await werkendeLink(env, params.code);
+  await vereisSessie(request, env, link);
+  const id = v.id(params.id);
+  if (!link.mag.rapporten.includes(id)) throw new Fout(404, 'Dit rapport is niet gedeeld via deze link.');
+  const rij = await een(env, 'SELECT * FROM rapporten WHERE id = ? AND onderzoek_id = ?', id, link.onderzoek_id);
+  if (!rij) throw new Fout(404, 'Dit rapport bestaat niet (meer).');
+  return json({ rapport: rapportVoorKijker(rij) });
 }

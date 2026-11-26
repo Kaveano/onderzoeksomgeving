@@ -131,10 +131,13 @@ function sessieVerlopen() {
 
 // ---------- Inzage ----------
 
+const aantalDocumenten = () => overzicht.stukken.length + overzicht.rapporten.length;
+
 function adres() {
   const delen = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
   const heeftDashboard = overzicht.onderdelen.dashboard;
-  const heeftStukken = overzicht.stukken.length > 0;
+  const heeftStukken = aantalDocumenten() > 0;
+  if (delen[0] === 'rapport' && /^\d+$/.test(delen[1] || '') && overzicht.rapporten.length) return { tab: 'documenten', rapport: Number(delen[1]) };
   if (delen[0] === 'document' && /^\d+$/.test(delen[1] || '') && heeftStukken) return { tab: 'documenten', stuk: Number(delen[1]) };
   if (delen[0] === 'documenten' && heeftStukken) return { tab: 'documenten', stuk: null };
   if (heeftDashboard) return { tab: 'resultaten', stuk: null };
@@ -167,11 +170,11 @@ async function toonInzage() {
   const o = overzicht.onderzoek;
   const waar = adres();
   const heeftDashboard = overzicht.onderdelen.dashboard;
-  const heeftStukken = overzicht.stukken.length > 0;
+  const heeftStukken = aantalDocumenten() > 0;
   const tabs = heeftDashboard && heeftStukken
     ? h('nav', { class: 'tabs', 'aria-label': 'Onderdelen' },
       h('a', { href: '#/resultaten', 'aria-current': waar.tab === 'resultaten' ? 'page' : null }, 'Resultaten'),
-      h('a', { href: '#/documenten', 'aria-current': waar.tab === 'documenten' ? 'page' : null }, `Documenten (${overzicht.stukken.length})`))
+      h('a', { href: '#/documenten', 'aria-current': waar.tab === 'documenten' ? 'page' : null }, `Documenten (${aantalDocumenten()})`))
     : null;
   const container = h('div', { class: 'kijk-inhoud' }, laden());
   const hoofd = h('main', { class: 'inhoud', id: 'inhoud', tabindex: '-1' },
@@ -195,12 +198,13 @@ async function toonInzage() {
   }
   try {
     if (waar.tab === 'resultaten') await toonResultaten(container);
+    else if (waar.rapport) await toonRapport(container, waar.rapport);
     else if (waar.stuk) await toonDocument(container, waar.stuk);
     else toonDocumenten(container);
   } catch (e) {
     if (mijnBeurt !== beurt) return;
     if (e.status === 401) sessieVerlopen();
-    else if (e.status === 404 && !waar.stuk) toonWerktNiet();
+    else if (e.status === 404 && !waar.stuk && !waar.rapport) toonWerktNiet();
     else vervang(container, melding([h('strong', {}, 'Dit kon niet worden geladen. '), e.message || ''], 'gevaar'));
   }
 }
@@ -237,7 +241,12 @@ function toonDocumenten(container) {
   vervang(container, h('section', { class: 'kaart' },
     h('h2', {}, 'Documenten'),
     h('p', { class: 'zacht' }, 'Deze documenten zijn met je gedeeld. Klik op een titel om het document te lezen.'),
-    h('ul', { class: 'kijk-documenten' }, overzicht.stukken.map((s) => h('li', {},
+    h('ul', { class: 'kijk-documenten' },
+      overzicht.rapporten.map((r) => h('li', {},
+        h('a', { href: `#/rapport/${r.id}`, class: 'kijk-document-link' },
+          h('span', { class: 'kijk-document-titel' }, r.titel || 'Rapport'),
+          h('span', { class: 'klein zacht' }, [r.soort === 'tussen' ? 'Tussenrapport' : 'Eindrapport', r.bijgewerkt_op ? `bijgewerkt op ${lokaleDatum(r.bijgewerkt_op)}` : null].filter(Boolean).join(' · '))))),
+      overzicht.stukken.map((s) => h('li', {},
       h('a', { href: `#/document/${s.id}`, class: 'kijk-document-link' },
         h('span', { class: 'kijk-document-titel' }, s.titel || 'Zonder titel'),
         h('span', { class: 'klein zacht' }, [SOORTEN[s.soort] || 'Document', s.bijgewerkt_op ? `bijgewerkt op ${lokaleDatum(s.bijgewerkt_op)}` : null].filter(Boolean).join(' · '))))))));
@@ -263,6 +272,22 @@ async function toonDocument(container, id) {
   window.scrollTo(0, 0);
 }
 
+async function toonRapport(container, id) {
+  const [{ rapport }, feitenModule, weergaveModule] = await Promise.all([
+    vraag(`/rapporten/${id}`),
+    import('./beheer/rapport-feiten.js'),
+    import('./beheer/rapport-weergave.js'),
+  ]);
+  document.title = `${rapport.titel || 'Rapport'} – ${overzicht.onderzoek.titel}`;
+  const blokken = feitenModule.rapportNaarBlokken(rapport, { markeerLeeg: false });
+  vervang(container,
+    h('div', { class: 'kruimel kijk-rapport-balk' },
+      h('a', { href: '#/documenten' }, '← Alle documenten'),
+      h('button', { type: 'button', class: 'knop knop-klein', onclick: () => window.print() }, 'Afdrukken of opslaan als pdf')),
+    h('article', { class: 'kaart rp-document' }, weergaveModule.toonBlokken(blokken)));
+  window.scrollTo(0, 0);
+}
+
 // ---------- Begin ----------
 
 async function start() {
@@ -278,6 +303,8 @@ async function start() {
       return;
     }
     overzicht = await vraag('/overzicht');
+    if (!Array.isArray(overzicht.rapporten)) overzicht.rapporten = [];
+    if (!Array.isArray(overzicht.stukken)) overzicht.stukken = [];
     await toonInzage();
   } catch (e) {
     if (e.status === 404) toonWerktNiet();

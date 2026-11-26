@@ -426,10 +426,18 @@ test('xlsx lezen: soorten cellen, tekst met opmaak, volgorde van de bladen en an
   const { bladen } = await B.leesXlsx(bestand);
   assert.deepEqual(bladen.map((b) => b.naam), ['Tweede bestand eerst', 'Soorten & zo']);
   assert.deepEqual(bladen[0].rijen, [[null, null], [null, 'met voorvoegsel']]);
+  // N1 (verwijst naar een tekst die niet bestaat), O1 (alleen opmaak) en P1 (formule zonder uitkomst) zijn leeg.
+  // Lege kolommen achteraan vervallen, dus het blad is 13 kolommen breed (A t/m M) en niet 16.
   assert.deepEqual(bladen[1].rijen, [
-    ['gewoon', 'vet en gewoon', 'regel 1\nregel 2', null, '<a> & é🙂 "x"', 'in de cel', 'gewoon!', null, true, false, 3, '<ruw> & zo', 7.5, null, null, null],
-    ['ab', 2, ...Array(14).fill(null)],
+    ['gewoon', 'vet en gewoon', 'regel 1\nregel 2', null, '<a> & é🙂 "x"', 'in de cel', 'gewoon!', null, true, false, 3, '<ruw> & zo', 7.5],
+    ['ab', 2, ...Array(11).fill(null)],
   ]);
+  // Dezelfde lege cellen midden in een rij blijven een lege plek (null).
+  const midden = werkmap({
+    teksten,
+    bladen: [{ naam: 'Midden', doel: 'worksheets/sheet1.xml', pad: 'xl/worksheets/sheet1.xml', xml: blad('<row r="1"><c r="A1" t="s"><v>99</v></c><c r="B1" s="0"/><c r="C1"><f>A1</f></c><c r="D1"><v>4</v></c><c r="E1" s="0"/></row>') }],
+  });
+  assert.deepEqual((await B.leesXlsx(midden)).bladen[0].rijen, [[null, null, null, 4]]);
 });
 
 test('xlsx lezen: foutmeldingen in het Nederlands', async () => {
@@ -512,7 +520,11 @@ test('csv: aanhalingstekens, regeleinden en lege regels', () => {
   assert.deepEqual(B.leesCsv(''), []);
   assert.deepEqual(B.leesCsv(new Uint8Array(0)), []);
   assert.deepEqual(B.leesCsv('\n\n'), []);
+  // Een regel met alleen "" is geen lege regel: het is een rij met één (lege) cel, ook achteraan.
   assert.deepEqual(B.leesCsv('""'), [['']]);
+  assert.deepEqual(B.leesCsv('a\n""\n\n'), [['a'], ['']]);
+  assert.deepEqual(B.leesCsv('a\n\n""\n'), [['a'], [''], ['']]);
+  assert.deepEqual(B.leesCsv('a;b\n;\n\n'), [['a', 'b'], ['', '']], 'een regel met alleen een scheidingsteken blijft');
   for (const rij of B.leesCsv('a;1\nb;2')) for (const celwaarde of rij) assert.equal(typeof celwaarde, 'string');
 });
 
@@ -673,6 +685,217 @@ test('docx: randgevallen (leeg, alleen tekst, tekens die niet in XML mogen, opma
   // Koppen met afsluitende hekjes en opmaak; een titel wordt letterlijk overgenomen.
   const q = alineas(await document({ titel: '**geen** opmaak', markdown: '## Kop met *nadruk* ##\n### Derde\ntekst direct eronder' }));
   assert.deepEqual(q.map((a) => [a.stijl, a.tekst]), [['Title', '**geen** opmaak'], ['Heading2', 'Kop met nadruk'], ['Heading3', 'Derde'], [null, 'tekst direct eronder']]);
+});
+
+// ---------- Word: blokken en tabellen voor rapporten ----------
+
+/** Haalt de tabellen uit document.xml: de opmaak, het raster met kolombreedtes en per rij de cellen. */
+function tabellen(xml) {
+  return [...xml.matchAll(/<w:tbl>(.*?)<\/w:tbl>/gs)].map(([, binnen]) => ({
+    opmaak: /<w:tblPr>(.*?)<\/w:tblPr>/s.exec(binnen)[1],
+    raster: [...binnen.matchAll(/<w:gridCol w:w="(\d+)"\/>/g)].map((m) => Number(m[1])),
+    rijen: [...binnen.matchAll(/<w:tr>(.*?)<\/w:tr>/gs)].map(([, rij]) => ({
+      herhaald: /<w:trPr>(?:<w:cantSplit\/>)?<w:tblHeader\/><\/w:trPr>/.test(rij),
+      cellen: [...rij.matchAll(/<w:tc>(.*?)<\/w:tc>/gs)].map(([, cel]) => {
+        const p = alineas(cel);
+        assert.equal(p.length, 1, 'elke cel bevat precies één alinea');
+        return {
+          tekst: p[0].tekst,
+          stijl: p[0].stijl,
+          vet: p[0].stukjes.length > 0 && p[0].stukjes.every((s) => s.vet),
+          rechts: cel.includes('<w:jc w:val="right"/>'),
+          breedte: Number(/<w:tcPr><w:tcW w:w="(\d+)" w:type="dxa"\/><\/w:tcPr>/.exec(cel)[1]),
+        };
+      }),
+    })),
+  }));
+}
+
+/** document.xml van een document dat uit blokken is gemaakt. */
+const documentVan = async (invoer) => alsTekst((await B.leesZip(B.maakDocx(invoer))).get('word/document.xml'));
+/** De alinea's buiten de tabellen; op de plek van een tabel staat [tabel]. */
+const zonderTabellen = (xml) => alineas(xml.replace(/<w:tbl>.*?<\/w:tbl>/gs, '<w:p><w:r><w:t>[tabel]</w:t></w:r></w:p>'));
+
+const TABEL = {
+  soort: 'tabel',
+  kop: ['Vraag', 'N', 'Gemiddelde', 'Aandeel', 'Opmerking'],
+  rijen: [
+    ['Ik kan mijn werk goed aan', 42, 3.75, '45%', 'Prima <b> & "zo"'],
+    ['Ik voel me **gewaardeerd**', 7, -0.5, '–', 12],
+    ['Totaal', 1250, 4, '100,0%', ''],
+  ],
+};
+
+test('docx: blokken in plaats van Markdown (koppen, alinea, lijsten, citaat, pagina-einde en tabel)', async () => {
+  const blokken = [
+    { soort: 'kop', niveau: 1, tekst: 'Resultaten <2026> & meer' },
+    { soort: 'alinea', tekst: 'Een **vette** en *cursieve* tekst.\r\nTweede regel met 2 * 3 = 6.' },
+    { soort: 'kop', niveau: 2, tekst: 'Bevindingen' },
+    { soort: 'lijst', items: ['eerste', 'tweede met **vet**', 'derde\nvervolg'] },
+    { soort: 'lijst', genummerd: true, items: ['een', 'twee'] },
+    { soort: 'lijst', genummerd: true, items: ['opnieuw vanaf één'] },
+    { soort: 'lijst', items: [] },
+    { soort: 'citaat', tekst: 'Een *citaat* van een medewerker.\nTweede regel.' },
+    { soort: 'paginaeinde' },
+    { soort: 'kop', niveau: 3, tekst: 'Bijlage: cijfers' },
+    TABEL,
+    { soort: 'alinea', tekst: '# geen kop, - geen lijst en > geen citaat: een alinea blijft een alinea' },
+  ];
+  const invoer = { titel: 'Tussenrapport', blokken, markdown: '# Dit wordt niet gebruikt', voettekst: 'Vertrouwelijk' };
+  const docx = B.maakDocx(invoer);
+  assert.deepEqual(B.maakDocx(invoer), docx, 'dezelfde invoer geeft hetzelfde bestand');
+  const zip = await B.leesZip(docx);
+  for (const [naam, inhoud] of zip) controleerXml(alsTekst(inhoud), naam);
+  const document = alsTekst(zip.get('word/document.xml'));
+  assert.ok(!document.includes('Dit wordt niet gebruikt'), 'met blokken wordt markdown overgeslagen');
+
+  const p = zonderTabellen(document);
+  assert.deepEqual(p.map((a) => [a.stijl, a.lijst, a.tekst]), [
+    ['Title', null, 'Tussenrapport'],
+    ['Heading1', null, 'Resultaten <2026> & meer'],
+    [null, null, 'Een vette en cursieve tekst.\nTweede regel met 2 * 3 = 6.'],
+    ['Heading2', null, 'Bevindingen'],
+    ['ListParagraph', 1, 'eerste'],
+    ['ListParagraph', 1, 'tweede met vet'],
+    ['ListParagraph', 1, 'derde\nvervolg'],
+    ['ListParagraph', 2, 'een'],
+    ['ListParagraph', 2, 'twee'],
+    ['ListParagraph', 3, 'opnieuw vanaf één'],
+    ['Quote', null, 'Een citaat van een medewerker.\nTweede regel.'],
+    [null, null, ''], // het pagina-einde
+    ['Heading3', null, 'Bijlage: cijfers'],
+    [null, null, '[tabel]'],
+    [null, null, ''], // smalle lege regel na de tabel
+    [null, null, '# geen kop, - geen lijst en > geen citaat: een alinea blijft een alinea'],
+  ]);
+  assert.deepEqual(p[2].stukjes.filter((s) => s.vet || s.cursief), [{ tekst: 'vette', vet: true, cursief: false }, { tekst: 'cursieve', vet: false, cursief: true }]);
+  assert.deepEqual(p[5].stukjes.find((s) => s.vet), { tekst: 'vet', vet: true, cursief: false });
+  assert.deepEqual(p[10].stukjes.find((s) => s.cursief), { tekst: 'citaat', vet: false, cursief: true });
+  // Het pagina-einde staat precies één keer in het document, tussen het citaat en de volgende kop.
+  assert.equal(document.split('<w:br w:type="page"/>').length - 1, 1);
+  assert.match(document, /Tweede regel\.<\/w:t><\/w:r><\/w:p><w:p>(?:<w:pPr><w:spacing [^>]*\/><\/w:pPr>)?<w:r><w:br w:type="page"\/><\/w:r><\/w:p><w:p><w:pPr><w:pStyle w:val="Heading3"\/>/);
+  // Elke genummerde lijst begint opnieuw bij 1; een lege lijst geeft niets (ook geen nummering).
+  const nummering = alsTekst(zip.get('word/numbering.xml'));
+  assert.equal((nummering.match(/<w:startOverride w:val="1"\/>/g) || []).length, 2);
+  assert.ok(!nummering.includes('<w:num w:numId="4">'));
+  assert.equal(alineas(alsTekst(zip.get('word/footer1.xml')))[0].tekst, 'Vertrouwelijk');
+
+  // Zonder blokken (of met iets anders dan een lijst) geldt de markdown; een lege lijst blokken geeft een leeg document.
+  for (const geen of [undefined, null, 'tekst']) {
+    assert.deepEqual(alineas(await documentVan({ blokken: geen, markdown: '# Kop' })).map((a) => [a.stijl, a.tekst]), [['Heading1', 'Kop']]);
+  }
+  assert.ok((await documentVan({ blokken: [], markdown: '# Kop' })).includes('<w:body><w:p/><w:sectPr>'));
+  // Niveaus buiten 1 t/m 3 worden het dichtstbijzijnde niveau; een kop is altijd één regel.
+  const koppen = alineas(await documentVan({ blokken: [{ soort: 'kop', niveau: 0, tekst: 'a' }, { soort: 'kop', niveau: 7, tekst: 'b\nc' }, { soort: 'kop', tekst: ' d ' }, { soort: 'kop', niveau: '2', tekst: 'e' }] }));
+  assert.deepEqual(koppen.map((a) => [a.stijl, a.tekst]), [['Heading1', 'a'], ['Heading3', 'b c'], ['Heading1', 'd'], ['Heading2', 'e']]);
+  // Een onbekend blok is een fout in het programma en wordt gemeld, met de plaats erbij.
+  assert.throws(() => B.maakDocx({ blokken: [{ soort: 'alinea', tekst: 'x' }, { soort: 'plaatje' }] }), (fout) => fout instanceof TypeError && /Onbekend soort blok op plaats 2 van het document: "plaatje"/.test(fout.message));
+  assert.throws(() => B.maakDocx({ blokken: [null] }), /Onbekend soort blok op plaats 1/);
+});
+
+test('docx: tabel met dunne randen, een vette kopregel die op elke pagina terugkomt en getallen rechts', async () => {
+  const document = await documentVan({ blokken: [{ soort: 'alinea', tekst: 'Vooraf.' }, TABEL] });
+  const [t, ...meer] = tabellen(document);
+  assert.equal(meer.length, 0);
+
+  // Dunne enkele lijn (sz is in achtste punten: 4 = een halve punt) rondom en tussen alle cellen.
+  for (const kant of ['top', 'left', 'bottom', 'right', 'insideH', 'insideV']) {
+    const rand = new RegExp(`<w:${kant} w:val="single" w:sz="(\\d+)" w:space="0" w:color="[0-9A-F]{6}"/>`).exec(t.opmaak);
+    assert.ok(rand, `rand ${kant}`);
+    assert.ok(Number(rand[1]) >= 2 && Number(rand[1]) <= 6, `rand ${kant} is dun`);
+  }
+  // Zo breed als de tekst op de pagina (A4 min twee marges van 2,5 cm), met vaste kolombreedtes die samen kloppen.
+  assert.match(t.opmaak, /^<w:tblW w:w="9072" w:type="dxa"\/><w:tblBorders>/);
+  assert.match(t.opmaak, /<w:tblLayout w:type="fixed"\/>/);
+  assert.equal(t.raster.length, 5);
+  assert.equal(t.raster.reduce((a, b) => a + b, 0), 9072);
+  assert.ok(t.raster[0] > t.raster[1] * 2, 'de kolom met lange tekst is breder dan die met korte getallen');
+  for (const rij of t.rijen) assert.deepEqual(rij.cellen.map((c) => c.breedte), t.raster);
+
+  // De kopregel: vet, en gemarkeerd als kop die Word bovenaan elke volgende pagina herhaalt. Alleen de eerste rij.
+  assert.equal(t.rijen.length, 4);
+  assert.deepEqual(t.rijen.map((r) => r.herhaald), [true, false, false, false]);
+  assert.deepEqual(t.rijen[0].cellen.map((c) => c.tekst), TABEL.kop);
+  assert.ok(t.rijen[0].cellen.every((c) => c.vet), 'kopregel is vet');
+  assert.ok(t.rijen.slice(1).every((r) => r.cellen.every((c) => !c.vet)), 'de andere rijen niet');
+  assert.ok(document.includes('<w:tr><w:trPr><w:cantSplit/><w:tblHeader/></w:trPr><w:tc>'));
+
+  // Getallen krijgen een komma als decimaalteken; de tekst in een cel wordt letterlijk overgenomen (geen opmaak).
+  assert.deepEqual(t.rijen.slice(1).map((r) => r.cellen.map((c) => c.tekst)), [
+    ['Ik kan mijn werk goed aan', '42', '3,75', '45%', 'Prima <b> & "zo"'],
+    ['Ik voel me **gewaardeerd**', '7', '-0,5', '–', '12'],
+    ['Totaal', '1250', '4', '100,0%', ''],
+  ]);
+  // Rechts: elk getal (ook als tekst, zoals 45%), en van een kolom met alleen getallen ook de kop en een los streepje.
+  assert.deepEqual(t.rijen.map((r) => r.cellen.map((c) => (c.rechts ? 'R' : 'L')).join('')), ['LRRRL', 'LRRRL', 'LRRRR', 'LRRRL']);
+  assert.ok(t.rijen.every((r) => r.cellen.every((c) => c.stijl === 'TableText')), 'elke cel gebruikt de stijl voor tabeltekst');
+  const stijlen = alsTekst((await B.leesZip(B.maakDocx({ blokken: [TABEL] }))).get('word/styles.xml'));
+  assert.match(stijlen, /<w:style w:type="paragraph" w:styleId="TableText"><w:name w:val="Tabeltekst"\/><w:basedOn w:val="Normal"\/>/);
+
+  // Na een tabel komt altijd een alinea: aan het eind van het document en tussen twee tabellen (anders plakt Word ze aaneen).
+  assert.match(document, /<\/w:tbl><w:p><w:pPr>.*?<\/w:pPr><\/w:p><w:sectPr>/);
+  const twee = await documentVan({ blokken: [TABEL, TABEL] });
+  assert.equal(tabellen(twee).length, 2);
+  assert.ok(!twee.includes('</w:tbl><w:tbl>'));
+  assert.deepEqual(zonderTabellen(twee).map((a) => a.tekst), ['[tabel]', '', '[tabel]', '']);
+});
+
+test('docx: tabellen, randgevallen (zonder kop, ongelijke rijen, breedtes, lege en te brede tabellen)', async () => {
+  const tabel = async (blok) => tabellen(await documentVan({ blokken: [{ soort: 'tabel', ...blok }] }))[0];
+
+  // Zonder kop is er geen herhaalde of vette rij. Te korte rijen worden aangevuld met lege cellen.
+  const los = await tabel({ rijen: [['a', 'b', 'c'], ['d'], [], 'geen rij', [null, undefined, NaN, 0, -0]] });
+  assert.equal(los.raster.length, 5);
+  assert.ok(los.rijen.every((r) => !r.herhaald && r.cellen.length === 5 && r.cellen.every((c) => !c.vet)));
+  assert.deepEqual(los.rijen.map((r) => r.cellen.map((c) => c.tekst)), [['a', 'b', 'c', '', ''], ['d', '', '', '', ''], ['', '', '', '', ''], ['', '', '', '', ''], ['', '', '', '0', '0']]);
+  // Een kop die breder is dan de rijen, en andersom; een kop zonder rijen geeft alleen de kopregel.
+  assert.deepEqual((await tabel({ kop: ['a', 'b', 'c'], rijen: [[1]] })).rijen.map((r) => r.cellen.length), [3, 3]);
+  assert.deepEqual((await tabel({ kop: ['a'], rijen: [[1, 2, 3]] })).rijen.map((r) => r.cellen.map((c) => c.tekst)), [['a', '', ''], ['1', '2', '3']]);
+  assert.deepEqual((await tabel({ kop: ['alleen', 'kop'] })).rijen.map((r) => [r.herhaald, r.cellen.length]), [[true, 2]]);
+  // Een tabel zonder kolommen wordt weggelaten.
+  for (const leeg of [{}, { kop: [], rijen: [] }, { rijen: [[], []] }, { kop: 'geen lijst', rijen: 5 }]) {
+    const xml = await documentVan({ blokken: [{ soort: 'alinea', tekst: 'voor' }, { soort: 'tabel', ...leeg }, { soort: 'alinea', tekst: 'na' }] });
+    assert.ok(!xml.includes('<w:tbl>'));
+    assert.deepEqual(alineas(xml).map((a) => a.tekst), ['voor', 'na']);
+  }
+
+  // Wat een getal is (en dus rechts staat): echte getallen, en tekst in Nederlandse of gewone schrijfwijze.
+  const soorten = [12, -3.5, 1e21, '12', '-3,5', '+4', '−2', '1.250', '1.250,50', '3.14', '45%', '45 %', '€ 12,50', '€5', ' 7 ', '2‰',
+    'A12', '12a', '2024-01', '12:30', '1,2,3', '1.25.000', '12 (34%)', 'n = 12', '-', '', '   ', 'ja', '€', '%', true];
+  const getallen = (await tabel({ rijen: soorten.map((w) => ['x', w]) })).rijen.map((r) => r.cellen[1].rechts);
+  assert.deepEqual(getallen, soorten.map((w, i) => i < 16), soorten.filter((w, i) => getallen[i] !== i < 16).join(' | '));
+  // Een streepje staat alleen rechts in een kolom met verder alleen getallen; in een gemengde kolom staat de kop links.
+  const gemengd = await tabel({ kop: ['Naam', 'Score', 'Gemengd', 'Leeg'], rijen: [['a', 1, 'tekst', ''], ['b', '-', '—', ''], ['c', '–', 5, '-']] });
+  assert.deepEqual(gemengd.rijen.map((r) => r.cellen.map((c) => (c.rechts ? 'R' : 'L')).join('')), ['LRLL', 'LRLL', 'LRLL', 'LRRL']);
+
+  // Regeleinden en tabs in een cel blijven; tekens die niet in XML mogen verdwijnen.
+  const tekens = await documentVan({ blokken: [{ soort: 'tabel', kop: ['a\nb'], rijen: [['regel 1\r\nregel 2\tna tab'], ['stuur\u0000\u0008teken <&"> \ud83d']] }] });
+  controleerXml(tekens, 'document.xml');
+  assert.deepEqual(tabellen(tekens)[0].rijen.map((r) => r.cellen[0].tekst), ['a\nb', 'regel 1\nregel 2\tna tab', 'stuurteken <&"> ']);
+
+  // Opgegeven breedtes zijn een verhouding; samen blijft het de breedte van de tekst.
+  const breed = await tabel({ kop: ['a', 'b', 'c'], rijen: [['x', 'y', 'z']], breedtes: [3, 1, 2] });
+  assert.deepEqual(breed.raster, [4536, 1512, 3024]);
+  assert.deepEqual((await tabel({ kop: ['a', 'b'], rijen: [], breedtes: [50, 50] })).raster, [4536, 4536]);
+  // Ontbrekende of ongeldige breedtes krijgen het gemiddelde van de wel opgegeven breedtes; zonder geldige breedte telt de inhoud.
+  assert.deepEqual((await tabel({ kop: ['a', 'b', 'c'], breedtes: [1, 3] })).raster, [1512, 4536, 3024]);
+  assert.deepEqual((await tabel({ kop: ['a', 'b', 'c', 'd'], breedtes: [2, 0, -1, 'x'] })).raster, [2268, 2268, 2268, 2268]);
+  assert.deepEqual((await tabel({ kop: ['a', 'b'], breedtes: 'breed' })).raster, [4536, 4536]);
+  // Geen kolom wordt onbruikbaar smal, ook niet met een scheve verhouding of heel veel tekst in één kolom.
+  const scheef = (await tabel({ kop: ['a', 'b'], breedtes: [1000, 1] })).raster;
+  assert.ok(scheef[1] >= 400 && scheef[0] + scheef[1] === 9072, String(scheef));
+  const vanzelf = (await tabel({ kop: ['Vraag', 'N'], rijen: [['x'.repeat(500), 3]] })).raster;
+  assert.ok(vanzelf[0] > vanzelf[1] * 3 && vanzelf[1] >= 800 && vanzelf[0] + vanzelf[1] === 9072, String(vanzelf));
+
+  // Word kan hooguit 63 kolommen aan.
+  assert.equal((await tabel({ rijen: [Array.from({ length: 63 }, (x, i) => i)] })).raster.reduce((a, b) => a + b, 0), 9072);
+  assert.throws(() => B.maakDocx({ blokken: [{ soort: 'tabel', rijen: [Array(64).fill('x')] }] }), /hooguit 63 kolommen hebben; deze tabel heeft er 64/);
+  // Een grote tabel (2000 rijen) geeft een geldig document.
+  const groot = await documentVan({ blokken: [{ soort: 'tabel', kop: ['Nr', 'Antwoord', 'Score'], rijen: Array.from({ length: 2000 }, (x, i) => [i + 1, `Antwoord ${i + 1}`, (i % 50) / 10]) }] });
+  controleerXml(groot, 'document.xml');
+  const rijenGroot = tabellen(groot)[0].rijen;
+  assert.equal(rijenGroot.length, 2001);
+  assert.deepEqual(rijenGroot[2000].cellen.map((c) => [c.tekst, c.rechts]), [['2000', true], ['Antwoord 2000', false], ['4,9', true]]);
 });
 
 // ---------- Agenda ----------
@@ -880,6 +1103,28 @@ test('maakSpssSyntax: bestandsnaam, getallen als waarden en foutmeldingen', () =
     assert.throws(() => B.maakSpssSyntax({ databestand: 'g.csv', variabelen: [{ naam, soort: 'getal' }] }), /Ongeldige of dubbele SPSS-naam/, naam);
   }
   assert.throws(() => B.maakSpssSyntax({ databestand: 'g.csv', variabelen: [{ naam: 'Leeftijd', soort: 'getal' }, { naam: 'leeftijd', soort: 'getal' }] }), /dubbele SPSS-naam: "leeftijd"/);
+});
+
+// ---------- De module als geheel ----------
+
+test('module: de kop noemt precies de functies die er zijn; geen eval, en de pagina alleen in bewaarBestand', () => {
+  const namen = ['bewaarBestand', 'crc32', 'leesCsv', 'leesXlsx', 'leesZip', 'maakDocx', 'maakIcs', 'maakSpssSyntax', 'maakXlsx', 'maakZip', 'spssNaam'];
+  assert.deepEqual(Object.keys(B).sort(), namen);
+  for (const naam of namen) assert.equal(typeof B[naam], 'function', naam);
+
+  const bron = readFileSync(new URL('../public/js/beheer/bestanden.js', import.meta.url), 'utf8');
+  const kop = bron.slice(0, bron.indexOf('\n\n'));
+  assert.ok(kop.split('\n').every((regel) => regel.startsWith('//')), 'de kop is het commentaar bovenaan het bestand');
+  const genoemd = [...new Set(kop.match(/\b(?:maak|lees|bewaar|spss|crc)[A-Za-z0-9]+/g))].sort();
+  assert.deepEqual(genoemd, namen, 'de kop van de module en de functies die de module naar buiten geeft zijn gelijk');
+  assert.deepEqual([...bron.matchAll(/^export (?:async )?function (\w+)/gm)].map((m) => m[1]).sort(), namen);
+  assert.equal((bron.match(/^export /gm) || []).length, namen.length, 'er zijn geen andere exports');
+
+  assert.ok(!/\beval\s*\(|\bnew\s+Function\b|\bFunction\s*\(|\bimport\s*\(|^import /m.test(bron), 'geen eval, Function of andere modules');
+  // De pagina (document, window en dergelijke) komt alleen voor in bewaarBestand, de laatste functie van het bestand.
+  const pagina = /\b(?:document\.(?:createElement|body|querySelector|getElementById|head)|window\b|navigator\b|localStorage\b|sessionStorage\b|location\.)/g;
+  const eerste = bron.search(pagina);
+  assert.ok(eerste > bron.indexOf('export function bewaarBestand('), 'alleen bewaarBestand gebruikt de pagina');
 });
 
 // ---------- Opslaan in de browser ----------

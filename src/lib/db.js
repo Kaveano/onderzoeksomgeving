@@ -58,6 +58,7 @@ const ONDERZOEK_VIA = {
   invoer: 'SELECT onderzoek_id FROM eigen_invoer WHERE id = ?',
   stuk: 'SELECT onderzoek_id FROM stukken WHERE id = ?',
   actie: 'SELECT onderzoek_id FROM acties WHERE id = ?',
+  rapport: 'SELECT onderzoek_id FROM rapporten WHERE id = ?',
 };
 
 const NIET_GEVONDEN = {
@@ -69,6 +70,7 @@ const NIET_GEVONDEN = {
   invoer: 'Deze invoer bestaat niet (meer).',
   stuk: 'Dit stuk bestaat niet (meer).',
   actie: 'Deze actie bestaat niet (meer).',
+  rapport: 'Dit rapport bestaat niet (meer).',
 };
 
 export async function onderzoekVan(env, soort, itemId) {
