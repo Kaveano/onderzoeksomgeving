@@ -3,23 +3,22 @@
   // Het wachtwoord staat als geheim "BEHEER_WACHTWOORD" in Cloudflare (niet in dit bestand).
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "onderzoek",
+  "account_id": "cfaa94deaf3de79ed3a1c31385efdb80",
   "main": "src/index.js",
   "compatibility_date": "2026-11-01",
   "workers_dev": true,
   "preview_urls": false,
-  "assets": {
-    "directory": "public",
-    "binding": "ASSETS",
-    // Alleen deze paden starten de Worker; al het andere zijn gratis statische bestanden.
-    "run_worker_first": ["/api/*", "/v/*"],
-    "not_found_handling": "404-page"
+  // De bestanden uit public/ worden bij het bouwen in de Worker gezet (scripts/bundel-statisch.mjs).
+  "build": {
+    "command": "node scripts/bundel-statisch.mjs",
+    "watch_dir": "public"
   },
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "onderzoeksomgeving",
-      // Wordt ingevuld na het aanmaken van de database in de EU (jurisdictie "eu").
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      // Aangemaakt met jurisdictie "eu": de database draait en bewaart gegevens alleen in de EU.
+      "database_id": "5a9defc3-6fde-40d6-a8e1-bc0760063aa7",
       "migrations_dir": "migrations"
     }
   ],

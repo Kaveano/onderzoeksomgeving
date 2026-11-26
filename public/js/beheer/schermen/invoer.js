@@ -724,7 +724,7 @@ export async function toon(container, ctx) {
           annuleerKnop.disabled = false;
           opslaanKnop.textContent = opslaanTekst;
           algemeneFout.textContent = err.status === 401
-            ? 'Je bent uitgelogd, daardoor is dit niet opgeslagen. Kopieer eventueel je aantekeningen, sluit dit venster en log opnieuw in.'
+            ? 'Je sessie was verlopen, daardoor is dit nog niet opgeslagen. Log opnieuw in via het venster dat verschijnt en klik daarna nog een keer op opslaan. Wat je hebt ingevuld blijft staan.'
             : `Niet opgeslagen: ${err.message || 'er ging iets mis.'} Probeer het opnieuw.`;
           algemeneFout.scrollIntoView({ block: 'nearest' });
           return;

@@ -12,9 +12,10 @@ export const MAX_VRAGEN = 100;
 
 function vervang(tekst, bedrijf) {
   // "van {bedrijf}." met "Voorbeeld B.V." mag geen dubbele punt opleveren.
+  // Vervangen via een functie, zodat tekens als $ in de bedrijfsnaam geen betekenis krijgen.
   return String(tekst || '')
-    .replaceAll('{bedrijf}.', `${bedrijf.replace(/\.+$/, '')}.`)
-    .replaceAll('{bedrijf}', bedrijf);
+    .replaceAll('{bedrijf}.', () => `${bedrijf.replace(/\.+$/, '')}.`)
+    .replaceAll('{bedrijf}', () => bedrijf);
 }
 
 const sleutel = (s) => String(s).trim().toLowerCase();
@@ -217,7 +218,16 @@ export async function pasSjablonenToe(env, onderzoek, inhouden, { meetmomentId =
 /** Maakt sjablooninhoud van een onderzoek (bedrijfsnaam wordt weer {bedrijf}). */
 export async function maakSjabloonInhoud(env, onderzoek, vragenlijstId = null) {
   const bedrijf = onderzoek.bedrijfsnaam;
-  const terug = (t) => (bedrijf && bedrijf.length >= 2 ? String(t || '').replaceAll(bedrijf, '{bedrijf}') : String(t || ''));
+  const terug = (t) => {
+    let x = String(t || '');
+    if (!bedrijf || bedrijf.length < 2) return x;
+    if (bedrijf.endsWith('.')) {
+      // "… van Voorbeeld B.V. Met …": de punt van "B.V." was ook de zinspunt.
+      const esc = bedrijf.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      x = x.replace(new RegExp(`${esc}(?=\\s+[A-ZÀ-Ý]|\\s*$)`, 'gm'), '{bedrijf}.');
+    }
+    return x.split(bedrijf).join('{bedrijf}');
+  };
 
   const themas = await alle(env, 'SELECT * FROM themas WHERE onderzoek_id = ? ORDER BY volgorde, id', onderzoek.id);
   const meetpunten = await alle(

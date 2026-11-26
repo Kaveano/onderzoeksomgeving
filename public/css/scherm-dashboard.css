@@ -691,3 +691,8 @@
 
 /* Verborgen cel in de uitsplitsing (te weinig respondenten) */
 .dashboard .db-cel-verborgen { color: var(--tekst-zacht); font-style: italic; }
+
+/* Smalle telefoons: vraagkolom in de uitsplitsing smaller, zodat de getallen in beeld blijven. */
+@media (max-width: 400px) {
+  .dashboard .db-uitsplits-tabel .db-vraag-cel { min-width: 8rem; max-width: 9rem; width: 9rem; }
+}

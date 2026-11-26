@@ -97,5 +97,5 @@ export async function download({ env, params }) {
   if (!stuk) throw new Fout(404, 'Dit stuk bestaat niet (meer).');
   const o = await haalOnderzoek(env, stuk.onderzoek_id);
   const naam = `${slug(o.bedrijfsnaam)}-${slug(stuk.titel)}.txt`;
-  return bestand('﻿' + stuk.inhoud.replace(/\r?\n/g, '\r\n'), naam, 'text/plain; charset=utf-8');
+  return bestand('\uFEFF' + markdownNaarTekst(stuk.inhoud).replace(/\r?\n/g, '\r\n'), naam, 'text/plain; charset=utf-8');
 }

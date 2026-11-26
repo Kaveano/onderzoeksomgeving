@@ -581,7 +581,7 @@ export async function toon(container, ctx) {
           label: 'Datum',
           type: 'date',
           waarde: mm?.datum || '',
-          hulp: 'Ongeveer wanneer je meet. Mag leeg blijven; meetmomenten zonder datum komen achteraan.',
+          hulp: 'Ongeveer wanneer je meet. Mag leeg blijven. Meetmomenten staan in de volgorde waarin je ze toevoegt; met de pijltjes kun je die aanpassen.',
         },
         {
           naam: 'omschrijving',
@@ -651,7 +651,7 @@ export async function toon(container, ctx) {
         : leeg('Er zijn nog geen meetmomenten. Voeg bijvoorbeeld een nulmeting toe.',
           h('button', { type: 'button', class: 'knop knop-primair', onclick: nieuwMeetmoment }, 'Meetmoment toevoegen'));
     } else {
-      inhoud = h('ol', { class: 'lijst opzet-tijdlijn' }, mms.map((mm) => h('li', { class: 'lijst-item opzet-meetmoment', 'data-markeer': `meetmoment-${mm.id}` },
+      inhoud = h('ol', { class: 'lijst opzet-tijdlijn' }, mms.map((mm, i) => h('li', { class: 'lijst-item opzet-meetmoment', 'data-markeer': `meetmoment-${mm.id}` },
         h('div', { class: 'lijst-item-hoofd' },
           h('div', { class: 'lijst-item-titel', tabindex: '-1', 'data-focus': `meetmoment-${mm.id}` }, mm.naam),
           h('div', { class: 'lijst-item-meta rij' },
@@ -661,6 +661,7 @@ export async function toon(container, ctx) {
           mm.omschrijving ? h('p', { class: 'opzet-omschrijving klein' }, mm.omschrijving) : null,
         ),
         ctx.alleenLezen ? null : h('div', { class: 'lijst-item-acties opzet-acties' },
+          verplaatsKnoppen({ soort: 'meetmomenten', lijst: mms, i, wat: 'Meetmoment', naam: mm.naam, sleutelBasis: `meetmoment-${mm.id}` }),
           h('button', {
             type: 'button',
             class: 'knop knop-klein',

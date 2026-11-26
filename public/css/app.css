@@ -223,7 +223,8 @@ main.inhoud {
   gap: var(--ruimte-3);
   margin-bottom: var(--ruimte-4);
 }
-.paginakop h1 { margin: 0; }
+.paginakop h1 { margin: 0; overflow-wrap: anywhere; }
+.paginakop .ondertitel { overflow-wrap: anywhere; }
 .paginakop .ondertitel { color: var(--tekst-zacht); margin: var(--ruimte-1) 0 0; }
 .kruimel { font-size: 0.9rem; margin-bottom: var(--ruimte-2); }
 .kruimel a { text-decoration: none; }

@@ -1,9 +1,10 @@
 // Onderzoeksomgeving – Cloudflare Worker
-// Verwerkt /api/* (beheer en openbare vragenlijst) en /v/<code> (openbare vragenlijstpagina).
-// Alle andere pagina's (beheeromgeving, opmaak, scripts) zijn statische bestanden uit /public.
+// Verwerkt /api/* (beheer en openbare vragenlijst), /v/<code> (openbare vragenlijstpagina)
+// en serveert de pagina's, opmaak en scripts uit /public (gebundeld bij het bouwen).
 
 import { Fout, json, foutAntwoord, metKoppen, leesJson, controleerHerkomst } from './lib/http.js';
 import { inloggen, uitloggen, isIngelogd, vereisInlog } from './lib/auth.js';
+import { serveer } from './lib/statisch.js';
 import { SCHALEN, SCHAAL_NAMEN, VRAAGTYPEN, INVOERSOORTEN, STUKSOORTEN, ACTIESTATUSSEN, DREMPEL } from './lib/schalen.js';
 import * as onderzoeken from './routes/onderzoeken.js';
 import * as opzet from './routes/opzet.js';
@@ -161,14 +162,13 @@ export default {
         return metKoppen(await api(request, env, url));
       }
       if (url.pathname.startsWith('/v/')) {
-        // De openbare vragenlijstpagina: altijd dezelfde statische pagina, het script haalt de vragen op.
+        // De openbare vragenlijstpagina: altijd dezelfde pagina, het script haalt de vragen op.
         if (!/^\/v\/[A-Za-z0-9_-]{16,40}\/?$/.test(url.pathname)) {
-          return metKoppen(await env.ASSETS.fetch(new Request(new URL('/__bestaat-niet', url), { method: 'GET' })), {}, 404);
+          return metKoppen(serveer(request, '/__bestaat-niet'));
         }
-        const pagina = await env.ASSETS.fetch(new Request(new URL('/vragenlijst', url), { method: 'GET' }));
-        return metKoppen(pagina, { 'Cache-Control': 'no-store' });
+        return metKoppen(serveer(request, '/vragenlijst.html'));
       }
-      return metKoppen(await env.ASSETS.fetch(request));
+      return metKoppen(serveer(request, url.pathname));
     } catch (fout) {
       return metKoppen(foutAntwoord(fout));
     }

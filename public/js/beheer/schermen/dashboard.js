@@ -8,7 +8,7 @@
 
 import { api } from '../api.js';
 import {
-  h, vervang, leeg, laden, melding, meld, meldFout, getal, procent, datum, aantal, kopieer, statusLabel,
+  h, vervang, leeg, laden, melding, meld, meldFout, getal, procent, datum, aantal, kopieer, statusLabel, bevestig,
 } from '../ui.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -362,7 +362,20 @@ export async function toon(container, ctx) {
     const dlg = h('dialog', { class: 'dialoog db-stukdialoog', 'aria-labelledby': 'db-stuk-titel' }, formulier);
     document.body.append(dlg);
     dlg.addEventListener('close', () => setTimeout(() => dlg.remove(), 0));
-    annuleer.addEventListener('click', () => dlg.close());
+    // Niet zomaar sluiten als de tekst is aangepast.
+    const sluitNaVragen = async () => {
+      if (tekstVeld.value === tekst || (await bevestig({
+        titel: 'Wijzigingen weggooien?',
+        tekst: 'Je aanpassingen aan deze tekst worden niet bewaard.',
+        knop: 'Weggooien',
+        gevaar: true,
+      }))) dlg.close();
+    };
+    dlg.addEventListener('cancel', (e) => {
+      e.preventDefault();
+      sluitNaVragen();
+    });
+    annuleer.addEventListener('click', () => sluitNaVragen());
 
     let kopieerTimer = null;
     kopieerKnop.addEventListener('click', async () => {

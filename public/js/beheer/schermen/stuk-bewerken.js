@@ -518,7 +518,7 @@ export async function toon(container, ctx) {
           if (!weg()) slaOp();
         }, OPNIEUW_NA);
       } else if (e.status === 401) {
-        fout = { soort: 'anders', tekst: 'je bent uitgelogd. Log opnieuw in; daarna kun je je tekst terugzetten.' };
+        fout = { soort: 'anders', tekst: 'je sessie is verlopen. Log opnieuw in via het venster; daarna wordt je tekst automatisch opgeslagen.' };
       } else if (e.status === 404) {
         geblokkeerd = 'weg';
         toonGeblokkeerd();
@@ -978,6 +978,15 @@ export async function toon(container, ctx) {
       verversAlsNodig();
     }
   }
+  /** Na opnieuw inloggen (verlopen sessie): meteen alsnog opslaan. */
+  function bijWeerIngelogd() {
+    if (weg()) return;
+    if (fout) {
+      fout = null;
+      slaOp();
+    }
+  }
+
   function bijOnline() {
     if (weg()) {
       opruimen();
@@ -1012,6 +1021,7 @@ export async function toon(container, ctx) {
     clearTimeout(opnieuwTimer);
     document.removeEventListener('visibilitychange', bijZichtbaarheid);
     window.removeEventListener('online', bijOnline);
+    window.removeEventListener('weer-ingelogd', bijWeerIngelogd);
     window.removeEventListener('resize', zetBalkPositie);
     window.removeEventListener('beforeunload', bijSluiten);
     smal.removeEventListener('change', plaatsWeergave);
@@ -1100,6 +1110,7 @@ export async function toon(container, ctx) {
   window.addEventListener('resize', zetBalkPositie);
   document.addEventListener('visibilitychange', bijZichtbaarheid);
   window.addEventListener('online', bijOnline);
+  window.addEventListener('weer-ingelogd', bijWeerIngelogd);
 
   // Niet-opgeslagen tekst van een eerder bezoek (bijv. verbinding weg of uitgelogd) terugzetten?
   if (!alleenLezen) {

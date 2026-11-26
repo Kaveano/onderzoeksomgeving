@@ -13,12 +13,13 @@
 //   zetTitel(tekst)    – titel van het browsertabblad
 
 import { api } from './api.js';
-import { h, vervang, laden, melding, meld, statusLabel, lokaleDatum, uniekeId } from './ui.js';
+import { h, vervang, laden, melding, meld, statusLabel, lokaleDatum, uniekeId, bevestig } from './ui.js';
 
 const app = document.getElementById('app');
 let instellingen = null;
 let vertrekHandlers = [];
 let weergaveTeller = 0;
+let weergaveAfgebroken = false; // laden van een scherm stopte omdat de sessie verlopen was
 
 const TABS = [
   ['dashboard', 'Dashboard'],
@@ -191,7 +192,11 @@ async function weergeven() {
     if (!actief || actief === document.body || !hoofd.contains(actief)) hoofd.focus({ preventScroll: true });
   } catch (fout) {
     if (mijnBeurt !== weergaveTeller) return;
-    if (fout.status === 401) return; // inlogscherm wordt al getoond
+    if (fout.status === 401) {
+      // De inlogdialoog verschijnt; na inloggen laden we dit scherm alsnog.
+      weergaveAfgebroken = true;
+      return;
+    }
     console.error(fout);
     const uitleg = typeof fout.status === 'number' && fout.status > 0
       ? fout.message
@@ -210,6 +215,7 @@ async function weergeven() {
 
 function toonInlog(foutmelding = '') {
   vertrekHandlers = [];
+  weergaveAfgebroken = false;
   for (const d of document.querySelectorAll('dialog[open]')) d.close();
   const invoer = h('input', { type: 'password', id: 'wachtwoord', autocomplete: 'current-password', required: true });
   const fout = h('div', { class: 'veld-fout', role: 'alert' }, foutmelding);
@@ -270,7 +276,22 @@ function toonInlogDialoog() {
         h('div', { class: 'veld' }, h('label', { for: invoerId }, 'Wachtwoord'), invoer),
         fout),
       h('div', { class: 'dialoog-voet' },
-        h('button', { type: 'button', class: 'knop', onclick: () => { d.close(); toonInlog(); } }, 'Naar inlogscherm'),
+        h('button', {
+          type: 'button',
+          class: 'knop',
+          onclick: async () => {
+            // Staat er nog een venster met invoer open, dan eerst waarschuwen.
+            const anderVenster = [...document.querySelectorAll('dialog[open]')].some((x) => x !== d);
+            if (anderVenster && !(await bevestig({
+              titel: 'Naar het inlogscherm?',
+              tekst: 'Wat je nog niet hebt opgeslagen, gaat dan verloren. Log liever hier opnieuw in.',
+              knop: 'Toch naar inlogscherm',
+              gevaar: true,
+            }))) return;
+            d.close();
+            toonInlog();
+          },
+        }, 'Naar inlogscherm'),
         knop)));
   d.querySelector('form').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -279,7 +300,15 @@ function toonInlogDialoog() {
     try {
       await api.post('/api/inloggen', { wachtwoord: invoer.value });
       d.close();
-      meld('Je bent weer ingelogd. Probeer je laatste actie opnieuw.', 'succes');
+      // Schermen kunnen hierop reageren (bijv. automatisch opslaan hervatten, melding wissen).
+      window.dispatchEvent(new CustomEvent('weer-ingelogd'));
+      if (weergaveAfgebroken) {
+        weergaveAfgebroken = false;
+        meld('Je bent weer ingelogd.', 'succes');
+        weergeven();
+      } else {
+        meld('Je bent weer ingelogd. Probeer je laatste actie opnieuw.', 'succes');
+      }
     } catch (err) {
       fout.textContent = err.message;
       knop.disabled = false;

@@ -7,8 +7,9 @@
 //   als minstens DREMPEL respondenten in die groep die vraag/dat thema beantwoordden;
 // - kleine groepen en cellen worden zo nodig samen met de kleinste andere verborgen,
 //   zodat ze niet uit het totaal zijn terug te rekenen;
-// - gemiddelden per groep worden op 1 decimaal afgerond en zonder aantallen antwoorden
-//   doorgegeven, zodat ze niet tegen elkaar weg te strepen zijn.
+// - thema- en vraaggetallen worden samen bekeken, zodat een verborgen getal ook niet uit
+//   andere getallen van dezelfde groep is af te leiden;
+// - gemiddelden per groep worden op 1 decimaal afgerond (zoals ze ook getoond worden).
 //
 // Rekenwerk: elke inzending wordt één keer doorlopen (gratis laag: 10 ms rekentijd per verzoek).
 
@@ -157,19 +158,68 @@ function vraagStatistiek(s) {
 /**
  * Verbergt in één kolom (thema of vraag) de cellen met te weinig respondenten, en zo nodig
  * de kleinste andere cellen erbij, zodat de verborgen cellen samen minstens DREMPEL respondenten
- * tellen en niet uit het totaal zijn terug te rekenen.
+ * tellen en niet uit het totaal ("Iedereen") zijn terug te rekenen.
+ * Cellen zonder antwoorden (n = 0) gaan mee als er iets verborgen wordt; anders zou een "–"
+ * verraden in welke groep de paar respondenten zitten. Geeft true als er iets veranderde.
  */
 function onderdrukKolom(cellen) {
-  const verborgen = cellen.filter((c) => c.n > 0 && c.n < DREMPEL);
-  if (!verborgen.length) return;
-  let samen = verborgen.reduce((t, c) => t + c.n, 0);
-  const rest = cellen.filter((c) => c.n >= DREMPEL).sort((a, b) => a.n - b.n);
+  const klein = cellen.filter((c) => c.verborgen || c.n < DREMPEL);
+  if (!klein.some((c) => c.verborgen || c.n > 0)) return false;
+  let veranderd = false;
+  for (const c of klein) {
+    if (!c.verborgen) {
+      c.verborgen = true;
+      veranderd = true;
+    }
+  }
+  let samen = klein.reduce((t, c) => t + c.n, 0);
+  const rest = cellen.filter((c) => !c.verborgen).sort((a, b) => a.n - b.n);
   while (samen < DREMPEL && rest.length) {
     const extra = rest.shift();
-    verborgen.push(extra);
+    extra.verborgen = true;
+    veranderd = true;
     samen += extra.n;
   }
-  for (const c of verborgen) c.verborgen = true;
+  return veranderd;
+}
+
+/**
+ * Onderdrukt alle cellen van de uitsplitsing, ook over thema- en vraagkolommen heen:
+ * is in een groep een vraag verborgen, dan ook het thema van die vraag (het themagemiddelde bevat
+ * die vraag), en is een thema verborgen, dan ook de vragen van dat thema (anders is het thema
+ * uit de vragen terug te rekenen). Herhaalt tot er niets meer verandert.
+ */
+function onderdrukAlles(groepen, themaIds, schaalVragen) {
+  let veranderd = true;
+  while (veranderd) {
+    veranderd = false;
+    schaalVragen.forEach((_, i) => {
+      if (onderdrukKolom(groepen.map((g) => g.vragen[i]))) veranderd = true;
+    });
+    for (const g of groepen) {
+      themaIds.forEach((tid, t) => {
+        const verborgenVraag = schaalVragen.some((q, i) => q.thema_id === tid && g.vragen[i].verborgen);
+        if (verborgenVraag && !g.themas[t].verborgen) {
+          g.themas[t].verborgen = true;
+          veranderd = true;
+        }
+      });
+    }
+    themaIds.forEach((_, t) => {
+      if (onderdrukKolom(groepen.map((g) => g.themas[t]))) veranderd = true;
+    });
+    for (const g of groepen) {
+      themaIds.forEach((tid, t) => {
+        if (!g.themas[t].verborgen) return;
+        schaalVragen.forEach((q, i) => {
+          if (q.thema_id === tid && !g.vragen[i].verborgen) {
+            g.vragen[i].verborgen = true;
+            veranderd = true;
+          }
+        });
+      });
+    }
+  }
 }
 
 /** Uitsplitsing naar de antwoorden op één vraag (meerkeuze met één antwoord, of ja/nee). */
@@ -244,10 +294,7 @@ function uitsplitsing(vraag, lijstVragen, inzendingen, themaNamen) {
     });
     g.vragen = agg.perVraag.map((s) => ({ vraag_id: s.q.id, n: s.n, gemiddelde: deel(s.som, s.n) }));
   }
-  if (uit.length) {
-    themaIds.forEach((_, i) => onderdrukKolom(uit.map((g) => g.themas[i])));
-    schaalVragen.forEach((_, i) => onderdrukKolom(uit.map((g) => g.vragen[i])));
-  }
+  if (uit.length) onderdrukAlles(uit, themaIds, schaalVragen);
   for (const g of uit) {
     delete g.inz;
     for (const c of [...g.themas, ...g.vragen]) {

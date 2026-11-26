@@ -556,6 +556,78 @@ test('ongeldige tekens in een adres geven een nette 404', async () => {
   assert.equal(r.status, 404);
 });
 
+test('drempel: groepen zonder antwoorden verraden niet waar de paar respondenten zitten', async () => {
+  const thema2 = await api(`/api/beheer/onderzoeken/${ids.onderzoek}/themas`, { methode: 'POST', body: { naam: 'Rooster' } });
+  const vl = await api(`/api/beheer/onderzoeken/${ids.onderzoek}/vragenlijsten`, { methode: 'POST', body: { titel: 'Nultest' } });
+  const u = await api(`/api/beheer/vragenlijsten/${vl.data.id}/vragen`, { methode: 'POST', body: { type: 'janee', thema_id: ids.themaWerkdruk, tekst: 'Leidinggevende?', uitsplitsen: true } });
+  const q1 = await api(`/api/beheer/vragenlijsten/${vl.data.id}/vragen`, { methode: 'POST', body: { type: 'schaal', thema_id: ids.themaWerkdruk, tekst: 'Q1' } });
+  const q2 = await api(`/api/beheer/vragenlijsten/${vl.data.id}/vragen`, { methode: 'POST', body: { type: 'schaal', thema_id: thema2.data.id, tekst: 'Q2' } });
+  await api(`/api/beheer/vragenlijsten/${vl.data.id}/status`, { methode: 'POST', body: { status: 'open' } });
+  const code = (await api(`/api/beheer/vragenlijsten/${vl.data.id}`)).data.vragenlijst.code;
+  const stuur = (a) => api(`/api/publiek/${code}`, { methode: 'POST', metCookie: false, body: { antwoorden: a } });
+  for (let i = 0; i < 10; i++) await stuur({ [u.data.id]: 'ja', [q1.data.id]: 4 });
+  for (let i = 0; i < 10; i++) await stuur({ [u.data.id]: 'nee', [q1.data.id]: 3, ...(i < 3 ? { [q2.data.id]: 1 } : {}) });
+  const d = await api(`/api/beheer/onderzoeken/${ids.onderzoek}/dashboard?vragenlijst=${vl.data.id}&uitsplitsen=${u.data.id}`);
+  const g = d.data.selectie.uitsplitsing.groepen;
+  const kol = (groep) => groep.themas.find((t) => t.thema_id === thema2.data.id);
+  // Alleen 3 "nee"-respondenten beantwoordden Q2: in beide groepen verborgen (ook bij "ja" met 0 antwoorden).
+  for (const groep of g) assert.equal(kol(groep).verborgen, true, groep.label);
+  // Thema Werkdruk (10 + 10) blijft zichtbaar.
+  for (const groep of g) assert.equal(groep.themas.find((t) => t.thema_id === ids.themaWerkdruk).verborgen, undefined);
+});
+
+test('drempel: verborgen vraag verbergt ook het thema in die groep', async () => {
+  const vl = await api(`/api/beheer/onderzoeken/${ids.onderzoek}/vragenlijsten`, { methode: 'POST', body: { titel: 'Kruistest' } });
+  const u = await api(`/api/beheer/vragenlijsten/${vl.data.id}/vragen`, { methode: 'POST', body: { type: 'meerkeuze', thema_id: ids.themaWerkdruk, tekst: 'Afdeling', opties: ['A', 'G', 'P'], uitsplitsen: true } });
+  const q1 = await api(`/api/beheer/vragenlijsten/${vl.data.id}/vragen`, { methode: 'POST', body: { type: 'schaal', thema_id: ids.themaWerkdruk, tekst: 'Q1' } });
+  const q2 = await api(`/api/beheer/vragenlijsten/${vl.data.id}/vragen`, { methode: 'POST', body: { type: 'schaal', thema_id: ids.themaWerkdruk, tekst: 'Q2' } });
+  await api(`/api/beheer/vragenlijsten/${vl.data.id}/status`, { methode: 'POST', body: { status: 'open' } });
+  const det = (await api(`/api/beheer/vragenlijsten/${vl.data.id}`)).data;
+  const [oA, oG, oP] = det.vragen.find((q) => q.id === u.data.id).opties.map((o) => o.id);
+  const stuur = (a) => api(`/api/publiek/${det.vragenlijst.code}`, { methode: 'POST', metCookie: false, body: { antwoorden: a } });
+  for (let i = 0; i < 20; i++) await stuur({ [u.data.id]: oA, [q1.data.id]: 4, [q2.data.id]: 4 });
+  for (let i = 0; i < 10; i++) await stuur({ [u.data.id]: oG, [q1.data.id]: 4, ...(i < 3 ? { [q2.data.id]: 1 } : {}) });
+  for (let i = 0; i < 6; i++) await stuur({ [u.data.id]: oP, [q1.data.id]: 3, [q2.data.id]: 3 });
+  const d = await api(`/api/beheer/onderzoeken/${ids.onderzoek}/dashboard?vragenlijst=${vl.data.id}&uitsplitsen=${u.data.id}`);
+  const g = d.data.selectie.uitsplitsing.groepen.find((x) => x.label === 'G');
+  assert.equal(g.vragen.find((x) => x.vraag_id === q2.data.id).verborgen, true);
+  assert.equal(g.themas[0].verborgen, true); // anders is Q2 van G uit thema en Q1 terug te rekenen
+  // Elke kolom met een verborgen cel heeft samen minstens 5 verborgen respondenten
+  const groepen = d.data.selectie.uitsplitsing.groepen.filter((x) => !x.verborgen);
+  for (const sleutel of ['themas', 'vragen']) {
+    const kolommen = groepen[0][sleutel].length;
+    for (let k = 0; k < kolommen; k++) {
+      const cellen = groepen.map((x) => x[sleutel][k]);
+      if (cellen.some((c) => c.verborgen)) assert.ok(cellen.filter((c) => c.verborgen).length >= 2);
+    }
+  }
+});
+
+test('inloggen: één afzender kan anderen niet buitensluiten', async () => {
+  for (let i = 0; i < 30; i++) {
+    await api('/api/inloggen', { methode: 'POST', metCookie: false, body: { wachtwoord: 'fout' }, koppen: { 'CF-Connecting-IP': '203.0.113.99' } });
+  }
+  const ander = await api('/api/inloggen', { methode: 'POST', metCookie: false, body: { wachtwoord: WACHTWOORD }, koppen: { 'CF-Connecting-IP': '198.51.100.20' } });
+  assert.equal(ander.status, 200);
+  const zelf = await api('/api/inloggen', { methode: 'POST', metCookie: false, body: { wachtwoord: WACHTWOORD }, koppen: { 'CF-Connecting-IP': '203.0.113.99' } });
+  assert.equal(zelf.status, 429);
+});
+
+test('sjabloon opslaan en toepassen met "B.V." in de naam houdt de zinspunt', async () => {
+  const a = await api('/api/beheer/onderzoeken', { methode: 'POST', body: { bedrijfsnaam: 'Voorbeeld B.V.', titel: 'MTO', sjablonen: ['medewerkerstevredenheid'] } });
+  const s = await api(`/api/beheer/onderzoeken/${a.data.id}/als-sjabloon`, { methode: 'POST', body: { naam: 'BV-test' } });
+  const b = await api('/api/beheer/onderzoeken', { methode: 'POST', body: { bedrijfsnaam: 'Acme $& Co', titel: 'MTO', sjablonen: [s.data.id] } });
+  const vl = await api(`/api/beheer/onderzoeken/${b.data.id}/vragenlijsten`);
+  const intro = (await api(`/api/beheer/vragenlijsten/${vl.data.vragenlijsten[0].id}`)).data.vragenlijst.introtekst;
+  assert.match(intro, /van Acme \$& Co\. Met deze vragenlijst/);
+  for (const id of [a.data.id, b.data.id]) {
+    const o = (await api(`/api/beheer/onderzoeken/${id}`)).data.onderzoek;
+    await api(`/api/beheer/onderzoeken/${id}/archiveren`, { methode: 'POST', body: {} });
+    await api(`/api/beheer/onderzoeken/${id}`, { methode: 'DELETE', body: { bevestiging: o.bedrijfsnaam } });
+  }
+  await api(`/api/beheer/sjablonen/${s.data.id}`, { methode: 'DELETE' });
+});
+
 test('meerdere onderzoeken naast elkaar', async () => {
   const r = await api('/api/beheer/onderzoeken');
   assert.ok(r.data.onderzoeken.filter((o) => o.status === 'actief').length >= 2);

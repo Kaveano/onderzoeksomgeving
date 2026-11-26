@@ -9,10 +9,9 @@ export async function toon(container, ctx) {
   const onderzoekId = o.id;
   ctx.zetTitel(`Afronden – ${o.titel}`);
 
-  let gegevens = null; // export-gegevens, één keer ophalen
+  // Bij elke download de actuele gegevens ophalen (er kunnen intussen nieuwe antwoorden zijn).
   async function haalGegevens() {
-    if (!gegevens) gegevens = await api.get(`/onderzoeken/${onderzoekId}/export/data`);
-    return gegevens;
+    return api.get(`/onderzoeken/${onderzoekId}/export/data`);
   }
 
   /** Knop die een exportbestand maakt; toont "Bezig…" en meldt het resultaat. */
