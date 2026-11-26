@@ -15,15 +15,29 @@ Je andere projecten (AF Partners-site, InterimRadar) staan los hiervan en worden
 
 ## Wachtwoord instellen of wijzigen
 
-1. Ga naar https://dash.cloudflare.com › **Workers & Pages** › **onderzoek** › **Settings**.
-2. Klik bij **Variables and Secrets** op **+ Add**, of op het potloodje bij `BEHEER_WACHTWOORD` als die er al staat.
-3. Vul in:
-   - **Type:** Secret
-   - **Variable name:** `BEHEER_WACHTWOORD`
-   - **Value:** een wachtwoord van minimaal 12 tekens
-4. Klik op **Deploy**.
+Het wachtwoord moet als **geheim** (type *Secret*) bij de Worker staan, niet als gewone variabele.
 
-Wijzig je het wachtwoord, dan worden alle bestaande inlogsessies direct ongeldig.
+**Manier 1: vanaf een computer met Node.js (betrouwbaarst).** Voer dit uit in de map met de code:
+
+```bash
+npx wrangler secret put BEHEER_WACHTWOORD
+```
+
+Wrangler vraagt om het wachtwoord. Het wordt niet getoond terwijl je typt en wordt direct als geheim opgeslagen.
+
+**Manier 2: in het Cloudflare-dashboard**
+1. Ga naar **Workers & Pages** › **onderzoek** › **Settings** › **Runtime variables and secrets**.
+2. Verwijder de oude regel `BEHEER_WACHTWOORD` met het prullenbakje.
+3. Klik op **+ Add variable** en vul in:
+   - **Production** aangevinkt
+   - **Key** `BEHEER_WACHTWOORD`
+   - **Value**: het nieuwe wachtwoord, minimaal 12 tekens
+4. Vink **Secret** aan.
+5. Klik op **Add 1 variable and deploy**.
+6. **Controleer daarna de kolom Type.** Daar moet *Secret* staan. Staat er *Variable*, dan is het als leesbare tekst opgeslagen: verwijder het en gebruik manier 1.
+7. De oranje melding "Update your Wrangler configuration…" kun je negeren. Zet het wachtwoord nooit in `wrangler.jsonc`.
+
+Wijzig je het wachtwoord, dan worden alle bestaande inlogsessies direct ongeldig. Instellingen die je in het dashboard doet, blijven staan als er een nieuwe versie online wordt gezet (`keep_vars` in `wrangler.jsonc`).
 
 ## Kosten en grenzen (gratis laag)
 
