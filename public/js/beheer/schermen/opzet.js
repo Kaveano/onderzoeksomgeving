@@ -495,7 +495,7 @@ export async function toon(container, ctx) {
 
   function themaItem(t, i, themas) {
     const meldingEl = h('div', { class: 'opzet-thema-melding' });
-    const gebruik = `${aantal(t.aantal_vragen, 'vraag', 'vragen')} · ${aantal(t.aantal_invoer, 'item eigen invoer', 'items eigen invoer')}`;
+    const gebruik = `${aantal(t.aantal_vragen, 'vraag', 'vragen')} · eigen invoer: ${t.aantal_invoer.toLocaleString('nl-NL')}`;
     return h('li', { class: 'opzet-thema', 'data-markeer': `thema-${t.id}` },
       h('div', { class: 'opzet-thema-kop' },
         h('div', { class: 'opzet-thema-tekst' },

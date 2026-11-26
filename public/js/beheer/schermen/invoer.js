@@ -30,6 +30,14 @@ const TITEL_VOORBEELD = {
   overig: 'Bijv. Signalen uit het OR-overleg',
 };
 
+const DATUM_HULP = {
+  interview: 'Wanneer was het gesprek?',
+  observatie: 'Wanneer heb je dit gezien of gehoord?',
+  cijfer: 'Over welke datum gaat het cijfer? Bijvoorbeeld de laatste dag van het kwartaal.',
+  document: 'De datum van het document, of wanneer je het hebt bekeken.',
+  overig: 'Wanneer was het, of wanneer heb je het gehoord?',
+};
+
 const TEKST_HULP = {
   cijfer: 'Optioneel. Bijvoorbeeld de bron of hoe het cijfer is berekend.',
   document: 'Optioneel. Bijvoorbeeld welk document het is en wat je opviel.',
@@ -56,7 +64,15 @@ function uittreksel(tekst) {
   const teLang = tekst.length > KORT_TEKENS + 40;
   const teVeelRegels = regels.length > KORT_REGELS + 1;
   if (!teLang && !teVeelRegels) return null;
-  let stuk = teVeelRegels ? regels.slice(0, KORT_REGELS).join('\n') : tekst;
+  let eerste = regels.slice(0, KORT_REGELS);
+  // Liefst afbreken na een hele alinea (bij een witregel), als er dan nog genoeg overblijft.
+  for (let i = eerste.length - 1; i > 0; i--) {
+    if (!eerste[i].trim()) {
+      if (eerste.slice(0, i).join('\n').trim().length >= 60) eerste = eerste.slice(0, i);
+      break;
+    }
+  }
+  let stuk = eerste.join('\n');
   if (stuk.length > KORT_TEKENS) {
     stuk = stuk.slice(0, KORT_TEKENS);
     const grens = stuk.search(/\s\S*$/); // op een woordgrens afbreken
@@ -452,6 +468,7 @@ export async function toon(container, ctx) {
 
       // Hulpteksten die meeveranderen
       const soortHulp = h('div', { class: 'veld-hulp', id: `${p}soort-hulp` });
+      const datumHulp = h('div', { class: 'veld-hulp', id: `${p}datum-hulp` });
       const mpHulp = h('div', { class: 'veld-hulp', id: `${p}mp-hulp` });
       const tekstHulp = h('div', { class: 'veld-hulp', id: `${p}tekst-hulp` });
       const tekstLabel = h('span', {}, 'Aantekeningen');
@@ -518,12 +535,15 @@ export async function toon(container, ctx) {
         const s = soortKeuze.value;
         const t = gekozenThema();
         soortHulp.textContent = SOORT_UITLEG[s] || '';
+        datumHulp.textContent = DATUM_HULP[s] || '';
         if (!t) {
           mpHulp.textContent = 'Optioneel. Kies eerst een thema; daarna zie je hier de meetpunten van dat thema.';
         } else if (!(t.meetpunten || []).length) {
           mpHulp.textContent = 'Dit thema heeft geen meetpunten. Die kun je toevoegen bij Opzet.';
+        } else if (s === 'cijfer' && mpKeuze.value) {
+          mpHulp.textContent = 'Op het Dashboard zie je alle cijfers van dit meetpunt samen door de tijd.';
         } else if (s === 'cijfer') {
-          mpHulp.textContent = 'Kies het meetpunt waar dit cijfer bij hoort, bijvoorbeeld Verzuimpercentage. Op het Dashboard zie je alle cijfers van dat meetpunt dan samen door de tijd. Zonder meetpunt horen alleen cijfers met precies dezelfde titel bij elkaar.';
+          mpHulp.textContent = 'Kies het meetpunt waar dit cijfer bij hoort, bijvoorbeeld Verzuimpercentage. Dan zie je op het Dashboard al je cijfers van dat meetpunt samen door de tijd. Zonder meetpunt is elke titel een aparte reeks.';
         } else {
           mpHulp.textContent = 'Optioneel. Koppel de invoer aan een meetpunt als hij daar iets over zegt.';
         }
@@ -575,10 +595,7 @@ export async function toon(container, ctx) {
           h('p', { class: 'klein zacht iv-dlg-intro' }, 'Velden met een ', h('span', { class: 'verplicht-teken' }, '*'), ' zijn verplicht.'),
           h('div', { class: 'formulier-rij' },
             veld('soort', 'Soort', soortKeuze, { verplicht: true, hulp: soortHulp }),
-            veld('datum', 'Datum', datumVeld, {
-              verplicht: true,
-              hulp: h('div', { class: 'veld-hulp', id: `${p}datum-hulp` }, 'Wanneer was het gesprek of de observatie, of over welke datum gaat het cijfer?'),
-            }),
+            veld('datum', 'Datum', datumVeld, { verplicht: true, hulp: datumHulp }),
           ),
           veld('titel', 'Titel', titelVeld, {
             verplicht: true,
@@ -616,7 +633,10 @@ export async function toon(container, ctx) {
         werkHulpBij();
         vulEenheid();
       });
-      mpKeuze.addEventListener('change', vulEenheid);
+      mpKeuze.addEventListener('change', () => {
+        werkHulpBij();
+        vulEenheid();
+      });
       eenheidVeld.addEventListener('input', () => {
         eenheidAutomatisch = false;
       });
@@ -706,6 +726,7 @@ export async function toon(container, ctx) {
           algemeneFout.textContent = err.status === 401
             ? 'Je bent uitgelogd, daardoor is dit niet opgeslagen. Kopieer eventueel je aantekeningen, sluit dit venster en log opnieuw in.'
             : `Niet opgeslagen: ${err.message || 'er ging iets mis.'} Probeer het opnieuw.`;
+          algemeneFout.scrollIntoView({ block: 'nearest' });
           return;
         }
         voorkeur.soort = body.soort;
@@ -783,7 +804,9 @@ export async function toon(container, ctx) {
     h('section', { class: 'kaart iv-scherm', 'aria-labelledby': 'iv-kop' },
       h('div', { class: 'kaart-kop' }, h('div', {}, kopTitel, tellerEl)),
       h('div', { class: 'iv-uitleg' },
-        h('p', {}, 'Leg hier vast wat je buiten de vragenlijst om te weten komt: interviews, je eigen observaties, cijfers zoals verzuim of verloop, en wat je uit documenten haalt. Zo staat alles per thema bij elkaar.'),
+        h('p', {}, ro
+          ? 'Hier staat wat er buiten de vragenlijst om is vastgelegd: interviews, observaties, cijfers zoals verzuim of verloop, en documentanalyse.'
+          : 'Leg hier vast wat je buiten de vragenlijst om te weten komt: interviews, je eigen observaties, cijfers zoals verzuim of verloop, en wat je uit documenten haalt. Zo staat alles per thema bij elkaar.'),
         h('p', { class: 'klein zacht' }, 'Cijfers (soort "Cijfer" met een waarde) verschijnen op het ',
           h('a', { href: `${basis}/dashboard` }, 'Dashboard'), ' onder "Eigen cijfers", per meetpunt door de tijd.'),
       ),

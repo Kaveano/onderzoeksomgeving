@@ -5,7 +5,7 @@
 .iv-scherm .knop-klein,
 .iv-dialoog .knop-klein { min-height: 36px; }
 
-.iv-uitleg { max-width: 75ch; }
+.iv-uitleg { max-width: 75ch; margin-bottom: var(--ruimte-4); }
 .iv-uitleg > :last-child { margin-bottom: 0; }
 
 /* ---------- Werkbalk: filters en toevoegen ---------- */
@@ -16,7 +16,7 @@
   align-items: flex-end;
   justify-content: space-between;
   gap: var(--ruimte-3);
-  margin: var(--ruimte-4) 0 var(--ruimte-3);
+  margin: 0 0 var(--ruimte-3);
 }
 .iv-filters {
   display: flex;
@@ -66,15 +66,19 @@
 }
 .iv-plaats,
 .iv-meetmoment { overflow-wrap: anywhere; min-width: 0; }
+.iv-plaats + .iv-meetmoment::before {
+  content: '·';
+  content: '·' / '';
+  margin-right: var(--ruimte-3);
+  color: var(--rand-sterk);
+}
 .iv-pijl { color: var(--rand-sterk); }
 
 /* Cijfer: de waarde groot in beeld */
 .iv-waarde {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
   margin: var(--ruimte-2) 0 0;
   line-height: 1.15;
+  overflow-wrap: anywhere;
 }
 .iv-waarde-getal { font-size: 1.75rem; font-weight: 700; }
 .iv-waarde-eenheid {
@@ -115,7 +119,8 @@ dialog.iv-dialoog {
   max-height: calc(100dvh - 24px);
 }
 .iv-dialoog .dialoog-inhoud { max-height: calc(100dvh - 110px); }
-.iv-dialoog .formulier-rij { align-items: start; }
+/* Velden in een rij: onder elkaar (smal scherm) dezelfde afstand als losse velden. */
+.iv-dialoog .formulier-rij { align-items: start; row-gap: 0; }
 .iv-dialoog .veld-fout:empty { display: none; }
 .iv-dlg-intro { margin-top: calc(-1 * var(--ruimte-2)); }
 

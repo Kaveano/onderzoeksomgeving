@@ -251,7 +251,7 @@ export async function toon(container, ctx) {
     if (!ok) return;
     try {
       const r = await api.del(`/vragenlijsten/${vlId}/inzendingen`);
-      meld(`${aantal(r.verwijderd ?? inzendingen, 'antwoord', 'antwoorden')} gewist.`, 'succes');
+      meld(`${aantal(r.verwijderd ?? inzendingen, 'ingevulde vragenlijst', 'ingevulde vragenlijsten')} gewist.`, 'succes');
       await herlaad({ focus: ['link'] });
     } catch (e) {
       meldFout(e);
@@ -340,7 +340,7 @@ export async function toon(container, ctx) {
       h('div', { class: 'vl-link-rij' },
         linkVeld,
         h('div', { class: 'vl-link-knoppen' },
-          h('button', { type: 'button', class: 'knop', onclick: () => kopieerLink(vl) }, 'Kopieer link'),
+          h('button', { type: 'button', class: 'knop', onclick: () => kopieerLink(vl) }, 'Link kopiëren'),
           h('a', {
             class: 'knop',
             href: `/v/${encodeURIComponent(vl.code)}`,
@@ -1106,7 +1106,23 @@ export async function toon(container, ctx) {
       );
       werkTypeBij();
 
-      annuleer.addEventListener('click', () => d.close());
+      // Escape, terug-gebaar of Annuleren: niet zomaar sluiten als er iets is ingevuld of gewijzigd.
+      const momentopname = () => [...d.querySelectorAll('input, select, textarea')]
+        .map((el) => (el.type === 'checkbox' || el.type === 'radio' ? el.checked : el.value)).join('\u0001');
+      let begin = null;
+      const sluitNaVragen = async () => {
+        if (momentopname() === begin || (await bevestig({
+          titel: 'Wijzigingen weggooien?',
+          tekst: 'Wat je in deze vraag hebt ingevuld, wordt niet opgeslagen.',
+          knop: 'Weggooien',
+          gevaar: true,
+        }))) d.close();
+      };
+      d.addEventListener('cancel', (e) => {
+        e.preventDefault();
+        sluitNaVragen();
+      });
+      annuleer.addEventListener('click', () => sluitNaVragen());
       if (nogEenKnop) {
         nogEenKnop.addEventListener('click', () => {
           nogEen = true;
@@ -1121,6 +1137,7 @@ export async function toon(container, ctx) {
       document.body.append(d);
       openDialoog = d;
       d.showModal();
+      begin = momentopname();
       (voorkeur.thema_id || bewerken ? tekstVeld : themaKeuze).focus();
     });
   }

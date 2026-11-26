@@ -464,7 +464,7 @@ export async function toon(container, ctx) {
         ),
         h('div', { class: 'db-respons-getal' },
           h('span', { class: 'kengetal-waarde' }, nl(r.aantal)),
-          h('span', { class: 'kengetal-label' }, r.aantal === 1 ? 'keer ingevuld' : 'keer ingevuld')),
+          h('span', { class: 'kengetal-label' }, 'keer ingevuld')),
         responsDeel,
       );
     });
@@ -484,7 +484,7 @@ export async function toon(container, ctx) {
       return h('div', { class: 'db-perdag' }, kop,
         h('p', { class: 'zacht' }, r.aantal === 1
           ? `Ingevuld op ${datum(r.per_dag[0].datum)}.`
-          : `Alle ${nl(r.aantal)} antwoorden zijn op ${datum(r.per_dag[0].datum)} ingevuld.`));
+          : `Alles is ingevuld op ${datum(r.per_dag[0].datum)}.`));
     }
     const telling = new Map(r.per_dag.map((p) => [p.datum, p.aantal]));
     const begin = isoNaarDag(r.per_dag[0].datum);
@@ -528,9 +528,9 @@ export async function toon(container, ctx) {
     if (ctx.alleenLezen) {
       tekst = 'Deze vragenlijst is niet ingevuld. Omdat het onderzoek gearchiveerd is, komen er geen antwoorden meer bij.';
     } else if (r && r.status === 'open') {
-      tekst = 'De vragenlijst staat open, maar er zijn nog geen antwoorden. Deel de link met de deelnemers (die vind je bij Vragenlijsten). Zodra de eerste antwoorden binnen zijn, zie je hier de resultaten.';
+      tekst = 'De vragenlijst staat open, maar er zijn nog geen antwoorden. Deel de link met de respondenten (die vind je bij Vragenlijsten). Zodra de eerste antwoorden binnen zijn, zie je hier de resultaten.';
     } else {
-      tekst = 'Er zijn nog geen antwoorden op deze vragenlijst. Zet de vragenlijst open en deel de link met de deelnemers; dat doe je bij Vragenlijsten. Zodra de eerste antwoorden binnen zijn, zie je hier de resultaten.';
+      tekst = 'Er zijn nog geen antwoorden op deze vragenlijst. Zet de vragenlijst open en deel de link met de respondenten; dat doe je bij Vragenlijsten. Zodra de eerste antwoorden binnen zijn, zie je hier de resultaten.';
     }
     return h('section', { class: 'kaart db-kaart', 'aria-labelledby': 'db-leeg-kop' },
       h('h2', { id: 'db-leeg-kop', class: 'sr-only' }, 'Nog geen resultaten'),
