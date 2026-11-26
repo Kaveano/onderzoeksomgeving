@@ -92,16 +92,26 @@
   font-size: 0.95rem;
   color: var(--tekst);
   font-weight: 600;
-  background: none;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
+/* De eerste kolom blijft staan als een brede tabel op een telefoon opzij schuift. */
+.an-tabel th[scope='row'],
+.an-matrix th[scope='row'] {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--vlak);
+}
+.an-tabel tbody tr:hover > th[scope='row'] { background: var(--vlak-2); }
 .analyse .tabel-wrapper { margin-bottom: var(--ruimte-3); }
 .an-n {
   display: block;
   font-size: 0.8rem;
+  font-weight: 400;
   color: var(--tekst-zacht);
   white-space: nowrap;
 }
+.an-kop-kort { display: none; }
 .an-themas td { white-space: nowrap; }
 .an-themas td[colspan] { white-space: normal; }
 .an-themas th[scope='row'] { min-width: 9rem; }
@@ -175,7 +185,6 @@ table.an-matrix { width: auto; max-width: 100%; }
   font-size: 0.9rem;
   color: var(--tekst);
   font-weight: 500;
-  background: none;
   min-width: 9rem;
   max-width: 18rem;
 }
@@ -245,7 +254,53 @@ table.an-kruistabel { width: auto; min-width: min(100%, 24rem); }
   .an-keuzes { padding: var(--ruimte-3) var(--ruimte-3) 0; }
   .an-uitkomst { grid-template-columns: minmax(0, 1fr); }
   .an-conclusie { padding: var(--ruimte-3); }
-  .an-matrix th[scope='row'] { min-width: 7.5rem; }
+  .an-tabel th, .an-tabel td { padding-left: var(--ruimte-2); padding-right: var(--ruimte-2); }
+  /* Korte kolomkoppen (n, gem., sd); de lange blijven er voor schermlezers. */
+  .an-kop-lang {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+  }
+  .an-kop-kort { display: inline; }
+  /* "Alle thema's tegelijk": per thema een blokje in plaats van een brede tabel. */
+  table.an-themas, .an-themas tbody { display: block; }
+  .an-themas thead {
+    position: absolute; width: 1px; height: 1px; margin: -1px;
+    overflow: hidden; clip: rect(0, 0, 0, 0);
+  }
+  .an-themas tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: var(--ruimte-1) var(--ruimte-3);
+    padding: var(--ruimte-3) 0;
+    border-bottom: 1px solid var(--rand);
+  }
+  .an-themas tbody tr:hover,
+  .an-themas tbody tr:hover > th[scope='row'] { background: none; }
+  .an-themas th[scope='row'] {
+    grid-column: 1 / -1;
+    position: static;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+  }
+  .an-themas td {
+    display: block;
+    padding: 0;
+    border: 0;
+    text-align: left;
+    white-space: normal;
+  }
+  .an-themas td.rechts { text-align: left; }
+  .an-themas td[colspan],
+  .an-themas td[data-label='Effect (g)'] { grid-column: 1 / -1; }
+  .an-themas td[data-label]::before {
+    content: attr(data-label) ': ';
+    color: var(--tekst-zacht);
+    font-size: 0.85rem;
+  }
+  .an-themas .an-n { display: inline; margin-left: 6px; }
+  .an-matrix th[scope='row'] { min-width: 7.5rem; max-width: 9rem; }
   .an-matrix .an-matrix-kop { min-width: 3rem; }
 }
 

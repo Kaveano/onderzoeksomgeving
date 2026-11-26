@@ -115,7 +115,10 @@ function bouwModel(data) {
   }
   return {
     themas: (data.themas || []).map((t) => ({ id: t.id, naam: t.naam })),
-    meetpunten: (data.meetpunten || []).map((m) => ({ id: m.id, naam: m.naam, thema_id: m.thema_id })),
+    // Meetpunten in de volgorde van de thema's (de export geeft ze op hun eigen volgorde).
+    meetpunten: (data.themas || []).flatMap((t) => (data.meetpunten || [])
+      .filter((m) => m.thema_id === t.id)
+      .map((m) => ({ id: m.id, naam: m.naam, thema_id: m.thema_id }))),
     meetmomenten: (data.meetmomenten || []).map((m) => ({ id: m.id, naam: m.naam })),
     lijsten: [...lijsten.values()],
   };
@@ -472,14 +475,18 @@ export async function toon(container, ctx) {
 
   /** Tabel met aantal, gemiddelde en spreiding per groep of meetmoment. rijen: [{ naam, b }] */
   function beschrijfTabel(kopNaam, rijen, bijschrift) {
+    // Op een smal scherm staat de korte kop er (n, gem., sd); schermlezers krijgen altijd de lange.
+    const kop = (lang, kortKop) => h('th', { scope: 'col', class: 'rechts' },
+      h('span', { class: 'an-kop-lang' }, lang),
+      h('span', { class: 'an-kop-kort', 'aria-hidden': 'true' }, kortKop));
     return h('div', { class: 'tabel-wrapper' },
       h('table', { class: 'tabel an-tabel' },
         h('caption', { class: 'sr-only' }, bijschrift),
         h('thead', {}, h('tr', {},
           h('th', { scope: 'col' }, kopNaam),
-          h('th', { scope: 'col', class: 'rechts' }, 'Aantal (n)'),
-          h('th', { scope: 'col', class: 'rechts' }, 'Gemiddelde'),
-          h('th', { scope: 'col', class: 'rechts' }, 'Spreiding (sd)'))),
+          kop('Aantal (n)', 'n'),
+          kop('Gemiddelde', 'gem.'),
+          kop('Spreiding (sd)', 'sd'))),
         h('tbody', {}, rijen.map((r) => h('tr', {},
           h('th', { scope: 'row' }, r.naam),
           h('td', { class: 'rechts getal' }, Number(r.b.n).toLocaleString('nl-NL')),
@@ -697,12 +704,13 @@ export async function toon(container, ctx) {
           h('tbody', {}, rijen.map((x) => (x.r
             ? h('tr', {},
               h('th', { scope: 'row' }, x.naam),
-              h('td', { class: 'rechts getal' }, g(x.r.A.gemiddelde), h('span', { class: 'an-n' }, nTekst(x.r.A.n))),
-              h('td', { class: 'rechts getal' }, g(x.r.B.gemiddelde), h('span', { class: 'an-n' }, nTekst(x.r.B.n))),
-              h('td', { class: 'rechts getal' }, metTeken(x.r.welch.verschil)),
-              h('td', { class: 'getal' }, pTekst(x.r.welch.p), ' ',
+              // data-label: op een telefoon staan de cellen onder elkaar, elk met de naam van de kolom ervoor.
+              h('td', { class: 'rechts getal', dataset: { label: naamA } }, g(x.r.A.gemiddelde), h('span', { class: 'an-n' }, nTekst(x.r.A.n))),
+              h('td', { class: 'rechts getal', dataset: { label: naamB } }, g(x.r.B.gemiddelde), h('span', { class: 'an-n' }, nTekst(x.r.B.n))),
+              h('td', { class: 'rechts getal', dataset: { label: 'Verschil' } }, metTeken(x.r.welch.verschil)),
+              h('td', { class: 'getal', dataset: { label: 'p-waarde' } }, pTekst(x.r.welch.p), ' ',
                 x.r.welch.p < ALFA ? h('span', { class: 'label label-primair' }, 'significant') : null),
-              h('td', { class: 'getal' }, effectTekst(x.r)))
+              h('td', { class: 'getal', dataset: { label: 'Effect (g)' } }, effectTekst(x.r)))
             : h('tr', {},
               h('th', { scope: 'row' }, x.naam),
               h('td', { colspan: 5, class: 'zacht' }, `Niet te vergelijken: ${x.reden}.`))))))),
@@ -892,7 +900,7 @@ export async function toon(container, ctx) {
     const janee = x.janee || y.janee;
     const ci = eindig(pr.ciLaag) ? `95%-interval ${bereik(pr.ciLaag, pr.ciHoog)}. ` : '';
     const tekst = () => [
-      `Samenhang – ${alsTitel(x)} en ${alsTitel(y)}`,
+      `Samenhang tussen ${voluit(x)} en ${voluit(y)}`,
       `${lijstNaam(lijst)}; ${nTekst(pr.n)} (respondenten met een score op beide)`,
       `- Correlatie (Pearson): r = ${g(pr.r)}${eindig(pr.ciLaag) ? ` (95%-betrouwbaarheidsinterval ${bereik(pr.ciLaag, pr.ciHoog)})` : ''}; ${pTekst(pr.p)}`,
       sp ? `- Rangcorrelatie (Spearman): rho = ${g(sp.rho)}; ${pTekst(sp.p)}` : null,
@@ -1029,21 +1037,16 @@ export async function toon(container, ctx) {
             h('caption', { class: 'sr-only' }, `Cronbachs alfa per thema, ${lijstNaam(lijst)}`),
             h('thead', {}, h('tr', {},
               h('th', { scope: 'col' }, 'Thema'),
-              h('th', { scope: 'col', class: 'rechts' }, 'Vragen'),
-              h('th', { scope: 'col', class: 'rechts' }, 'Aantal (n)'),
               h('th', { scope: 'col', class: 'rechts' }, 'Alfa'),
               h('th', { scope: 'col' }, 'Oordeel'))),
             h('tbody', {}, rijen.map((r) => (r.oordeel
               ? h('tr', {},
-                h('th', { scope: 'row' }, r.naam),
-                h('td', { class: 'rechts getal' }, String(r.k)),
-                h('td', { class: 'rechts getal' }, Number(r.n).toLocaleString('nl-NL')),
+                h('th', { scope: 'row' }, r.naam, h('span', { class: 'an-n' }, `${aantal(r.k, 'vraag', 'vragen')} · ${nTekst(r.n)}`)),
                 h('td', { class: 'rechts getal' }, g(r.alpha)),
                 h('td', {}, h('span', { class: `label ${ALFA_KLASSE[r.oordeel]}` }, r.oordeel)))
               : h('tr', {},
-                h('th', { scope: 'row' }, r.naam),
-                h('td', { class: 'rechts getal' }, String(r.k)),
-                h('td', { colspan: 3, class: 'zacht' }, r.reden))))))),
+                h('th', { scope: 'row' }, r.naam, h('span', { class: 'an-n' }, aantal(r.k, 'vraag', 'vragen'))),
+                h('td', { colspan: 2, class: 'zacht' }, r.reden))))))),
         negatief
           ? melding('Een negatieve alfa betekent dat vragen tegen elkaar in gaan. Staat er in dat thema een vraag die andersom is geformuleerd (hoog = ongunstig)?', 'waarschuwing')
           : null,
@@ -1130,7 +1133,7 @@ export async function toon(container, ctx) {
     if (significant) {
       zinnen.push('Er is een statistisch significant verband tussen de antwoorden op de twee vragen: het is onwaarschijnlijk dat het alleen door toeval komt.');
     } else {
-      zinnen.push('Niet significant: de antwoorden op de ene vraag hangen niet aantoonbaar samen met die op de andere. Wat je in de tabel ziet, kan goed door toeval komen.');
+      zinnen.push('Niet significant: de antwoorden op de ene vraag hangen niet aantoonbaar samen met die op de andere. Verschillen die je ziet, kunnen goed door toeval komen.');
     }
     zinnen.push(`Het verband is ${effectWoord(effect)} (Cramérs V = ${g(uit.cramersV)}).`);
     if (onbetrouwbaar) zinnen.push('Omdat de aantallen klein zijn, is deze uitkomst niet betrouwbaar; trek er geen stevige conclusies uit.');
@@ -1157,7 +1160,7 @@ export async function toon(container, ctx) {
       ...(ietsZichtbaar
         ? rijen.map((r, i) => `- ${r.label}: ${kolommen.map((k, j) => `${k.label} ${celTekst(i, j)}`).join('; ')}`)
         : ['De aantallen per combinatie zijn te klein om te tonen.']),
-      legenda || null,
+      ietsZichtbaar ? legenda : null,
       `- Chi-kwadraattoets: ${toetsTekst}`,
       `- Sterkte van het verband: Cramérs V = ${g(uit.cramersV)} (${effect})`,
       waarschuwing ? `Waarschuwing: ${waarschuwing}` : null,
