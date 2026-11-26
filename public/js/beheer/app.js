@@ -29,6 +29,7 @@ const TABS = [
   ['invoer', 'Eigen invoer'],
   ['stukken', 'Stukken'],
   ['acties', 'Acties'],
+  ['delen', 'Delen'],
   ['afronden', 'Afronden'],
 ];
 
@@ -46,6 +47,7 @@ const SCHERMEN = {
   stukken: () => import('./schermen/stukken.js'),
   stuk: () => import('./schermen/stuk-bewerken.js'),
   acties: () => import('./schermen/acties.js'),
+  delen: () => import('./schermen/delen.js'),
   afronden: () => import('./schermen/afronden.js'),
 };
 

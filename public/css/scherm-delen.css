@@ -1,0 +1,76 @@
+/* Scherm Delen: uitnodigen voor een vragenlijst en laten meekijken. Gebruikt de variabelen uit app.css. */
+
+.dl-uitleg { color: var(--tekst-zacht); max-width: 78ch; margin: 0 0 var(--ruimte-4); }
+
+.dl-item { align-items: flex-start; }
+.dl-item .lijst-item-meta { margin-top: var(--ruimte-1); }
+.dl-meta { margin: var(--ruimte-1) 0 0; }
+.dl-let-op { color: var(--waarschuwing); margin: var(--ruimte-2) 0 0; }
+
+.dl-linkrij {
+  display: flex;
+  gap: var(--ruimte-2);
+  align-items: center;
+  margin-top: var(--ruimte-2);
+  max-width: 640px;
+}
+.dl-linkveld {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--lettertype-mono);
+  font-size: 0.85rem;
+  background: var(--vlak-2);
+  text-overflow: ellipsis;
+}
+.dl-linkrij .knop { flex: 0 0 auto; }
+
+/* Dialoog met uitnodiging */
+dialog.dl-dialoog { width: min(680px, calc(100vw - 24px)); }
+.dl-soorten {
+  border: 0;
+  padding: 0;
+  margin: 0 0 var(--ruimte-3);
+  display: flex;
+  gap: var(--ruimte-4);
+  flex-wrap: wrap;
+}
+.dl-soort { font-weight: 600; }
+.dl-tekst { font-family: inherit; line-height: 1.5; min-height: 14em; resize: vertical; }
+.dl-verstuur { margin-top: var(--ruimte-3); }
+.dl-tips { margin: var(--ruimte-3) 0 0; padding-left: 1.2em; }
+.dl-tips li + li { margin-top: 2px; }
+.dl-status { margin-right: auto; align-self: center; }
+
+/* Toegangscode */
+.dl-stappen { margin: 0 0 var(--ruimte-4); padding-left: 1.4em; }
+.dl-stappen li + li { margin-top: var(--ruimte-4); }
+.dl-code {
+  font-family: var(--lettertype-mono);
+  font-size: 1.5rem;
+  letter-spacing: 0.1em;
+  font-weight: 700;
+  background: var(--vlak-2);
+  border: 1px solid var(--rand);
+  border-radius: var(--radius-klein);
+  padding: var(--ruimte-2) var(--ruimte-3);
+  user-select: all;
+}
+
+/* QR-code: altijd zwart op wit, ook in de donkere modus (anders is hij niet te scannen). */
+.dl-qr-kader {
+  display: grid;
+  place-items: center;
+  background: #ffffff;
+  border: 1px solid var(--rand);
+  border-radius: var(--radius);
+  padding: var(--ruimte-3);
+  margin: var(--ruimte-3) 0 var(--ruimte-2);
+}
+.dl-qr { width: min(280px, 100%); height: auto; image-rendering: pixelated; }
+.dl-qr-link { text-align: center; overflow-wrap: anywhere; font-family: var(--lettertype-mono); margin: 0 0 var(--ruimte-3); }
+
+@media (max-width: 640px) {
+  .dl-linkrij { flex-wrap: wrap; }
+  .dl-linkveld { flex-basis: 100%; }
+  .dl-code { font-size: 1.25rem; }
+}

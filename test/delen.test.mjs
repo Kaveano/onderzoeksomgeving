@@ -209,6 +209,25 @@ test('stuk van een ander onderzoek kan niet worden gedeeld; verwijderen ruimt al
   assert.equal((await roep(`/api/kijk/${s.link.code}`, { koekje: '' })).status, 404);
 });
 
+test('tekst van de uitnodiging: bewaren, teruglezen en begrenzen', async () => {
+  const n = await roep('/api/beheer/onderzoeken', { methode: 'POST', body: { bedrijfsnaam: 'Uitnodigbedrijf', titel: 'MTO', sjablonen: ['medewerkerstevredenheid'] } });
+  const pad = `/api/beheer/onderzoeken/${n.data.id}/vragenlijsten`;
+  const vl = (await roep(pad)).data.vragenlijsten[0];
+  assert.deepEqual(vl.uitnodiging, {});
+  assert.equal((await roep(`/api/beheer/vragenlijsten/${vl.id}/uitnodiging`, { methode: 'PUT', body: { tekst: 'x' }, koekje: '' })).status, 401);
+  const tekst = 'Beste collega,\n\nVul de lijst in: {link}\n\nGroet';
+  const r = await roep(`/api/beheer/vragenlijsten/${vl.id}/uitnodiging`, { methode: 'PUT', body: { onderwerp: 'Doe mee: {titel}', tekst, herinnering_onderwerp: 'Herinnering', herinnering_tekst: 'Nog even: {link}', vreemd: 'x' } });
+  assert.equal(r.status, 200);
+  const terug = (await roep(pad)).data.vragenlijsten[0].uitnodiging;
+  assert.deepEqual(terug, { onderwerp: 'Doe mee: {titel}', tekst, herinnering_onderwerp: 'Herinnering', herinnering_tekst: 'Nog even: {link}' });
+  assert.equal((await roep(`/api/beheer/vragenlijsten/${vl.id}/uitnodiging`, { methode: 'PUT', body: { tekst: 'x'.repeat(5001) } })).status, 400);
+  assert.equal((await roep(`/api/beheer/vragenlijsten/${vl.id}/uitnodiging`, { methode: 'PUT', body: { onderwerp: 'x'.repeat(201) } })).status, 400);
+  // Na archiveren kan de tekst niet meer worden gewijzigd.
+  await roep(`/api/beheer/onderzoeken/${n.data.id}/archiveren`, { methode: 'POST', body: {} });
+  assert.equal((await roep(`/api/beheer/vragenlijsten/${vl.id}/uitnodiging`, { methode: 'PUT', body: { tekst: 'nieuw' } })).status, 409);
+  assert.equal((await roep(pad)).data.vragenlijsten[0].uitnodiging.tekst, tekst);
+});
+
 test('de kijkpagina wordt geserveerd; ongeldige adressen geven 404', async () => {
   assert.equal((await fetch(`${BASIS}/d/${'a'.repeat(22)}`)).status, 200);
   assert.equal((await fetch(`${BASIS}/d/kort`)).status, 404);

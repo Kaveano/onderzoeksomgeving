@@ -60,6 +60,7 @@ const BEHEER_ROUTES = [
   ['POST', `${B}/vragenlijsten/:id/status`, vragenlijsten.status],
   ['POST', `${B}/vragenlijsten/:id/kopie`, vragenlijsten.kopie],
   ['POST', `${B}/vragenlijsten/:id/nieuwe-code`, vragenlijsten.nieuweCode],
+  ['PUT', `${B}/vragenlijsten/:id/uitnodiging`, vragenlijsten.uitnodiging],
   ['DELETE', `${B}/vragenlijsten/:id/inzendingen`, vragenlijsten.wisInzendingen],
   ['POST', `${B}/vragenlijsten/:id/vragen`, vragenlijsten.vraagNieuw],
   ['PUT', `${B}/vragen/:id`, vragenlijsten.vraagWijzig],

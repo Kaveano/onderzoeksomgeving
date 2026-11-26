@@ -277,9 +277,14 @@ export async function overzicht({ request, env, params }) {
     const rijen = await alle(env, 'SELECT id, titel, soort, bijgewerkt_op FROM stukken WHERE onderzoek_id = ? ORDER BY volgorde, id', o.id);
     stukken = rijen.filter((s) => link.mag.stukken.includes(s.id));
   }
+  // Namen van thema's zijn nodig om de resultaten te kunnen tonen.
+  const themas = link.mag.dashboard
+    ? await alle(env, 'SELECT id, naam FROM themas WHERE onderzoek_id = ? ORDER BY volgorde, id', o.id)
+    : [];
   return json({
     onderzoek: { titel: o.titel, bedrijfsnaam: o.bedrijfsnaam, onderzoeksvraag: o.onderzoeksvraag, status: o.status },
     onderdelen: { dashboard: link.mag.dashboard, open_antwoorden: link.mag.open_antwoorden },
+    themas,
     stukken,
     drempel: DREMPEL,
   });
@@ -350,6 +355,8 @@ export async function dashboard({ request, env, params }) {
   }
   d.verloop.themas = d.verloop.themas.filter((r) => r.punten.some((p) => p.gemiddelde !== null));
   d.verloop.meetpunten = d.verloop.meetpunten.filter((r) => r.punten.some((p) => p.gemiddelde !== null));
+  // Aantallen interviews, observaties en dergelijke zijn voor de onderzoeker zelf.
+  delete d.eigen_invoer_telling;
   d.kijker = true;
   return json(d);
 }

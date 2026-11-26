@@ -187,6 +187,8 @@ export async function toon(container, ctx) {
     if (keuze.vragenlijst) q.set('vragenlijst', String(keuze.vragenlijst));
     if (keuze.uitsplitsen) q.set('uitsplitsen', String(keuze.uitsplitsen));
     const qs = q.toString();
+    // Een kijker (deellink) haalt de gegevens via een eigen, beperkt adres.
+    if (ctx.haalDashboard) return ctx.haalDashboard(qs);
     return api.get(`/onderzoeken/${onderzoekId}/dashboard${qs ? `?${qs}` : ''}`);
   }
 
@@ -278,6 +280,11 @@ export async function toon(container, ctx) {
       // al uitgelegd in de responskaart
     } else if (sel && !metAntwoorden) {
       kaarten.push(geenAntwoorden());
+    } else if (sel && sel.verborgen) {
+      kaarten.push(melding([
+        h('strong', {}, 'De uitkomsten van deze vragenlijst worden nog niet getoond. '),
+        `Er zijn minder dan ${d.drempel} respondenten. Om de anonimiteit te beschermen zijn de resultaten pas zichtbaar vanaf ${d.drempel} respondenten.`,
+      ], 'waarschuwing'));
     } else if (sel) {
       if (sel.klein) {
         kaarten.push(melding([
@@ -289,7 +296,10 @@ export async function toon(container, ctx) {
       kaarten.push(themaKaart(), vragenKaart());
     }
     kaarten.push(verloopKaart(), eigenCijfersKaart());
-    if (metAntwoorden) kaarten.push(openKaart(), uitsplitsKaart());
+    if (metAntwoorden && !(sel && sel.verborgen)) {
+      if (!sel.open_verborgen) kaarten.push(openKaart());
+      kaarten.push(uitsplitsKaart());
+    }
 
     vervang(inhoud, snelNaar(kaarten), kaarten);
   }
@@ -538,7 +548,9 @@ export async function toon(container, ctx) {
     const sel = data.selectie;
     const r = data.respons.find((x) => x.vragenlijst_id === sel.vragenlijst_id);
     let tekst;
-    if (ctx.alleenLezen) {
+    if (ctx.kijker) {
+      tekst = 'Er zijn nog geen antwoorden op deze vragenlijst.';
+    } else if (ctx.alleenLezen) {
       tekst = 'Deze vragenlijst is niet ingevuld. Omdat het onderzoek gearchiveerd is, komen er geen antwoorden meer bij.';
     } else if (r && r.status === 'open') {
       tekst = 'De vragenlijst staat open, maar er zijn nog geen antwoorden. Deel de link met de respondenten (die vind je bij Vragenlijsten). Zodra de eerste antwoorden binnen zijn, zie je hier de resultaten.';
@@ -566,13 +578,13 @@ export async function toon(container, ctx) {
           waarde.style.left = `${pct}%`;
           plot.append(balk, waarde);
         } else {
-          plot.append(h('span', { class: 'db-score-waarde db-score-geen' }, 'geen scores'));
+          plot.append(h('span', { class: 'db-score-waarde db-score-geen' }, r.verborgen ? 'niet getoond (te weinig antwoorden)' : 'geen scores'));
         }
-        return h('div', { class: 'db-score-rij', role: 'listitem', title: `${r.naam}: ${heeft(r.waarde) ? `gemiddeld ${getal(r.waarde, 1)}` : 'geen scores'}${r.n !== undefined ? ` (${nTekst(r.n)})` : ''}` },
+        return h('div', { class: 'db-score-rij', role: 'listitem', title: `${r.naam}: ${heeft(r.waarde) ? `gemiddeld ${getal(r.waarde, 1)}` : (r.verborgen ? 'niet getoond' : 'geen scores')}${r.n !== undefined && !r.verborgen ? ` (${nTekst(r.n)})` : ''}` },
           h('div', { class: 'db-score-naam' },
             h('span', { class: 'db-score-titel' }, r.naam),
             r.sub ? h('span', { class: 'db-score-sub' }, r.sub) : null,
-            h('span', { class: 'sr-only' }, heeft(r.waarde) ? `: gemiddeld ${getal(r.waarde, 1)}` : ': nog geen scores'),
+            h('span', { class: 'sr-only' }, heeft(r.waarde) ? `: gemiddeld ${getal(r.waarde, 1)}` : (r.verborgen ? ': niet getoond, te weinig antwoorden' : ': nog geen scores')),
           ),
           plot,
         );
@@ -592,10 +604,11 @@ export async function toon(container, ctx) {
   function snippetThemas() {
     const s = data.selectie;
     const regels = [`Gemiddelde score per thema – ${lijstNaam()} (${nTekst(s.n)})`, 'Schaal van 1 (laagst) tot 5 (hoogst)'];
-    for (const t of s.themas) regels.push(`- ${t.naam}: ${getal(t.gemiddelde, 1)}${t.n !== s.n ? ` (${nTekst(t.n)})` : ''}`);
+    const score = (t) => (t.verborgen ? 'niet getoond (te weinig antwoorden)' : `${getal(t.gemiddelde, 1)}${t.n !== s.n ? ` (${nTekst(t.n)})` : ''}`);
+    for (const t of s.themas) regels.push(`- ${t.naam}: ${score(t)}`);
     if (s.meetpunten.length) {
       regels.push('', 'Per meetpunt:');
-      for (const m of s.meetpunten) regels.push(`- ${m.naam}: ${getal(m.gemiddelde, 1)}${m.n !== s.n ? ` (${nTekst(m.n)})` : ''}`);
+      for (const m of s.meetpunten) regels.push(`- ${m.naam}: ${score(m)}`);
     }
     return regels.join('\n');
   }
@@ -615,7 +628,8 @@ export async function toon(container, ctx) {
       naam: t.naam,
       waarde: t.gemiddelde,
       n: t.n,
-      sub: `${aantal(t.aantal_vragen, 'vraag', 'vragen')} · ${nTekst(t.n)}`,
+      verborgen: !!t.verborgen,
+      sub: t.verborgen ? aantal(t.aantal_vragen, 'vraag', 'vragen') : `${aantal(t.aantal_vragen, 'vraag', 'vragen')} · ${nTekst(t.n)}`,
     })), { label: 'Gemiddelde score per thema' }),
     s.meetpunten.length
       ? h('div', { class: 'db-meetpunten' },
@@ -624,7 +638,8 @@ export async function toon(container, ctx) {
           naam: m.naam,
           waarde: m.gemiddelde,
           n: m.n,
-          sub: `${themaNaam.get(m.thema_id) || ''}${m.n !== s.n ? ` · ${nTekst(m.n)}` : ''}`,
+          verborgen: !!m.verborgen,
+          sub: `${themaNaam.get(m.thema_id) || ''}${m.n !== s.n && !m.verborgen ? ` · ${nTekst(m.n)}` : ''}`,
         })), { compact: true, label: 'Gemiddelde score per meetpunt' }))
       : null,
     );
@@ -754,6 +769,7 @@ export async function toon(container, ctx) {
     const vl = verloopRegel(q);
     if (beknopt) {
       let r = `- “${q.tekst}”`;
+      if (q.verborgen) return `${r}: niet getoond (te weinig antwoorden)`;
       if (!q.n) return `${r}: nog geen antwoorden`;
       if (q.type === 'schaal') {
         const sv = schaalSamenvatting(q);
@@ -784,13 +800,18 @@ export async function toon(container, ctx) {
 
   function vraagBlok(q) {
     let delen;
+    if (q.verborgen) {
+      return h('li', { class: 'db-vraag' },
+        h('div', { class: 'db-vraag-kop' }, h('h4', { class: 'db-vraag-tekst' }, q.tekst)),
+        h('p', { class: 'zacht klein' }, `Niet getoond: minder dan ${data.drempel} antwoorden op deze vraag.`));
+    }
     if (q.type === 'schaal') delen = schaalBlok(q);
     else if (q.type === 'janee') delen = janeeBlok(q);
     else if (q.type === 'meerkeuze') delen = meerkeuzeBlok(q);
     else {
       delen = [h('p', { class: 'db-vraag-meta' },
         q.n ? `${aantal(q.n, 'antwoord', 'antwoorden')} op deze open vraag. ` : 'Nog geen antwoorden op deze open vraag. ',
-        q.n ? h('button', {
+        q.n && !data.selectie.open_verborgen ? h('button', {
           type: 'button',
           class: 'knop knop-klein knop-licht db-naar-open',
           onclick: () => scrollNaar(document.getElementById(`db-open-${q.id}`)),
@@ -1152,8 +1173,10 @@ export async function toon(container, ctx) {
         ? h('ul', { class: 'db-telling-lijst' }, Object.keys(invoersoorten).map((s) => h('li', {},
           h('span', { class: 'db-telling-getal' }, nl(telling[s] || 0)), ' ', invoersoorten[s])))
         : h('p', { class: 'zacht klein' }, 'Nog niets ingevoerd.'),
-      h('p', { class: 'klein' }, h('a', { href: `${basis}/invoer` }, ctx.alleenLezen ? 'Bekijk alles bij Eigen invoer' : 'Naar Eigen invoer')),
+      ctx.kijker ? null : h('p', { class: 'klein' }, h('a', { href: `${basis}/invoer` }, ctx.alleenLezen ? 'Bekijk alles bij Eigen invoer' : 'Naar Eigen invoer')),
     );
+    // Een kijker zonder cijfers hoeft dit onderdeel niet te zien.
+    if (ctx.kijker && !reeksen.length) return null;
     if (!reeksen.length) {
       return kaart('db-cijfers', 'Eigen cijfers', 'Eigen cijfers', {},
         leeg(ctx.alleenLezen
@@ -1161,11 +1184,13 @@ export async function toon(container, ctx) {
           : 'Je hebt nog geen cijfers ingevoerd. Voeg bijvoorbeeld verzuim- of verloopcijfers toe bij Eigen invoer (kies de soort "Cijfer"); ze verschijnen dan hier.'),
         tellingEl);
     }
-    return kaart('db-cijfers', 'Eigen cijfers', 'Eigen cijfers', {
-      uitleg: 'Cijfers die je zelf hebt ingevoerd bij Eigen invoer, zoals verzuim of verloop. Per meetpunt (of titel) een reeks.',
+    return kaart('db-cijfers', ctx.kijker ? 'Cijfers' : 'Eigen cijfers', ctx.kijker ? 'Cijfers' : 'Eigen cijfers', {
+      uitleg: ctx.kijker
+        ? 'Cijfers die de onderzoeker heeft toegevoegd, zoals verzuim of verloop.'
+        : 'Cijfers die je zelf hebt ingevoerd bij Eigen invoer, zoals verzuim of verloop. Per meetpunt (of titel) een reeks.',
     },
     h('div', { class: 'db-reeksen' }, reeksen.map(reeksBlok)),
-    tellingEl,
+    ctx.kijker ? null : tellingEl,
     );
   }
 

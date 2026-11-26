@@ -34,7 +34,7 @@ export async function lijst({ env, params }) {
   await haalOnderzoek(env, onderzoekId);
   const rijen = await alle(
     env,
-    `SELECT vl.id, vl.titel, vl.status, vl.code, vl.meetmoment_id, vl.aantal_uitgenodigd, vl.max_inzendingen, vl.aangemaakt_op,
+    `SELECT vl.id, vl.titel, vl.status, vl.code, vl.meetmoment_id, vl.aantal_uitgenodigd, vl.max_inzendingen, vl.aangemaakt_op, vl.uitnodiging,
        mm.naam AS meetmoment_naam, mm.datum AS meetmoment_datum,
        (SELECT COUNT(*) FROM vragen q WHERE q.vragenlijst_id = vl.id) AS aantal_vragen,
        (SELECT COUNT(*) FROM inzendingen i WHERE i.vragenlijst_id = vl.id) AS aantal_inzendingen
@@ -43,7 +43,31 @@ export async function lijst({ env, params }) {
      ORDER BY mm.volgorde IS NULL, mm.volgorde, vl.id`,
     onderzoekId,
   );
-  return json({ vragenlijsten: rijen });
+  return json({ vragenlijsten: rijen.map((r) => ({ ...r, uitnodiging: leesUitnodiging(r.uitnodiging) })) });
+}
+
+function leesUitnodiging(ruw) {
+  try {
+    const u = JSON.parse(ruw || '{}');
+    return u && typeof u === 'object' && !Array.isArray(u) ? u : {};
+  } catch {
+    return {};
+  }
+}
+
+/** Bewaart de (zelf aan te passen) tekst van de uitnodiging en de herinnering. Geen e-mailadressen. */
+export async function uitnodiging({ request, env, params }) {
+  const id = v.id(params.id);
+  await bewerkbaarVia(env, 'vragenlijst', id);
+  const body = await leesJson(request, 40_000);
+  const u = {
+    onderwerp: v.tekst(body.onderwerp, 'Onderwerp', { max: 200 }),
+    tekst: v.langeTekst(body.tekst, 'Tekst van de uitnodiging', { max: 5000 }),
+    herinnering_onderwerp: v.tekst(body.herinnering_onderwerp, 'Onderwerp van de herinnering', { max: 200 }),
+    herinnering_tekst: v.langeTekst(body.herinnering_tekst, 'Tekst van de herinnering', { max: 5000 }),
+  };
+  await env.DB.prepare('UPDATE vragenlijsten SET uitnodiging = ? WHERE id = ?').bind(JSON.stringify(u), id).run();
+  return json({ ok: true });
 }
 
 export async function nieuw({ request, env, params }) {
