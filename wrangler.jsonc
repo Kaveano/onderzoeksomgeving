@@ -7,6 +7,8 @@
   "main": "src/index.js",
   "compatibility_date": "2026-11-01",
   "workers_dev": true,
+  // Instellingen die in het Cloudflare-dashboard zijn gezet, blijven staan bij een nieuwe publicatie.
+  "keep_vars": true,
   "preview_urls": false,
   // De bestanden uit public/ worden bij het bouwen in de Worker gezet (scripts/bundel-statisch.mjs).
   "build": {
