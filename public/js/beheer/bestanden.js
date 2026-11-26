@@ -128,6 +128,15 @@ export function crc32(bytes) {
   return (c ^ 0xffffffff) >>> 0;
 }
 
+/** Getallen als bytes, laagste byte eerst: le(2, 20, 4, crc) geeft 2 + 4 bytes. */
+function le(...paren) {
+  const uit = [];
+  for (let i = 0; i < paren.length; i += 2) {
+    for (let k = 0; k < paren[i]; k++) uit.push((paren[i + 1] >>> (8 * k)) & 0xff);
+  }
+  return uit;
+}
+
 /** Maakt een zip-bestand (zonder compressie). Bestandsnamen staan er in UTF-8 in. */
 export function maakZip(bestanden) {
   const delen = [];
@@ -141,41 +150,19 @@ export function maakZip(bestanden) {
       throw new Error(`Ongeldige of dubbele bestandsnaam in het zip-bestand: "${naam}".`);
     }
     namen.add(naam);
-    // Het deel dat in de lokale kop en in de centrale map hetzelfde is (26 bytes).
-    const vast = new DataView(new ArrayBuffer(26));
-    vast.setUint16(0, 20, true); // benodigde versie: 2.0
-    vast.setUint16(2, 0x0800, true); // vlag: bestandsnaam in UTF-8
-    vast.setUint16(4, 0, true); // methode 0: opslaan zonder compressie
-    vast.setUint16(8, DOS_DATUM, true);
-    vast.setUint32(10, crc32(data), true);
-    vast.setUint32(14, data.length, true);
-    vast.setUint32(18, data.length, true);
-    vast.setUint16(22, naamBytes.length, true);
-    const vastBytes = new Uint8Array(vast.buffer);
-    const lokaal = new Uint8Array(30 + naamBytes.length);
-    lokaal.set([0x50, 0x4b, 0x03, 0x04]);
-    lokaal.set(vastBytes, 4);
-    lokaal.set(naamBytes, 30);
-    const regel = new Uint8Array(46 + naamBytes.length);
-    regel.set([0x50, 0x4b, 0x01, 0x02, 20, 0]);
-    regel.set(vastBytes, 6);
-    new DataView(regel.buffer).setUint32(42, positie, true);
-    regel.set(naamBytes, 46);
-    delen.push(lokaal, data);
-    map.push(regel);
-    positie += lokaal.length + data.length;
+    // Gelijk in de lokale kop en in de centrale map: versie 2.0, vlag "naam in UTF-8", methode 0 (zonder compressie),
+    // tijd, datum, controlegetal, grootte ingepakt en uitgepakt, lengte van de naam en van de extra gegevens.
+    const vast = le(2, 20, 2, 0x0800, 2, 0, 2, 0, 2, DOS_DATUM, 4, crc32(data), 4, data.length, 4, data.length, 2, naamBytes.length, 2, 0);
+    delen.push(new Uint8Array([...le(4, 0x04034b50), ...vast, ...naamBytes]), data);
+    map.push(new Uint8Array([...le(4, 0x02014b50, 2, 20), ...vast, ...le(2, 0, 2, 0, 2, 0, 4, 0, 4, positie), ...naamBytes]));
+    positie += 30 + naamBytes.length + data.length;
   }
-  const mapLengte = map.reduce((som, r) => som + r.length, 0);
+  const mapLengte = map.reduce((som, regel) => som + regel.length, 0);
   if (map.length > 0xfffe || positie + mapLengte > 0xfffffffe) throw new Error('Het zip-bestand wordt te groot.');
-  const slot = new DataView(new ArrayBuffer(22));
-  slot.setUint32(0, 0x06054b50, true);
-  slot.setUint16(8, map.length, true);
-  slot.setUint16(10, map.length, true);
-  slot.setUint32(12, mapLengte, true);
-  slot.setUint32(16, positie, true);
+  const slot = new Uint8Array(le(4, 0x06054b50, 2, 0, 2, 0, 2, map.length, 2, map.length, 4, mapLengte, 4, positie, 2, 0));
   const uit = new Uint8Array(positie + mapLengte + 22);
   let p = 0;
-  for (const deel of [...delen, ...map, new Uint8Array(slot.buffer)]) {
+  for (const deel of [...delen, ...map, slot]) {
     uit.set(deel, p);
     p += deel.length;
   }
@@ -185,20 +172,16 @@ export function maakZip(bestanden) {
 /** Pakt gecomprimeerde gegevens uit; stopt zodra er meer uitkomt dan het zip-bestand opgeeft (zipbom). */
 async function pakUit(gegevens, verwacht) {
   const uit = new Uint8Array(verwacht);
+  const lezer = new Blob([gegevens]).stream().pipeThrough(new DecompressionStream('deflate-raw')).getReader();
   let n = 0;
   try {
-    const lezer = new Blob([gegevens]).stream().pipeThrough(new DecompressionStream('deflate-raw')).getReader();
-    for (;;) {
-      const { done, value } = await lezer.read();
-      if (done) break;
-      if (n + value.length > verwacht) {
-        await lezer.cancel().catch(() => {});
-        throw new Error('te groot');
-      }
-      uit.set(value, n);
-      n += value.length;
+    for (let deel = await lezer.read(); !deel.done; deel = await lezer.read()) {
+      if (n + deel.value.length > verwacht) throw new Error('er komt meer uit dan het zip-bestand opgeeft');
+      uit.set(deel.value, n);
+      n += deel.value.length;
     }
   } catch {
+    lezer.cancel().catch(() => {});
     throw new Error(ZIP_BESCHADIGD);
   }
   if (n !== verwacht) throw new Error(ZIP_BESCHADIGD);
@@ -224,49 +207,30 @@ export async function leesZip(invoer) {
   const aantal = v.getUint16(slot + 10, true);
   const mapLengte = v.getUint32(slot + 12, true);
   let p = v.getUint32(slot + 16, true);
-  const zip64 = slot >= 20 && v.getUint32(slot - 20, true) === 0x07064b50;
-  if (zip64 || aantal === 0xffff || mapLengte === 0xffffffff || p === 0xffffffff) {
-    throw new Error('Dit zip-bestand heeft een indeling voor zeer grote bestanden (zip64); die wordt niet ondersteund.');
+  const zip64 = 'Dit zip-bestand heeft een indeling voor zeer grote bestanden (zip64); die wordt niet ondersteund.';
+  if ((slot >= 20 && v.getUint32(slot - 20, true) === 0x07064b50) || aantal === 0xffff || mapLengte === 0xffffffff || p === 0xffffffff) {
+    throw new Error(zip64);
   }
   if (v.getUint16(slot + 4, true) !== 0 || v.getUint16(slot + 8, true) !== aantal) {
     throw new Error('Dit zip-bestand is in delen gesplitst; dat wordt niet ondersteund.');
   }
-  if (aantal > MAX_ZIP_BESTANDEN) {
-    throw new Error(`Dit zip-bestand bevat te veel bestanden (meer dan ${MAX_ZIP_BESTANDEN}).`);
-  }
+  if (aantal > MAX_ZIP_BESTANDEN) throw new Error(`Dit zip-bestand bevat te veel bestanden (meer dan ${MAX_ZIP_BESTANDEN}).`);
   const lijst = [];
   let totaal = 0;
   for (let i = 0; i < aantal; i++) {
     if (p + 46 > b.length || v.getUint32(p, true) !== 0x02014b50) throw new Error(ZIP_BESCHADIGD);
-    const vlaggen = v.getUint16(p + 8, true);
-    const methode = v.getUint16(p + 10, true);
-    const item = {
-      methode,
-      crc: v.getUint32(p + 16, true),
-      ingepakt: v.getUint32(p + 20, true),
-      grootte: v.getUint32(p + 24, true),
-      begin: v.getUint32(p + 42, true),
-    };
-    const naamLengte = v.getUint16(p + 28, true);
-    const naamBytes = b.subarray(p + 46, p + 46 + naamLengte);
-    try {
-      item.naam = new TextDecoder('utf-8', { fatal: true }).decode(naamBytes);
-    } catch {
-      item.naam = new TextDecoder('windows-1252').decode(naamBytes);
-    }
+    const [vlaggen, methode, naamLengte] = [v.getUint16(p + 8, true), v.getUint16(p + 10, true), v.getUint16(p + 28, true)];
+    const [crc, ingepakt, grootte, begin] = [16, 20, 24, 42].map((plek) => v.getUint32(p + plek, true));
+    const naam = decodeer(b.subarray(p + 46, p + 46 + naamLengte));
     p += 46 + naamLengte + v.getUint16(p + 30, true) + v.getUint16(p + 32, true);
     if (vlaggen & 0x41) throw new Error('Dit zip-bestand is beveiligd met een wachtwoord en kan niet worden gelezen.');
-    if (item.ingepakt === 0xffffffff || item.grootte === 0xffffffff || item.begin === 0xffffffff) {
-      throw new Error('Dit zip-bestand heeft een indeling voor zeer grote bestanden (zip64); die wordt niet ondersteund.');
-    }
+    if (ingepakt === 0xffffffff || grootte === 0xffffffff || begin === 0xffffffff) throw new Error(zip64);
     if (methode !== 0 && methode !== 8) {
-      throw new Error(`Het bestand "${item.naam}" in dit zip-bestand gebruikt een compressie die niet wordt ondersteund.`);
+      throw new Error(`Het bestand "${naam}" in dit zip-bestand gebruikt een compressie die niet wordt ondersteund.`);
     }
-    totaal += item.grootte;
-    if (totaal > MAX_ZIP_BYTES) {
-      throw new Error(`Dit bestand is uitgepakt te groot (meer dan ${MAX_ZIP_BYTES / 1024 / 1024} MB).`);
-    }
-    if (!item.naam.endsWith('/')) lijst.push(item); // mappen overslaan
+    totaal += grootte;
+    if (totaal > MAX_ZIP_BYTES) throw new Error(`Dit bestand is uitgepakt te groot (meer dan ${MAX_ZIP_BYTES / 1024 / 1024} MB).`);
+    if (!naam.endsWith('/')) lijst.push({ naam, methode, crc, ingepakt, grootte, begin }); // mappen overslaan
   }
   const uit = new Map();
   for (const item of lijst) {
@@ -290,8 +254,30 @@ const NS_REL_DOC = 'http://schemas.openxmlformats.org/officeDocument/2006/relati
 const NS_REL = 'http://schemas.openxmlformats.org/package/2006/relationships';
 const NS_TYPEN = 'http://schemas.openxmlformats.org/package/2006/content-types';
 const TYPE_BLAD = 'application/vnd.openxmlformats-officedocument.spreadsheetml';
+const TYPE_REL = 'application/vnd.openxmlformats-package.relationships+xml';
 const MAX_CELTEKST = 32767; // meer tekens past niet in één Excel-cel
 const KOLOMLETTERS = [];
+
+/** Verwijzingen naar andere onderdelen: [[soort, doel], …] wordt rId1, rId2, … */
+const relatiesXml = (lijst) =>
+  `${XML_KOP}<Relationships xmlns="${NS_REL}">` +
+  lijst.map(([soort, doel], i) => `<Relationship Id="rId${i + 1}" Type="${NS_REL_DOC}/${soort}" Target="${doel}"/>`).join('') +
+  '</Relationships>';
+
+/** Zip-bestand in de Office-indeling van [{ naam, type?, inhoud }]; het eerste onderdeel is het document zelf. */
+function officeZip(onderdelen) {
+  const typen = onderdelen.filter((o) => o.type).map((o) => `<Override PartName="/${o.naam}" ContentType="${o.type}"/>`);
+  return maakZip([
+    {
+      naam: '[Content_Types].xml',
+      inhoud:
+        `${XML_KOP}<Types xmlns="${NS_TYPEN}"><Default Extension="rels" ContentType="${TYPE_REL}"/>` +
+        `<Default Extension="xml" ContentType="application/xml"/>${typen.join('')}</Types>`,
+    },
+    { naam: '_rels/.rels', inhoud: relatiesXml([['officeDocument', onderdelen[0].naam]]) },
+    ...onderdelen.map(({ naam, inhoud }) => ({ naam, inhoud })),
+  ]);
+}
 
 /** Kolomnummer (vanaf 1) naar letters: 1 → A, 27 → AA. */
 function kolomLetters(nr) {
@@ -320,17 +306,11 @@ function celTekst(waarde) {
   return xmlTekst(t.replace(/_(?=x[0-9A-Fa-f]{4}_)/g, '_x005F_'));
 }
 
-/** Eén waarde als tekst, getal of waar/onwaar; al het andere wordt tekst. */
+/** Eén waarde als tekst, getal of waar/onwaar; een datum wordt 'JJJJ-MM-DD uu:mm', al het andere tekst. */
 function celWaarde(w) {
-  if (typeof w === 'bigint') return Number.isSafeInteger(Number(w)) ? Number(w) : String(w);
-  if (w instanceof Date) {
-    if (Number.isNaN(w.getTime())) return null;
-    const iso = w.toISOString();
-    return iso.endsWith('T00:00:00.000Z') ? iso.slice(0, 10) : `${iso.slice(0, 10)} ${iso.slice(11, 16)}`;
-  }
+  if (w instanceof Date) return Number.isNaN(w.getTime()) ? null : w.toISOString().slice(0, 16).replace('T', ' ').replace(' 00:00', '');
   if (typeof w === 'number') return Number.isFinite(w) ? w : null;
-  if (w === null || w === undefined || typeof w === 'boolean' || typeof w === 'string') return w;
-  return String(w);
+  return w === null || w === undefined || typeof w === 'boolean' ? w : String(w);
 }
 
 /** XML van één werkblad. De eerste rij is de kop: vet en vastgezet. */
@@ -414,49 +394,25 @@ export function maakXlsx(bladen) {
     return nr;
   };
   const namen = new Set();
-  let typen = '';
-  let bladRegels = '';
-  let relaties = '';
-  const bestanden = [];
-  lijst.forEach((blad, i) => {
-    const nr = i + 1;
-    bestanden.push({ naam: `xl/worksheets/sheet${nr}.xml`, inhoud: bladXml(blad || {}, tekstNr, i === 0) });
-    typen += `<Override PartName="/xl/worksheets/sheet${nr}.xml" ContentType="${TYPE_BLAD}.worksheet+xml"/>`;
-    bladRegels += `<sheet name="${xmlTekst(bladNaam(blad?.naam, namen, nr))}" sheetId="${nr}" r:id="rId${nr}"/>`;
-    relaties += `<Relationship Id="rId${nr}" Type="${NS_REL_DOC}/worksheet" Target="worksheets/sheet${nr}.xml"/>`;
-  });
-  const n = lijst.length;
+  const tabs = lijst.map((blad, i) => `<sheet name="${xmlTekst(bladNaam(blad?.naam, namen, i + 1))}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`);
+  const werkbladen = lijst.map((blad, i) => ({
+    naam: `xl/worksheets/sheet${i + 1}.xml`,
+    type: `${TYPE_BLAD}.worksheet+xml`,
+    inhoud: bladXml(blad || {}, tekstNr, i === 0),
+  }));
   let gedeeld = `${XML_KOP}<sst xmlns="${NS_BLAD}" count="${verwijzingen}" uniqueCount="${teksten.size}">`;
   for (const tekst of teksten.keys()) {
     const ruimte = /^\s|\s$|\s\s|\n/.test(tekst) ? ' xml:space="preserve"' : '';
     gedeeld += `<si><t${ruimte}>${celTekst(tekst)}</t></si>`;
   }
-  return maakZip([
-    {
-      naam: '[Content_Types].xml',
-      inhoud:
-        `${XML_KOP}<Types xmlns="${NS_TYPEN}"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>` +
-        `<Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="${TYPE_BLAD}.sheet.main+xml"/>` +
-        `${typen}<Override PartName="/xl/styles.xml" ContentType="${TYPE_BLAD}.styles+xml"/>` +
-        `<Override PartName="/xl/sharedStrings.xml" ContentType="${TYPE_BLAD}.sharedStrings+xml"/></Types>`,
-    },
-    {
-      naam: '_rels/.rels',
-      inhoud: `${XML_KOP}<Relationships xmlns="${NS_REL}"><Relationship Id="rId1" Type="${NS_REL_DOC}/officeDocument" Target="xl/workbook.xml"/></Relationships>`,
-    },
-    {
-      naam: 'xl/workbook.xml',
-      inhoud: `${XML_KOP}<workbook xmlns="${NS_BLAD}" xmlns:r="${NS_REL_DOC}"><bookViews><workbookView/></bookViews><sheets>${bladRegels}</sheets></workbook>`,
-    },
-    {
-      naam: 'xl/_rels/workbook.xml.rels',
-      inhoud:
-        `${XML_KOP}<Relationships xmlns="${NS_REL}">${relaties}<Relationship Id="rId${n + 1}" Type="${NS_REL_DOC}/styles" Target="styles.xml"/>` +
-        `<Relationship Id="rId${n + 2}" Type="${NS_REL_DOC}/sharedStrings" Target="sharedStrings.xml"/></Relationships>`,
-    },
-    { naam: 'xl/styles.xml', inhoud: XLSX_STIJLEN },
-    { naam: 'xl/sharedStrings.xml', inhoud: `${gedeeld}</sst>` },
-    ...bestanden,
+  const werkmap = `<workbook xmlns="${NS_BLAD}" xmlns:r="${NS_REL_DOC}"><bookViews><workbookView/></bookViews><sheets>${tabs.join('')}</sheets></workbook>`;
+  const relaties = [...lijst.map((blad, i) => ['worksheet', `worksheets/sheet${i + 1}.xml`]), ['styles', 'styles.xml'], ['sharedStrings', 'sharedStrings.xml']];
+  return officeZip([
+    { naam: 'xl/workbook.xml', type: `${TYPE_BLAD}.sheet.main+xml`, inhoud: XML_KOP + werkmap },
+    { naam: 'xl/_rels/workbook.xml.rels', inhoud: relatiesXml(relaties) },
+    { naam: 'xl/styles.xml', type: `${TYPE_BLAD}.styles+xml`, inhoud: XLSX_STIJLEN },
+    { naam: 'xl/sharedStrings.xml', type: `${TYPE_BLAD}.sharedStrings+xml`, inhoud: `${gedeeld}</sst>` },
+    ...werkbladen,
   ]);
 }
 
@@ -642,11 +598,9 @@ function leesBlad(xml, naam, teksten, stijlen, vanaf1904) {
         cel = null;
         if (w === null) return;
         // Alleen cellen met inhoud tellen; opmaak in lege cellen ver weg geeft dus geen foutmelding.
-        if (rij > MAX_RIJEN) {
-          throw new Error(`Het blad "${naam}" heeft te veel rijen (meer dan ${MAX_RIJEN}). Splits het bestand in kleinere delen.`);
-        }
-        if (kolom > MAX_KOLOMMEN) {
-          throw new Error(`Het blad "${naam}" heeft te veel kolommen (meer dan ${MAX_KOLOMMEN}). Verwijder de kolommen die je niet nodig hebt.`);
+        if (rij > MAX_RIJEN || kolom > MAX_KOLOMMEN) {
+          const wat = rij > MAX_RIJEN ? `rijen (meer dan ${MAX_RIJEN})` : `kolommen (meer dan ${MAX_KOLOMMEN})`;
+          throw new Error(`Het blad "${naam}" heeft te veel ${wat}. Verwijder wat je niet nodig hebt of splits het bestand.`);
         }
         (rijen[rij - 1] ||= [])[kolom - 1] = w;
         if (kolom > breedte) breedte = kolom;
@@ -714,38 +668,21 @@ function csvTekst(b) {
   }
 }
 
-/** Kiest het scheidingsteken (; , of tab) aan de hand van de eerste regels, buiten aanhalingstekens geteld. */
+/** Kiest het scheidingsteken (; , of tab) aan de hand van de eerste tien regels, buiten aanhalingstekens geteld. */
 function csvScheiding(tekst) {
-  const kandidaten = [';', ',', '\t'];
-  const regels = []; // per regel: hoe vaak elk teken voorkomt
-  let telling = [0, 0, 0];
-  let tussen = false;
-  let leeg = true;
-  for (let i = 0; i < tekst.length && regels.length < 10; i++) {
-    const c = tekst[i];
-    if (c === '"') tussen = !tussen;
-    else if (!tussen && (c === '\n' || c === '\r')) {
-      if (!leeg) regels.push(telling);
-      telling = [0, 0, 0];
-      leeg = true;
-      continue;
-    } else if (!tussen && kandidaten.includes(c)) telling[kandidaten.indexOf(c)]++;
-    leeg = false;
-  }
-  if (!leeg && regels.length < 10) regels.push(telling);
-  let beste = 0;
+  const begin = tekst.slice(0, 50000).replace(/"(?:[^"]|"")*"?/g, '');
+  const regels = begin.split(/\r\n?|\n/).filter((regel) => regel);
+  if (tekst.length > 50000 && regels.length > 1) regels.pop(); // de laatste regel is mogelijk afgebroken
+  let beste = ';';
   let besteScore = -1;
-  kandidaten.forEach((teken, k) => {
-    const n = regels.map((r) => r[k]);
+  for (const teken of [';', ',', '\t']) {
+    const n = regels.slice(0, 10).map((regel) => regel.split(teken).length - 1);
     const eerste = n[0] || 0;
     // Het zwaarst telt: op elke regel even vaak. Daarna: hoe vaak in de kopregel, en hoe vaak in totaal.
     const score = (eerste > 0 && n.every((x) => x === eerste) ? 1e9 : 0) + eerste * 1e4 + n.reduce((a, x) => a + x, 0);
-    if (score > besteScore) {
-      besteScore = score;
-      beste = k;
-    }
-  });
-  return kandidaten[beste];
+    if (score > besteScore) [beste, besteScore] = [teken, score];
+  }
+  return beste;
 }
 
 /**
@@ -942,10 +879,12 @@ function wBlokken(blokken, lijsten, diepte = 0) {
         lijsten.push(blok.start);
         nummering = lijsten.length + 1;
       }
-      const eigenschappen =
-        `<w:pStyle w:val="ListParagraph"/><w:numPr><w:ilvl w:val="0"/><w:numId w:val="${nummering}"/></w:numPr>` +
-        (diepte ? `<w:ind w:left="${720 + inspring}" w:hanging="360"/>` : '');
-      for (const punt of blok.punten) uit += wAlinea(punt, eigenschappen);
+      const lijst = `<w:pStyle w:val="ListParagraph"/><w:numPr><w:ilvl w:val="0"/><w:numId w:val="${nummering}"/></w:numPr>`;
+      const marge = diepte ? `<w:ind w:left="${720 + inspring}" w:hanging="360"/>` : '';
+      blok.punten.forEach((punt, i) => {
+        const laatste = i === blok.punten.length - 1 ? '<w:spacing w:after="160"/>' : ''; // gewone witruimte na de lijst
+        uit += wAlinea(punt, lijst + laatste + marge);
+      });
     } else if (diepte) {
       uit += wAlinea(blok.regels, `<w:pStyle w:val="Quote"/>${diepte > 1 ? `<w:ind w:left="${inspring}"/>` : ''}`);
     } else uit += wAlinea(blok.regels);
@@ -961,15 +900,12 @@ function wStijl(id, naam, alinea, tekens, basis = 'Normal') {
     `${alinea ? `<w:pPr>${alinea}</w:pPr>` : ''}${tekens ? `<w:rPr>${tekens}</w:rPr>` : ''}</w:style>`
   );
 }
-const wKop = (niveau, voor, grootte) =>
-  wStijl(
-    `Heading${niveau}`,
-    `heading ${niveau}`,
-    `<w:keepNext/><w:keepLines/><w:spacing w:before="${voor}" w:after="80"/><w:outlineLvl w:val="${niveau - 1}"/>`,
-    `<w:b/><w:color w:val="1F2937"/><w:sz w:val="${grootte}"/><w:szCs w:val="${grootte}"/>`,
-  );
+const wKop = (niveau, voor, grootte) => {
+  const alinea = `<w:keepNext/><w:keepLines/><w:spacing w:before="${voor}" w:after="80"/><w:outlineLvl w:val="${niveau - 1}"/>`;
+  return wStijl(`Heading${niveau}`, `heading ${niveau}`, alinea, `<w:b/><w:color w:val="1F2937"/><w:sz w:val="${grootte}"/><w:szCs w:val="${grootte}"/>`);
+};
 const DOCX_STIJLEN =
-  `${XML_KOP}<w:styles xmlns:w="${NS_W}"><w:docDefaults><w:rPrDefault><w:rPr>` +
+  `<w:styles xmlns:w="${NS_W}"><w:docDefaults><w:rPrDefault><w:rPr>` +
   '<w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:eastAsia="Calibri" w:cs="Calibri"/><w:sz w:val="22"/><w:szCs w:val="22"/>' +
   '<w:lang w:val="nl-NL" w:eastAsia="nl-NL" w:bidi="ar-SA"/></w:rPr></w:rPrDefault>' +
   '<w:pPrDefault><w:pPr><w:spacing w:after="160" w:line="276" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults>' +
@@ -989,7 +925,7 @@ function docxNummering(lijsten) {
     `<w:multiLevelType w:val="hybridMultilevel"/><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="${soort}"/>` +
     `<w:lvlText w:val="${teken}"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="720" w:hanging="360"/></w:pPr></w:lvl>`;
   let uit =
-    `${XML_KOP}<w:numbering xmlns:w="${NS_W}"><w:abstractNum w:abstractNumId="0">${niveau('bullet', '•')}</w:abstractNum>` +
+    `<w:numbering xmlns:w="${NS_W}"><w:abstractNum w:abstractNumId="0">${niveau('bullet', '•')}</w:abstractNum>` +
     `<w:abstractNum w:abstractNumId="1">${niveau('decimal', '%1.')}</w:abstractNum><w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>`;
   lijsten.forEach((start, i) => {
     uit +=
@@ -1008,69 +944,31 @@ export function maakDocx({ titel = '', markdown = '', voettekst = '' } = {}) {
   let inhoud = titel ? wAlinea([String(titel)], '<w:pStyle w:val="Title"/>', true) : '';
   inhoud += wBlokken(mdBlokken(String(markdown ?? '')), lijsten);
   const voet = String(voettekst ?? '').trim();
-  const relatie = (nr, soort, doel) => `<Relationship Id="rId${nr}" Type="${NS_REL_DOC}/${soort}" Target="${doel}"/>`;
-  const onderdeel = (naam) => `<Override PartName="/word/${naam}.xml" ContentType="${TYPE_W}.${naam.replace(/\d+$/, '')}+xml"/>`;
-  const bestanden = [
-    {
-      naam: '[Content_Types].xml',
-      inhoud:
-        `${XML_KOP}<Types xmlns="${NS_TYPEN}"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>` +
-        `<Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="${TYPE_W}.document.main+xml"/>` +
-        `${onderdeel('styles')}${onderdeel('numbering')}${onderdeel('settings')}${voet ? onderdeel('footer1') : ''}` +
-        '<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/></Types>',
-    },
-    {
-      naam: '_rels/.rels',
-      inhoud:
-        `${XML_KOP}<Relationships xmlns="${NS_REL}">${relatie(1, 'officeDocument', 'word/document.xml')}` +
-        `<Relationship Id="rId2" Type="${NS_REL}/metadata/core-properties" Target="docProps/core.xml"/></Relationships>`,
-    },
-    {
-      naam: 'docProps/core.xml',
-      inhoud:
-        `${XML_KOP}<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" ` +
-        `xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>${xmlTekst(titel)}</dc:title><dc:language>nl-NL</dc:language></cp:coreProperties>`,
-    },
-    {
-      naam: 'word/document.xml',
-      inhoud:
-        `${XML_KOP}<w:document xmlns:w="${NS_W}" xmlns:r="${NS_REL_DOC}"><w:body>${inhoud || '<w:p/>'}` +
-        `<w:sectPr>${voet ? '<w:footerReference w:type="default" r:id="rId4"/>' : ''}<w:pgSz w:w="11906" w:h="16838"/>` +
-        '<w:pgMar w:top="1417" w:right="1417" w:bottom="1417" w:left="1417" w:header="708" w:footer="708" w:gutter="0"/>' +
-        '</w:sectPr></w:body></w:document>',
-    },
-    {
-      naam: 'word/_rels/document.xml.rels',
-      inhoud:
-        `${XML_KOP}<Relationships xmlns="${NS_REL}">${relatie(1, 'styles', 'styles.xml')}${relatie(2, 'numbering', 'numbering.xml')}` +
-        `${relatie(3, 'settings', 'settings.xml')}${voet ? relatie(4, 'footer', 'footer1.xml') : ''}</Relationships>`,
-    },
-    { naam: 'word/styles.xml', inhoud: DOCX_STIJLEN },
-    { naam: 'word/numbering.xml', inhoud: docxNummering(lijsten) },
-    {
-      naam: 'word/settings.xml', // compatibilityMode 15: Word opent het bestand niet in de "compatibiliteitsmodus"
-      inhoud:
-        `${XML_KOP}<w:settings xmlns:w="${NS_W}"><w:defaultTabStop w:val="708"/><w:compat><w:compatSetting w:name="compatibilityMode" ` +
-        'w:uri="http://schemas.microsoft.com/office/word" w:val="15"/></w:compat><w:themeFontLang w:val="nl-NL"/></w:settings>',
-    },
-  ];
+  const deel = (naam, soort, xml) => ({ naam: `word/${naam}.xml`, soort, type: `${TYPE_W}.${soort}+xml`, inhoud: XML_KOP + xml });
+  const pagina =
+    `<w:sectPr>${voet ? '<w:footerReference w:type="default" r:id="rId4"/>' : ''}<w:pgSz w:w="11906" w:h="16838"/>` + // A4
+    '<w:pgMar w:top="1417" w:right="1417" w:bottom="1417" w:left="1417" w:header="708" w:footer="708" w:gutter="0"/></w:sectPr>';
+  // compatibilityMode 15: Word opent het bestand dan niet in de "compatibiliteitsmodus".
+  const instellingen =
+    `<w:settings xmlns:w="${NS_W}"><w:defaultTabStop w:val="708"/><w:compat><w:compatSetting w:name="compatibilityMode" ` +
+    'w:uri="http://schemas.microsoft.com/office/word" w:val="15"/></w:compat><w:themeFontLang w:val="nl-NL"/></w:settings>';
+  const rest = [deel('styles', 'styles', DOCX_STIJLEN), deel('numbering', 'numbering', docxNummering(lijsten)), deel('settings', 'settings', instellingen)];
   if (voet) {
     const alinea = wAlinea(voet.replace(/\r\n?/g, '\n').split('\n'), '<w:pStyle w:val="Footer"/>', true);
-    bestanden.push({ naam: 'word/footer1.xml', inhoud: `${XML_KOP}<w:ftr xmlns:w="${NS_W}">${alinea}</w:ftr>` });
+    rest.push(deel('footer1', 'footer', `<w:ftr xmlns:w="${NS_W}">${alinea}</w:ftr>`)); // wordt rId4, zie pagina
   }
-  return maakZip(bestanden);
+  return officeZip([
+    deel('document', 'document.main', `<w:document xmlns:w="${NS_W}" xmlns:r="${NS_REL_DOC}"><w:body>${inhoud || '<w:p/>'}${pagina}</w:body></w:document>`),
+    { naam: 'word/_rels/document.xml.rels', inhoud: relatiesXml(rest.map((o) => [o.soort, o.naam.slice(5)])) },
+    ...rest,
+  ]);
 }
 
 // ---------- Agenda (.ics voor Outlook en andere agenda's) ----------
 
 /** Tekst volgens de regels van een agendabestand: \ ; , en regeleinden krijgen een \ ervoor. */
 function icsTekst(tekst) {
-  return String(tekst ?? '')
-    .replace(/\\/g, '\\\\')
-    .replace(/;/g, '\\;')
-    .replace(/,/g, '\\,')
-    .replace(/\r\n?|\n/g, '\\n')
-    .replace(/[\u0000-\u001f\u007f]/g, '');
+  return String(tekst ?? '').replace(/[\\;,]/g, '\\$&').replace(/\r\n?|\n/g, '\\n').replace(/[\u0000-\u001f\u007f]/g, '');
 }
 
 /** Breekt een regel af op 75 bytes (vervolgregels beginnen met een spatie), nooit midden in een teken. */
@@ -1099,9 +997,8 @@ function icsVouw(regel) {
 export function maakIcs(afspraken, opties = {}) {
   const t = opties.tijdstempel;
   const moment = t instanceof Date ? t : new Date(typeof t === 'string' || typeof t === 'number' ? t : NaN);
-  const stempel = Number.isNaN(moment.getTime())
-    ? '20260101T000000Z' // vaste waarde: dezelfde invoer geeft hetzelfde bestand
-    : `${moment.toISOString().replace(/[-:]/g, '').slice(0, 15)}Z`;
+  // Zonder tijdstempel een vaste waarde: dezelfde invoer geeft dan steeds hetzelfde bestand.
+  const stempel = Number.isNaN(moment.getTime()) ? '20260101T000000Z' : `${moment.toISOString().replace(/[-:]/g, '').slice(0, 15)}Z`;
   const regels = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Onderzoeksomgeving//Agenda//NL', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH'];
   if (opties.naam) regels.push(`X-WR-CALNAME:${icsTekst(opties.naam)}`);
   const uids = new Set();
@@ -1146,11 +1043,8 @@ const SPSS_MAX_NAAM = 32;
  * De naam wordt aan gebruikt toegevoegd.
  */
 export function spssNaam(tekst, gebruikt = new Set()) {
-  let basis = String(tekst ?? '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^A-Za-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '');
+  // Accenten weg (é wordt e), al het andere dan letters en cijfers wordt een _.
+  let basis = String(tekst ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
   if (!basis) basis = 'var';
   if (!/^[A-Za-z]/.test(basis)) basis = `v${basis}`;
   if (SPSS_GERESERVEERD.has(basis.toUpperCase())) basis = `v_${basis}`;
@@ -1185,21 +1079,6 @@ function spssTekst(tekst, maxBytes, inspring) {
   return stukken.map((s) => `'${s}'`).join(` +\n${inspring}`);
 }
 
-/** Namen over regels verdelen, zodat geen regel te lang wordt. */
-function spssNamen(namen, inspring = '  ') {
-  const regels = [];
-  let regel = '';
-  for (const naam of namen) {
-    if (regel && regel.length + naam.length + 1 > 100) {
-      regels.push(regel);
-      regel = '';
-    }
-    regel += (regel ? ' ' : '') + naam;
-  }
-  if (regel) regels.push(regel);
-  return regels.map((r) => inspring + r).join('\n');
-}
-
 /** Variabelen met dezelfde instelling bij elkaar zetten: Map van instelling naar namen. */
 function spssGroepen(variabelen, instelling) {
   const groepen = new Map();
@@ -1232,7 +1111,7 @@ export function maakSpssSyntax({ databestand, variabelen, titel = '' }) {
     namen.add(v.naam.toLowerCase());
   }
   const bestand = String(databestand || 'gegevens.csv').replace(/[\r\n]+/g, ' ');
-  const opmerking = (tekst) => `* ${String(tekst).replace(/\s+/g, ' ').replace(/[.\s]+$/, '').slice(0, 200)}.`;
+  const opmerking = (tekst) => `* ${knipBytes(String(tekst).replace(/\s+/g, ' '), 200).replace(/[.\s]+$/, '')}.`;
   const formaat = (v) => {
     if (v.soort === 'tekst') {
       // Breedte in bytes: drie per teken, zodat ook tekst met accenten en andere tekens altijd past.
@@ -1250,7 +1129,7 @@ export function maakSpssSyntax({ databestand, variabelen, titel = '' }) {
     '* Syntax voor SPSS (werkt ook in PSPP), gemaakt door de Onderzoeksomgeving.',
     '*.',
     '* Zo gebruik je dit bestand.',
-    `* 1. Zet dit syntaxbestand en het gegevensbestand (${bestand.replace(/[.\s]+$/, '')}) samen in een map.`,
+    opmerking(`1. Zet dit syntaxbestand en het gegevensbestand (${knipBytes(bestand, 120)}) samen in een map`),
     '* 2. Open dit syntaxbestand in SPSS: File > Open > Syntax (Bestand > Openen > Syntax).',
     '* 3. Kan SPSS het gegevensbestand niet vinden? Zet dan bij /FILE hieronder het hele pad.',
     "*    Voorbeeld: /FILE='C:\\Users\\jouwnaam\\Documents\\onderzoek\\gegevens.csv'.",
@@ -1289,12 +1168,13 @@ export function maakSpssSyntax({ databestand, variabelen, titel = '' }) {
       .filter(([waarde]) => waarde !== null)
       .map(([waarde, label]) => `    ${waarde} ${spssTekst(label, 120, '      ')}`)
       .join('\n');
-  blok('VALUE LABELS', [...spssGroepen(lijst, labels)].map(([regels, groep]) => `${spssNamen(groep)}\n${regels}`));
-  // SPSS staat per variabele hooguit drie losse ontbrekende waarden toe.
-  const ontbrekend = (v) => (v.ontbrekend || []).map((w) => spssWaarde(v, w)).filter((w) => w !== null).slice(0, 3).join(', ');
-  blok('MISSING VALUES', [...spssGroepen(lijst, ontbrekend)].map(([waarden, groep]) => `${spssNamen(groep)} (${waarden})`));
+  blok('VALUE LABELS', [...spssGroepen(lijst, labels)].map(([regels, groep]) => `  ${groep.join('\n  ')}\n${regels}`));
+  // SPSS staat per variabele hooguit drie losse ontbrekende waarden toe; bij tekst elk hooguit 8 bytes lang.
+  const kort = (v) => (v.ontbrekend || []).filter((w) => v.soort !== 'tekst' || utf8Lengte(String(w)) <= 8);
+  const ontbrekend = (v) => kort(v).map((w) => spssWaarde(v, w)).filter((w) => w !== null).slice(0, 3).join(', ');
+  blok('MISSING VALUES', [...spssGroepen(lijst, ontbrekend)].map(([waarden, groep]) => `  ${groep.join('\n  ')} (${waarden})`));
   const niveau = (v) => (['SCALE', 'ORDINAL', 'NOMINAL'].includes(v.meetniveau) ? v.meetniveau : '');
-  blok('VARIABLE LEVEL', [...spssGroepen(lijst, niveau)].map(([soort, groep]) => `${spssNamen(groep)} (${soort})`));
+  blok('VARIABLE LEVEL', [...spssGroepen(lijst, niveau)].map(([soort, groep]) => `  ${groep.join('\n  ')} (${soort})`));
   uit.push('', 'CACHE.', 'EXECUTE.', 'RESTORE.', '');
   return uit.join('\n');
 }
