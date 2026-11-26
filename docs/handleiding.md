@@ -137,14 +137,45 @@ Het tabblad **Dashboard** toont:
 
 Met **Neem op in stuk** zet je de cijfers van een kaart als tekst in een van je stukken, bijvoorbeeld in het Conceptrapport.
 
-## 5. Eigen invoer
+## 5. Analyse: is een verschil echt?
+
+Het dashboard laat zien wat de uitkomsten zijn. Op het tabblad **Analyse** toets je of een verschil of verband echt is, of dat het ook toeval kan zijn. Het werkt als een klein statistiekprogramma: jij kiest wat je tegen elkaar afzet, en bij elke uitkomst staat in gewone taal wat het betekent.
+
+| Onderdeel | Vraag die je ermee beantwoordt |
+|---|---|
+| **1. Verschil tussen meetmomenten** | Is de score veranderd tussen bijvoorbeeld de nulmeting en de vervolgmeting? Kan voor één thema, meetpunt of vraag, of voor alle thema's tegelijk. |
+| **2. Verschil tussen groepen** | Scoren groepen, bijvoorbeeld afdelingen, verschillend? Je kiest een vraag die je hebt gemarkeerd als uitsplitsing. |
+| **3. Samenhang** | Hangen twee scores met elkaar samen, bijvoorbeeld werkdruk en betrokkenheid? Er is ook een overzicht van alle thema's. |
+| **4. Betrouwbaarheid van de thema's** | Meten de vragen van een thema samen hetzelfde onderwerp? |
+| **5. Verband tussen twee keuzevragen** | Hangen de antwoorden op twee keuzevragen (meerkeuze of ja/nee) met elkaar samen? |
+
+### De uitkomsten lezen
+
+- **Significant** (p kleiner dan 0,05): het is onwaarschijnlijk dat het verschil of verband alleen door toeval komt. **Niet significant**: het kan goed toeval zijn. Dat betekent niet dat er zeker geen verschil is, zeker niet bij weinig respondenten.
+- **Effectgrootte**: hoe groot het verschil of verband is, van *verwaarloosbaar* via *klein* en *middelgroot* tot *groot*. Kijk hier altijd naar. Een significant verschil kan in de praktijk heel klein zijn.
+- **95%-interval**: de marge waarbinnen het echte verschil waarschijnlijk ligt.
+- **Betrouwbaarheid (Cronbachs alfa)**: vanaf ongeveer 0,7 vormen de vragen samen een bruikbare score. Is de waarde lager, kijk dan liever naar de losse vragen.
+
+Met **Neem op in stuk** zet je een uitkomst, met de uitleg erbij, in een van je stukken.
+
+### Goed om te weten
+
+- **Minimale aantallen.** Een vergelijking vraagt minstens 5 respondenten per groep of meetmoment. Samenhang en betrouwbaarheid vragen minstens 10.
+- **Kleine groepen.** Groepen met minder dan 5 respondenten doen niet mee en worden alleen bij naam genoemd, zonder getallen. Soms valt daarnaast ook de kleinste andere groep weg, zodat een kleine groep niet uit het totaal is terug te rekenen. In de tabel bij onderdeel 5 staat om dezelfde reden een **×** in cellen die niet getoond worden.
+- **Gemiddelden kunnen iets afwijken van het dashboard.** Analyse berekent eerst per respondent een score per thema; daarvoor moet iemand minstens de helft van de vragen van dat thema hebben beantwoord. Het dashboard middelt alle losse antwoorden.
+- **Meetmomenten worden vergeleken als twee losse groepen.** De antwoorden zijn anoniem, dus dezelfde persoon is niet te volgen van de ene naar de andere meting.
+- **Veel toetsen tegelijk.** Hoe meer je toetst, hoe groter de kans dat er door toeval iets "significant" uitkomt. Het scherm waarschuwt daarvoor.
+- **Samenhang is geen oorzaak.** Dat twee scores samen op- en neergaan, bewijst niet dat de een de ander veroorzaakt.
+- De berekeningen gebruiken gangbare toetsen (Welch t-toets, Mann-Whitney, ANOVA, Kruskal-Wallis, Pearson, Spearman, chi-kwadraat) en zijn gecontroleerd tegen een standaard statistiekpakket.
+
+## 6. Eigen invoer
 
 Op het tabblad **Eigen invoer** leg je vast wat je buiten de vragenlijst te weten komt: interviews, observaties, documentanalyse en cijfers zoals verzuim of verloop. Koppel elk item aan een thema en een datum, en eventueel aan een meetpunt en meetmoment.
 
 - Kies je de soort **Cijfer** en vul je een waarde in, dan verschijnt die op het dashboard onder **Eigen cijfers**.
 - Schrijf aantekeningen van interviews zonder namen van medewerkers.
 
-## 6. Stukken
+## 7. Stukken
 
 Op het tabblad **Stukken** staan standaard **Notities**, **Bevindingen** en een **Conceptrapport** met een indeling. Je kunt zelf stukken toevoegen.
 
@@ -153,11 +184,11 @@ Op het tabblad **Stukken** staan standaard **Notities**, **Bevindingen** en een 
 - Werk je tegelijk in twee tabbladen of op twee apparaten, dan waarschuwt de app voordat er iets wordt overschreven.
 - Met **Downloaden** krijg je het stuk als tekstbestand, dat je in Word kunt plakken.
 
-## 7. Acties
+## 8. Acties
 
 Op het tabblad **Acties** staat je actielijst, met per actie een status (*Te doen*, *Bezig*, *Klaar*) en een datum. Acties waarvan de datum voorbij is, worden rood gemarkeerd.
 
-## 8. Afronden: exporteren en archiveren
+## 9. Afronden: exporteren en archiveren
 
 Ga naar het tabblad **Afronden**.
 
@@ -177,7 +208,7 @@ Ga naar het tabblad **Afronden**.
 3. **Nieuw onderzoek.** Klik op **Nieuw onderzoek starten** en begin leeg bij het volgende bedrijf.
 4. **Definitief verwijderen** (optioneel). Een gearchiveerd onderzoek kun je bij Afronden definitief verwijderen. Bewaar onderzoeksgegevens niet langer dan nodig (AVG).
 
-## 9. Privacy in het kort
+## 10. Privacy in het kort
 
 - Van respondenten wordt **geen naam, e-mailadres, IP-adres of tijdstip** opgeslagen. Alleen de datum en de antwoorden worden bewaard.
 - Ingevulde vragenlijsten krijgen een willekeurig nummer, zodat de volgorde van invullen niet te herleiden is.
