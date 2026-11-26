@@ -14,6 +14,8 @@
 //   deflate.zip                 Python zipfile met compressie, een map, een bestandsnaam met é en een emoji, en commentaar.
 // Wat de module schrijft is daarnaast met de hand nagelezen met openpyxl, python-docx 1.2.0, icalendar 7.3.2,
 // LibreOffice 24.2 (omzetten naar xlsx, pdf en tekst) en PSPP 2.0.0 (de SPSS-syntax uitgevoerd op een bijpassend CSV-bestand).
+// Dat geldt ook voor een rapport uit blokken met tabellen: python-docx leest de tabellen terug, en in de pdf van
+// LibreOffice staat de kopregel van een lange tabel bovenaan elke pagina. Met Word en SPSS zelf is niet getest.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
