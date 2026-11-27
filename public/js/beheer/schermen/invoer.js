@@ -809,7 +809,7 @@ export async function toon(container, ctx) {
           ? 'Hier staat wat er buiten de vragenlijst om is vastgelegd: interviews, observaties, cijfers zoals verzuim of verloop, en documentanalyse.'
           : 'Leg hier vast wat je buiten de vragenlijst om te weten komt: interviews, je eigen observaties, cijfers zoals verzuim of verloop, en wat je uit documenten haalt. Zo staat alles per thema bij elkaar.'),
         h('p', { class: 'klein zacht' }, 'Cijfers (soort "Cijfer" met een waarde) verschijnen op het ',
-          h('a', { href: `${basis}/dashboard` }, 'Dashboard'), ' onder "Eigen cijfers", per meetpunt door de tijd.'),
+          h('a', { href: `${basis}/dashboard/resultaten` }, 'Dashboard'), ' onder "Eigen cijfers", per meetpunt door de tijd.'),
       ),
       geenThemas,
       balk,

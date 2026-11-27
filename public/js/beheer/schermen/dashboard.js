@@ -8,7 +8,7 @@
 
 import { api } from '../api.js';
 import {
-  h, vervang, leeg, laden, melding, meld, meldFout, getal, procent, datum, aantal, kopieer, statusLabel, bevestig,
+  h, vervang, leeg, laden, melding, meld, meldFout, getal, procent, datum, aantal, kopieer, statusLabel, bevestig, tabSubnav,
 } from '../ui.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -178,7 +178,8 @@ export async function toon(container, ctx) {
   const filterEl = h('div', { class: 'db-filter' });
   const inhoud = h('div', { class: 'db-inhoud' }, laden('De resultaten worden geladen…'));
   let uitsplitsInhoud = null;
-  vervang(container, h('div', { class: 'dashboard' }, filterEl, inhoud));
+  // Een kijker (deellink) gebruikt dit scherm ook, maar krijgt geen sub-navigatie: het Overzicht is alleen voor de beheerder.
+  vervang(container, ctx.kijker ? null : tabSubnav('dashboard', onderzoekId, 'resultaten'), h('div', { class: 'dashboard' }, filterEl, inhoud));
 
   // ---------- Gegevens ophalen ----------
 

@@ -267,7 +267,8 @@ a:hover { color: var(--primair-hover); text-decoration-thickness: 2px; }
   align-items: center;
 }
 .kop-nav a,
-.kop-nav button {
+.kop-nav button,
+.kop-uitloggen {
   position: relative;
   display: inline-flex;
   align-items: center;
@@ -284,7 +285,8 @@ a:hover { color: var(--primair-hover); text-decoration-thickness: 2px; }
   font-family: inherit;
 }
 .kop-nav a:hover,
-.kop-nav button:hover { background: var(--vlak); color: var(--tekst); }
+.kop-nav button:hover,
+.kop-uitloggen:hover { background: var(--vlak); color: var(--tekst); }
 .kop-nav a[aria-current='page'] { color: var(--tekst); font-weight: 600; }
 .kop-nav a[aria-current='page']::after {
   content: '';
@@ -295,11 +297,25 @@ a:hover { color: var(--primair-hover); text-decoration-thickness: 2px; }
   height: 2px;
   background: var(--oker);
 }
-.kop-nav button {
+.kop-nav button,
+.kop-uitloggen {
   margin-left: var(--ruimte-2);
   border: 1px solid var(--rand);
 }
-.kop-nav button:hover { border-color: var(--rand-sterk); }
+.kop-nav button:hover,
+.kop-uitloggen:hover { border-color: var(--rand-sterk); }
+/* "Uitloggen" staat naast het menu (niet erin): even ver ervan af als een knop binnen het menu. */
+.kop-uitloggen { flex: none; margin-left: calc(var(--ruimte-1) + var(--ruimte-2) - var(--ruimte-4)); }
+/* Beheer: vanaf een smal laptopscherm alleen het beeldmerk, zodat het menu op één regel past. */
+@media (max-width: 820px) {
+  .kop-beheer .kop-logo-tekst { display: none; }
+}
+/* Telefoon: beeldmerk en "Uitloggen" bovenaan, het menu op een eigen regel eronder. */
+@media (max-width: 640px) {
+  .kop-binnen.kop-beheer { flex-wrap: wrap; row-gap: 0; padding-bottom: 0; }
+  .kop-beheer .kop-uitloggen { margin-left: auto; }
+  .kop-beheer .kop-nav { order: 3; flex: 1 0 100%; margin-left: calc(-1 * var(--ruimte-3)); }
+}
 
 main.inhoud {
   max-width: var(--max-breedte);
@@ -353,6 +369,35 @@ main.inhoud {
 .tabs a:hover { color: var(--tekst); border-bottom-color: var(--rand-sterk); }
 .tabs a[aria-current='page'] { color: var(--tekst); font-weight: 650; border-bottom-color: var(--oker); }
 .tabs a:focus-visible { outline-offset: -3px; }
+
+/* Sub-navigatie binnen een tabblad (bijv. Dashboard: Overzicht · Alle resultaten). Breekt om op een telefoon. */
+.subnav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ruimte-2);
+  margin: calc(-1 * var(--ruimte-3)) 0 var(--ruimte-5);
+}
+.subnav a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: var(--ruimte-1) var(--ruimte-4);
+  border: 1px solid var(--rand);
+  border-radius: var(--radius-klein);
+  background: var(--vlak-licht);
+  color: var(--tekst-zacht);
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.subnav a:hover { color: var(--tekst); border-color: var(--rand-sterk); }
+.subnav a[aria-current='page'] {
+  color: var(--tekst);
+  font-weight: 650;
+  background: var(--vlak);
+  border-color: var(--oker);
+  box-shadow: inset 0 -3px 0 var(--oker);
+}
 
 /* ---------- Blokken ---------- */
 
@@ -551,7 +596,7 @@ input[type='file']::file-selector-button:hover { background: var(--vlak-hover); 
 .knop-icoon { min-width: 36px; min-height: 36px; padding: 4px 8px; }
 .knoppen { display: flex; flex-wrap: wrap; gap: var(--ruimte-2); align-items: center; }
 @media (prefers-reduced-motion: no-preference) {
-  .knop, .kop-nav a, .kop-nav button { transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease; }
+  .knop, .kop-nav a, .kop-nav button, .kop-uitloggen { transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease; }
 }
 
 /* ---------- Formulieren ---------- */
@@ -768,6 +813,8 @@ dialog.dialoog > form { display: flex; flex-direction: column; min-height: 0; fl
   .kaart { padding: var(--ruimte-4); }
   .tabs { gap: var(--ruimte-4); margin-bottom: var(--ruimte-5); margin-left: calc(-1 * var(--ruimte-3)); margin-right: calc(-1 * var(--ruimte-3)); padding: 0 var(--ruimte-3); scrollbar-width: none; }
   .tabs::-webkit-scrollbar { display: none; }
+  .subnav { margin-top: calc(-1 * var(--ruimte-2)); margin-bottom: var(--ruimte-4); }
+  .subnav a { padding: var(--ruimte-1) var(--ruimte-3); }
   .lijst-item { flex-wrap: wrap; }
   .lijst-item-acties { width: 100%; justify-content: flex-start; }
   .dialoog-inhoud { padding: var(--ruimte-4); }
@@ -779,7 +826,7 @@ dialog.dialoog > form { display: flex; flex-direction: column; min-height: 0; fl
 }
 
 @media print {
-  .kop, .tabs, .knop, .knoppen, .toasts { display: none !important; }
+  .kop, .tabs, .subnav, .knop, .knoppen, .toasts { display: none !important; }
   html { font-size: 100%; }
   body { background: #fff; }
   .kaart { background: #fff; border-color: #bbb; box-shadow: none; break-inside: avoid; }
@@ -817,15 +864,17 @@ main.inhoud:focus { outline: none; }
 @media (max-width: 380px) {
   .kop-binnen { gap: var(--ruimte-1); padding-left: var(--ruimte-2); padding-right: var(--ruimte-2); }
   .kop-nav { gap: 0; }
-  .kop-nav a, .kop-nav button { padding: 6px 7px; font-size: 0.9rem; }
+  .kop-nav a, .kop-nav button, .kop-uitloggen { padding: 6px 7px; font-size: 0.9rem; }
   .kop-nav a[aria-current='page']::after { left: 7px; right: 7px; }
   .kop-nav button { margin-left: 2px; }
+  .kop-beheer .kop-nav { margin-left: -7px; }
   .merk { width: 28px; height: 28px; }
 }
 
 /* Schermen met vergrote weergave of hoog contrast: de randen van panelen weer zichtbaar. */
 @media (forced-colors: active) {
   .kaart, .kengetal, .leeg { border-color: CanvasText; }
+  .subnav a[aria-current='page'] { border-color: Highlight; border-width: 2px; }
 }
 
 /* Titels in lijsten zijn ook links: hoog genoeg om aan te tikken. */

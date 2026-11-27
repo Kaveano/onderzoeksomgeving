@@ -44,6 +44,29 @@ export function vervang(el, ...kinderen) {
   return el;
 }
 
+/**
+ * Sub-navigatie binnen een tabblad, zoals Dashboard: Overzicht · Alle resultaten.
+ * items: [{ sleutel, label, href }]; actief = de sleutel van de pagina waarop je bent.
+ */
+export function subnav(items, actief, label = 'Onderdelen van dit tabblad') {
+  return h('nav', { class: 'subnav', 'aria-label': label },
+    items.map((item) => h('a', { href: item.href, 'aria-current': item.sleutel === actief ? 'page' : null }, item.label)));
+}
+
+// Sub-navigatie per tabblad van een onderzoek: [deel van het adres na het tabblad, tekst]. '' = de hoofdpagina.
+const TAB_SUBNAVS = {
+  dashboard: { label: 'Onderdelen van het dashboard', items: [['', 'Overzicht'], ['resultaten', 'Alle resultaten']] },
+  analyse: { label: 'Soort analyse', items: [['', 'Stap voor stap'], ['werkbank', 'Werkbank'], ['coderen', 'Open antwoorden']] },
+  rapport: { label: 'Rapporten en bronnen', items: [['', 'Rapporten'], ['bronnen', 'Bronnen']] },
+};
+
+/** De sub-navigatie van een tabblad (dashboard, analyse of rapport) van onderzoek onderzoekId. */
+export function tabSubnav(tab, onderzoekId, actief = '') {
+  const s = TAB_SUBNAVS[tab];
+  const basis = `#/onderzoek/${onderzoekId}/${tab}`;
+  return subnav(s.items.map(([sleutel, label]) => ({ sleutel, label, href: sleutel ? `${basis}/${sleutel}` : basis })), actief, s.label);
+}
+
 /** Element met "Bezig met laden…". */
 export function laden(tekst = 'Bezig met laden…') {
   return h('div', { class: 'laden', role: 'status' }, tekst);

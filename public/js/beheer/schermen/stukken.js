@@ -174,7 +174,7 @@ export async function toon(container, ctx) {
     ctx.alleenLezen ? null : h('p', { class: 'st-tip klein zacht' },
       h('strong', {}, 'Tip: '),
       'cijfers uit het dashboard zet je met de knop “Neem op in stuk” direct onderaan een stuk. ',
-      h('a', { href: `${basis}/dashboard` }, 'Naar het dashboard'),
+      h('a', { href: `${basis}/dashboard/resultaten` }, 'Naar het dashboard'),
     ),
   );
   await laad();

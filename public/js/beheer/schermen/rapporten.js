@@ -2,7 +2,7 @@
 // Het schrijven zelf gebeurt in rapport-bewerken.js.
 
 import { api } from '../api.js';
-import { h, vervang, leeg, laden, melding, meld, meldFout, bevestig, formulierDialoog, datum } from '../ui.js';
+import { h, vervang, leeg, laden, melding, meld, meldFout, bevestig, formulierDialoog, datum, tabSubnav } from '../ui.js';
 import { RAPPORTSOORTEN, standaardInhoud } from '../rapport-feiten.js';
 import { wanneer } from './stukken.js';
 
@@ -90,6 +90,7 @@ export async function toon(container, ctx) {
     h('button', { type: 'button', class: 'knop knop-primair', onclick: () => maak(soort) }, `${RAPPORTSOORTEN[soort]} maken`));
 
   vervang(container,
+    tabSubnav('rapport', onderzoekId, ''),
     h('section', { class: 'kaart', 'aria-labelledby': 'rp-kop-nieuw' },
       h('div', { class: 'kaart-kop' }, h('h2', { id: 'rp-kop-nieuw' }, 'Rapport maken')),
       h('div', { class: 'rp-principe' },

@@ -40,6 +40,9 @@ const SCHERMEN = {
   sjablonen: () => import('./schermen/sjablonen.js'),
   sjabloon: () => import('./schermen/sjabloon-bewerken.js'),
   analyse: () => import('./schermen/analyse.js'),
+  werkbank: () => import('./schermen/werkbank.js'),
+  coderen: () => import('./schermen/coderen.js'),
+  overzicht: () => import('./schermen/overzicht.js'),
   dashboard: () => import('./schermen/dashboard.js'),
   opzet: () => import('./schermen/opzet.js'),
   vragenlijsten: () => import('./schermen/vragenlijsten.js'),
@@ -49,9 +52,20 @@ const SCHERMEN = {
   stuk: () => import('./schermen/stuk-bewerken.js'),
   rapport: () => import('./schermen/rapporten.js'),
   rapportBewerken: () => import('./schermen/rapport-bewerken.js'),
+  bronnen: () => import('./schermen/bronnen.js'),
   acties: () => import('./schermen/acties.js'),
   delen: () => import('./schermen/delen.js'),
   afronden: () => import('./schermen/afronden.js'),
+  bibliotheek: () => import('./schermen/bibliotheek.js'),
+  bron: () => import('./schermen/bron-bewerken.js'),
+};
+
+// Pagina's binnen een tabblad (de sub-navigatie): #/onderzoek/<id>/<tabblad>/<deel> → scherm.
+// Zonder deel opent het tabblad zijn eerste pagina; Dashboard begint bij het Overzicht.
+const TAB_DELEN = {
+  dashboard: { '': 'overzicht', resultaten: 'dashboard' },
+  analyse: { werkbank: 'werkbank', coderen: 'coderen' },
+  rapport: { bronnen: 'bronnen' },
 };
 
 function leesAdres() {
@@ -60,6 +74,11 @@ function leesAdres() {
   if (delen[0] === 'nieuw') return { scherm: 'nieuw', params: {} };
   if (delen[0] === 'sjablonen' && delen[1]) return { scherm: 'sjabloon', params: { sjabloonId: delen[1] } };
   if (delen[0] === 'sjablonen') return { scherm: 'sjablonen', params: {} };
+  if (delen[0] === 'bibliotheek') {
+    if (!delen[1]) return { scherm: 'bibliotheek', params: {} };
+    if ((delen[1] === 'nieuw' || /^\d+$/.test(delen[1])) && !delen[2]) return { scherm: 'bron', params: { bronId: delen[1] } };
+    return { scherm: 'onbekend', params: {} };
+  }
   if (delen[0] === 'onderzoek' && /^\d+$/.test(delen[1] || '')) {
     const id = delen[1];
     const tab = delen[2] || 'dashboard';
@@ -71,6 +90,11 @@ function leesAdres() {
     }
     if (tab === 'rapport' && /^\d+$/.test(delen[3] || '')) {
       return { scherm: 'rapportBewerken', tab, params: { id, rapportId: delen[3] } };
+    }
+    if (Object.hasOwn(TAB_DELEN, tab)) {
+      const deel = delen[3] || '';
+      if (Object.hasOwn(TAB_DELEN[tab], deel)) return { scherm: TAB_DELEN[tab][deel], tab, params: { id } };
+      if (deel) return { scherm: 'onbekend', params: {} };
     }
     if (TABS.some(([t]) => t === tab)) return { scherm: tab, tab, params: { id } };
   }
@@ -95,16 +119,18 @@ async function verlaatScherm() {
 }
 
 function kopbalk(actief) {
+  // Op een telefoon staat het menu op een eigen regel onder het beeldmerk en "Uitloggen" (zie app.css).
   return h('header', { class: 'kop' },
-    h('div', { class: 'kop-binnen' },
+    h('div', { class: 'kop-binnen kop-beheer' },
       h('a', { class: 'kop-logo', href: '#/' },
         beeldmerk(),
         h('span', { class: 'kop-logo-tekst' }, 'Onderzoeksomgeving')),
       h('nav', { class: 'kop-nav', 'aria-label': 'Hoofdmenu' },
         h('a', { href: '#/', 'aria-current': actief === 'start' ? 'page' : null }, 'Onderzoeken'),
         h('a', { href: '#/sjablonen', 'aria-current': actief === 'sjablonen' ? 'page' : null }, 'Sjablonen'),
-        h('button', { type: 'button', onclick: uitloggen }, 'Uitloggen'),
+        h('a', { href: '#/bibliotheek', 'aria-current': actief === 'bibliotheek' ? 'page' : null }, 'Bibliotheek'),
       ),
+      h('button', { type: 'button', class: 'kop-uitloggen', onclick: uitloggen }, 'Uitloggen'),
     ),
   );
 }
@@ -152,7 +178,9 @@ async function weergeven() {
 
   const adres = leesAdres();
   const hoofd = h('main', { class: 'inhoud', id: 'inhoud', tabindex: '-1' });
-  const kopActief = adres.scherm === 'sjablonen' || adres.scherm === 'sjabloon' ? 'sjablonen' : adres.tab ? null : 'start';
+  const kopActief = adres.scherm === 'sjablonen' || adres.scherm === 'sjabloon' ? 'sjablonen'
+    : adres.scherm === 'bibliotheek' || adres.scherm === 'bron' ? 'bibliotheek'
+      : adres.tab ? null : 'start';
   const overslaan = h('a', {
     href: '#inhoud',
     class: 'sr-only overslaan',
@@ -166,6 +194,7 @@ async function weergeven() {
   hoofd.append(laden());
 
   if (adres.scherm === 'onbekend') {
+    document.title = 'Pagina niet gevonden – Onderzoeksomgeving';
     vervang(hoofd, melding(['Deze pagina bestaat niet. ', h('a', { href: '#/' }, 'Naar het overzicht')], 'waarschuwing'));
     return;
   }

@@ -18,7 +18,7 @@
 // rekenen (dezelfde regel als in de uitsplitsing op het dashboard).
 
 import { api } from '../api.js';
-import { h, vervang, leeg, laden, melding, getal, aantal } from '../ui.js';
+import { h, vervang, leeg, laden, melding, getal, aantal, tabSubnav } from '../ui.js';
 import * as S from '../statistiek.js';
 import { neemOpInStuk } from '../stukdialoog.js';
 import { bouwModel, schaalWaarde, isKeuzevraag, vragenVan, waardenVan } from '../analyse-model.js';
@@ -334,7 +334,8 @@ export async function toon(container, ctx) {
   const stuksoorten = (ctx.instellingen && ctx.instellingen.stuksoorten) || null;
   ctx.zetTitel(`Analyse – ${ctx.onderzoek.onderzoek.titel}`);
 
-  vervang(container, h('div', { class: 'analyse' }, laden('De antwoorden worden geladen…')));
+  const subnavEl = tabSubnav('analyse', onderzoekId, '');
+  vervang(container, subnavEl, h('div', { class: 'analyse' }, laden('De antwoorden worden geladen…')));
   const data = await api.get(`/onderzoeken/${onderzoekId}/export/data`);
   if (!container.isConnected) return;
   const model = bouwModel(data);
@@ -1222,7 +1223,7 @@ export async function toon(container, ctx) {
         h('dd', {}, `Groepen met minder dan ${drempel} respondenten krijgen nooit een getal. Samenhang en betrouwbaarheid berekenen we pas vanaf ${MIN_PAREN} respondenten.`))));
 
   if (!lijstenMetData.length) {
-    vervang(container, h('div', { class: 'analyse' },
+    vervang(container, subnavEl, h('div', { class: 'analyse' },
       intro,
       leeg(
         model.lijsten.length
@@ -1237,5 +1238,5 @@ export async function toon(container, ctx) {
   if (!lijstenMetData.some((l) => l.id === keuze.lijst)) keuze.lijst = lijstenMetData[lijstenMetData.length - 1].id;
   vulMeetmomenten(kaarten.meetmomenten);
   tekenLijstKaarten();
-  vervang(container, h('div', { class: 'analyse' }, intro, Object.values(kaarten).map((k) => k.el), datasetKaart.el, status));
+  vervang(container, subnavEl, h('div', { class: 'analyse' }, intro, Object.values(kaarten).map((k) => k.el), datasetKaart.el, status));
 }
