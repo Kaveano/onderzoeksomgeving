@@ -136,26 +136,30 @@ export async function inzendingen({ env, params, url, request }) {
   const [hoort, deel] = await env.DB.batch([
     env.DB.prepare('SELECT 1 AS ja FROM vragenlijsten WHERE id = ? AND onderzoek_id = ?').bind(vragenlijstId, onderzoekId),
     // ervoor = het aantal tekens van de eerdere inzendingen in dit deel. De inzending die over de grens gaat,
-    // komt nog mee (dus altijd minstens één, ook als die ene groter is dan de grens).
+    // komt nog mee (dus altijd minstens één, ook als die ene groter is dan de grens). Eén rij meer dan max: zo
+    // weten we of er nog een deel komt (die extra rij gaat niet mee terug).
     env.DB.prepare(
       `SELECT id, vragenlijst_id, datum, antwoorden FROM (
          SELECT i.id, i.vragenlijst_id, i.datum, i.antwoorden,
            SUM(length(i.antwoorden)) OVER (ORDER BY i.id ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING) AS ervoor
          FROM inzendingen i WHERE i.vragenlijst_id = ? AND i.id > ? ORDER BY i.id LIMIT ?)
        WHERE ervoor IS NULL OR ervoor < ? ORDER BY id`,
-    ).bind(vragenlijstId, na, max, MAX_TEKENS_PER_DEEL),
+    ).bind(vragenlijstId, na, max + 1, MAX_TEKENS_PER_DEEL),
   ]);
   // Hoort de vragenlijst niet bij dit onderzoek, dan geven we niets terug (de rijen zijn wel al gelezen).
   if (!hoort.results.length) throw new Fout(404, 'Deze vragenlijst bestaat niet (meer).');
 
+  const meer = deel.results.length > max;
+  const rijen = meer ? deel.results.slice(0, max) : deel.results;
   let tekens = 0;
-  const stukken = deel.results.map((r) => {
+  const stukken = rijen.map((r) => {
     tekens += r.antwoorden.length;
     return `{"id":${Number(r.id)},"vragenlijst_id":${Number(r.vragenlijst_id)},"datum":${JSON.stringify(r.datum)},"antwoorden":${r.antwoorden}}`;
   });
-  // Vol (op aantal of op tekens): er kan meer zijn. Eindigt het precies op de grens, dan volgt hooguit één leeg deel.
-  const laatste = deel.results.length ? Number(deel.results[deel.results.length - 1].id) : null;
-  const volgende = laatste !== null && (deel.results.length >= max || tekens >= MAX_TEKENS_PER_DEEL) ? laatste : null;
+  // Er komt nog een deel als er een rij over was, of als het deel op de tekengrens stopte (eindigt het precies op
+  // die grens, dan is het volgende deel leeg).
+  const laatste = rijen.length ? Number(rijen[rijen.length - 1].id) : null;
+  const volgende = laatste !== null && (meer || tekens >= MAX_TEKENS_PER_DEEL) ? laatste : null;
   return new Response(`{"inzendingen":[${stukken.join(',')}],"volgende":${volgende === null ? 'null' : volgende}}`, { headers: JSON_KOPPEN });
 }
 
