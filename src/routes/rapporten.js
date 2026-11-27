@@ -74,21 +74,35 @@ export function rapportUitDb(rij) {
   };
 }
 
+/** [{id, n}] uit de database (klein: één regel per vragenlijst); bij iets onverwachts een lege lijst. */
+function leesLijstenN(tekst) {
+  try {
+    const lijst = JSON.parse(tekst || '[]');
+    return Array.isArray(lijst) ? lijst.filter((l) => Number.isInteger(l?.id)).map((l) => ({ id: l.id, n: Number.isFinite(l.n) ? l.n : 0 })) : [];
+  } catch {
+    return [];
+  }
+}
+
 export async function lijst({ env, params }) {
   const onderzoekId = v.id(params.id);
   await haalOnderzoek(env, onderzoekId);
   // heeft_open: in de vastgelegde cijfers staat een vragenlijst met antwoorden die op de peildatum nog openstond
   // (het scherm Delen meldt dan dat een meelezer die uitkomsten alleen met de tussenstand ziet).
+  // lijsten_n: per vragenlijst het vastgelegde aantal respondenten [{id, n}] (voor verschilwacht.js: een meelezer
+  // mag niet twee uitkomsten kunnen vergelijken die 1 tot 4 respondenten verschillen).
   const rijen = await alle(
     env,
     `SELECT id, soort, titel, aangemaakt_op, bijgewerkt_op,
        CASE WHEN feiten = '' THEN NULL ELSE json_extract(feiten, '$.peildatum') END AS peildatum,
        CASE WHEN json_valid(feiten) THEN EXISTS (SELECT 1 FROM json_each(feiten, '$.lijsten')
-         WHERE json_extract(value, '$.status') = 'open' AND json_extract(value, '$.n') > 0) ELSE 0 END AS heeft_open
+         WHERE json_extract(value, '$.status') = 'open' AND json_extract(value, '$.n') > 0) ELSE 0 END AS heeft_open,
+       CASE WHEN json_valid(feiten) THEN (SELECT json_group_array(json_object('id', json_extract(value, '$.id'), 'n', json_extract(value, '$.n')))
+         FROM json_each(feiten, '$.lijsten')) ELSE '[]' END AS lijsten_n
      FROM rapporten WHERE onderzoek_id = ? ORDER BY id`,
     onderzoekId,
   );
-  return json({ rapporten: rijen.map((r) => ({ ...r, heeft_open: !!r.heeft_open })) });
+  return json({ rapporten: rijen.map((r) => ({ ...r, heeft_open: !!r.heeft_open, lijsten_n: leesLijstenN(r.lijsten_n) })) });
 }
 
 export async function nieuw({ request, env, params }) {

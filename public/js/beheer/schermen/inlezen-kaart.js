@@ -9,10 +9,14 @@ import {
   kopEnRijen, herkenKolom, CIJFER_VELDEN, VRAAG_VELDEN, verwerkCijfers, verwerkVragen, koppelVragen, verwerkAntwoorden,
   kolomSoort, verdachteKolommen, verwerkDataset,
 } from '../inlees-regels.js';
+import { magInlezen } from '../verschilwacht.js';
+import { vergeetGegevens } from '../gegevens.js';
 
 const MAX_BESTAND = 5 * 1024 * 1024;
 const REEKS = 300;
 const SOORT_NAAM = { getal: 'getallen', categorie: 'indeling in groepen', tekst: 'tekst', leeg: 'leeg' };
+// opslaan() geeft dit terug als je na een waarschuwing toch niet inleest: dan blijft de dialoog open.
+const NIET_INGELEZEN = Symbol('niet ingelezen');
 
 /** Leest een gekozen bestand: { naam, bladen: [{ naam, rijen }] }. */
 async function leesBestand(bestand) {
@@ -167,7 +171,13 @@ function inleesDialoog({ titel, uitleg, stappen, voorbeeld, bouw, knopTekst = (n
       const oud = inlezen.textContent;
       inlezen.textContent = 'Bezig met inlezen…';
       try {
-        resultaat = await huidig.opslaan(huidig.items);
+        const uit = await huidig.opslaan(huidig.items);
+        if (uit === NIET_INGELEZEN) {
+          inlezen.disabled = false;
+          inlezen.textContent = oud;
+          return;
+        }
+        resultaat = uit;
         d.close();
       } catch (err) {
         fout.textContent = err.message || 'Inlezen is mislukt.';
@@ -419,7 +429,15 @@ export async function antwoordenInlezen(ctx) {
           return { items: r.items, problemen: r.problemen, regel: `${aantal(r.items.length, 'respondent', 'respondenten')} van de ${aantal(rijen.length, 'rij', 'rijen')} ${r.items.length === 1 ? 'heeft' : 'hebben'} bruikbare antwoorden. Na het inlezen tellen ze mee in alle resultaten.` };
         },
         // Per verzoek hooguit zo'n 3.000 antwoordcellen, zodat de server binnen de gratis rekentijd blijft.
-        opslaan: (items) => inDelen(items, (deel) => api.post(`/vragenlijsten/${vl.id}/inzendingen/reeks`, { inzendingen: deel }), Math.max(10, Math.min(REEKS, Math.floor(3000 / Math.max(1, vragen.length))))),
+        opslaan: async (items) => {
+          // Gesloten en gedeeld via een deellink, en maar 1 tot 4 nieuwe respondenten? Eerst waarschuwen (BOUWPLAN B9).
+          if (!(await magInlezen(ctx.params.id, vl, items.length))) return NIET_INGELEZEN;
+          try {
+            return await inDelen(items, (deel) => api.post(`/vragenlijsten/${vl.id}/inzendingen/reeks`, { inzendingen: deel }), Math.max(10, Math.min(REEKS, Math.floor(3000 / Math.max(1, vragen.length)))));
+          } finally {
+            vergeetGegevens(ctx.params.id);
+          }
+        },
       };
     },
   });

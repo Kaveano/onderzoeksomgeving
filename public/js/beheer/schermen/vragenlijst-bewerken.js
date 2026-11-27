@@ -8,6 +8,8 @@ import {
   h, vervang, leeg, melding, meld, meldFout, bevestig, datum, aantal, procent, statusLabel, vragenlijstLink,
 } from '../ui.js';
 import { kopieerLink } from './vragenlijsten.js';
+import { magOpenzetten } from '../verschilwacht.js';
+import { vergeetGegevens } from '../gegevens.js';
 
 const MAX_VRAGEN = 100;
 const MAX_OPTIES = 30;
@@ -194,6 +196,9 @@ export async function toon(container, ctx) {
         knop: 'Sluiten',
       });
       if (!ok) return;
+    } else if (!(await magOpenzetten(onderzoekId, { id: vl.id, status: vl.status, aantal_inzendingen: inzendingen }))) {
+      // Gedeeld via een deellink: eerst de waarschuwing over een paar nieuwe respondenten (BOUWPLAN B9).
+      return;
     }
     // Niet-opgeslagen instellingen (bijv. de uitleg) eerst bewaren, zodat respondenten de juiste tekst zien.
     if (naar === 'open' && instellingenGewijzigd() && !(await slaInstellingenOp())) return;
@@ -251,6 +256,7 @@ export async function toon(container, ctx) {
     if (!ok) return;
     try {
       const r = await api.del(`/vragenlijsten/${vlId}/inzendingen`);
+      vergeetGegevens(onderzoekId);
       meld(`${aantal(r.verwijderd ?? inzendingen, 'ingevulde vragenlijst', 'ingevulde vragenlijsten')} gewist.`, 'succes');
       await herlaad({ focus: ['link'] });
     } catch (e) {

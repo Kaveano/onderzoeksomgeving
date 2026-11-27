@@ -6,6 +6,7 @@ import {
   h, vervang, leeg, laden, melding, meld, meldFout, bevestig, formulierDialoog,
   datum, aantal, procent, kopieer, statusLabel, vragenlijstLink,
 } from '../ui.js';
+import { magOpenzetten } from '../verschilwacht.js';
 
 /** 'Nulmeting (25 nov. 2026)' of 'Nulmeting'. */
 function meetmomentNaam(naam, dag) {
@@ -139,6 +140,9 @@ export async function toon(container, ctx) {
         knop: 'Sluiten',
       });
       if (!ok) return;
+    } else if (!(await magOpenzetten(onderzoekId, vl))) {
+      // Gedeeld via een deellink: eerst de waarschuwing over een paar nieuwe respondenten (BOUWPLAN B9).
+      return;
     }
     bezig = true;
     try {
