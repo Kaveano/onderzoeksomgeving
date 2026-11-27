@@ -19,8 +19,14 @@ export const P_GEEN_TOETS = 'De toets is niet berekend, omdat niet elke combinat
 export const P_TE_WEINIG = (min) => `Te weinig respondenten voor deze analyse: er zijn er minstens ${min} nodig.`;
 export const P_GROEP_KLEIN = (namen) => `Niet meegenomen (minder dan 5 respondenten): ${opsomming(namen)}.`;
 export const P_OOK_NIET = (namen) => `Ook niet meegenomen: ${opsomming(namen)}. Anders zijn de uitkomsten van een kleine groep terug te rekenen uit het totaal.`;
-export const P_SAMENGEVOEGD = (namen) => `${opsomming(namen)} ${namen.length === 1 ? 'is' : 'zijn'} samengevoegd tot “${LABEL_OVERIG}”, omdat ${namen.length === 1 ? 'die groep' : 'die groepen'} minder dan 5 respondenten ${namen.length === 1 ? 'heeft' : 'hebben'}.`;
+/**
+ * Eén vaste uitleg, zoals op het dashboard: hij zegt niet welke groep klein is en welke alleen ter bescherming
+ * meegaat (PR-08). metLeeg: bij een achtergrondvraag tellen ook wie de vraag niet invulde mee.
+ */
+export const P_SAMENGEVOEGD = (namen, metLeeg = false) => `${opsomming(namen)} ${namen.length === 1 ? 'is' : 'zijn'} samengevoegd tot “${LABEL_OVERIG}”. Zo is geen groep van minder dan 5 respondenten te zien of terug te rekenen.${metLeeg ? ' Ook wie deze vraag niet invulde, telt hier mee.' : ''}`;
 export const P_FILTER_REST = 'Buiten deze selectie vallen minder dan 5 mensen. Hun antwoorden zouden dan terug te rekenen zijn uit het verschil met de uitkomst zonder selectie. Kies een andere selectie.';
+export const P_LIJST_BUUR = 'Deze uitkomst verschilt maar een paar mensen (minder dan 5) van dezelfde uitkomst bij één vragenlijst. Dan zijn hun antwoorden terug te rekenen uit het verschil. Kies één vragenlijst als gegevens, of andere variabelen.';
+export const P_SELECTIE_LIJST = 'Deze selectie verschilt maar een paar mensen (minder dan 5) van dezelfde selectie bij één vragenlijst. Dan zijn hun antwoorden terug te rekenen. Kies één vragenlijst als gegevens, of een ruimere selectie.';
 export const pFilterBuur = (voorwaarde) => `Deze selectie verschilt maar een paar mensen (minder dan 5) van dezelfde selectie zonder ${voorwaarde}. Dan zijn hun antwoorden terug te rekenen. Laat die voorwaarde weg of maak hem ruimer.`;
 export const pOverlap = (andere, waar) => `Deze indeling lijkt te veel op “${andere}”: ${waar} zitten minder dan 5 mensen. Uit het verschil tussen de twee zouden hun antwoorden terug te rekenen zijn. Kies een andere grens of gebruik de bestaande indeling.`;
 export const P_LOGIT_CEL = (voorspeller, uitkomst) => `Bij “${voorspeller}” heeft niet elke groep minstens 5 mensen met en 5 mensen zonder “${uitkomst}”. Dan zou de uitkomst iets over een kleine groep verraden. Voeg groepen samen of laat deze voorspeller weg.`;

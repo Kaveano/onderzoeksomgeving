@@ -39,7 +39,7 @@ export async function correlatie(ds, spec, ctx) {
   // Per variabele: mag hij als getal (B26) en is B7 in orde?
   const uitgesloten = vars.map((v) => {
     const basis = inSelectie(alleGeldig || Uint8Array.from(v.reden, (x) => (x === REDEN.GELDIG ? 1 : 0)), ctx.selectie);
-    const t = indelingAlsGetalFout(v, basis, ctx.d);
+    const t = indelingAlsGetalFout(v, basis, ctx.d, F);
     if (t) return t;
     if (v.score && weggevallenRegel(v.reden, F || iedereen(ds), null, 1, ctx.d)[0]) return `“${v.label}”: ${P_WEGGEVALLEN}.`;
     return null;

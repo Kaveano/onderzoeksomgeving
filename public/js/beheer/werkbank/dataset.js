@@ -260,9 +260,17 @@ export function werkTellingBij(ds, v) {
       if (i !== undefined) aantallen[i]++;
     }
     v.aantallen = aantallen;
-    v.beschermd = beschermIndeling(aantallen, v.labels.map((l) => l.label), ds.d);
+    // Een achtergrondvraag: wie hem oversloeg is een eigen groep "Niet ingevuld", net als op het dashboard (PR-05).
+    const achtergrond = isAchtergrond(v);
+    v.beschermd = beschermIndeling(aantallen, v.labels.map((l) => l.label), ds.d, { nietIngevuld: achtergrond ? perReden[REDEN.GEEN] : 0, achtergrond });
   }
 }
+
+/** Een achtergrondvraag uit een vragenlijst (kenmerk of uitsplitsvraag): "Niet ingevuld" telt als groep. */
+export const isAchtergrond = (v) => v.bron === 'kenmerk';
+
+/** Rij r van indeling v hoort bij de groep van "Niet ingevuld" (de vraag is overgeslagen en die groep is samengevoegd). */
+export const inLeegGroep = (v, r) => v.reden[r] === REDEN.GEEN && (v.beschermd?.leegGroep ?? -1) >= 0;
 
 function lijstNaam(l, mmNaam) {
   return l.meetmoment_id && mmNaam.has(l.meetmoment_id) ? `${l.titel} (${mmNaam.get(l.meetmoment_id)})` : l.titel;
@@ -630,7 +638,7 @@ export function metadata(v) {
   return {
     ...rest,
     vraagIds: v.vraagIds ? Object.fromEntries(v.vraagIds) : null,
-    beschermd: v.beschermd ? { groepen: v.beschermd.groepen.map((g) => ({ label: g.label, labels: g.labels, samengevoegd: g.samengevoegd })), bruikbaar: v.beschermd.bruikbaar } : null,
+    beschermd: v.beschermd ? { groepen: v.beschermd.groepen.map((g) => ({ label: g.label, labels: g.labels, samengevoegd: g.samengevoegd, metLeeg: !!g.metLeeg })), bruikbaar: v.beschermd.bruikbaar } : null,
   };
 }
 

@@ -91,7 +91,7 @@ export function betrouwbaarheid(ds, spec, ctx) {
   if (sel) return weiger(ds, spec, ctx, titel, 'privacy', sel);
   const basis = inSelectie(geldig, ctx.selectie);
   for (const { v } of items) {
-    const t = indelingAlsGetalFout(v, basis, ctx.d);
+    const t = indelingAlsGetalFout(v, basis, ctx.d, ctx.selectie?.F);
     if (t) return weiger(ds, spec, ctx, titel, 'privacy', t);
     if (tweeWaardenRegel(v.waarden, basis, null, 1, ctx.d)?.[0]) return weiger(ds, spec, ctx, titel, 'privacy', `“${v.label}” heeft maar twee waarden en een daarvan komt bij minder dan ${ctx.d} mensen voor.`);
     if (v.score && weggevallenRegel(v.reden, ctx.selectie ? ctx.selectie.F : iedereen(ds), null, 1, ctx.d)[0]) return weiger(ds, spec, ctx, titel, 'privacy', `“${v.label}”: ${P_WEGGEVALLEN}.`);
@@ -125,8 +125,9 @@ export function betrouwbaarheid(ds, spec, ctx) {
     'De gecorrigeerde item-totaalcorrelatie laat zien hoe sterk een vraag samenhangt met de andere vragen samen. Is die laag of negatief, dan meet de vraag iets anders. "α zonder deze vraag" laat zien wat alfa wordt als je de vraag weglaat.');
   u.duiding.effect = oordeel;
   u.schaalscore = { variabelen: items.map((x) => (x.om ? { id: x.id, omscoren: true } : x.id)) };
-  const label = items.length <= 3 ? items.map((x) => `“${x.v.label}”`).join(', ') : `${items.length} vragen`;
-  u.apa = apaZinnen((f) => `Cronbachs α voor ${label} (${b.k} vragen, *n* = ${f.n(b.n)}) was ${f.begrensd(b.alpha)}.`);
+  // Met drie vragen of minder staan hun namen in de zin; anders "deze k vragen" (geen dubbele woorden).
+  const label = items.length <= 3 ? items.map((x) => `“${x.v.label}”`).join(', ') : `deze ${b.k} vragen`;
+  u.apa = apaZinnen((f) => `Cronbachs α van ${label} (*n* = ${f.n(b.n)}) was ${f.begrensd(b.alpha)}.`);
   return sluitAf(u);
 }
 
@@ -314,7 +315,7 @@ export async function factoranalyse(ds, spec, ctx) {
   if (sel) return weiger(ds, spec, ctx, titel, 'privacy', sel);
   const basis = inSelectie(geldig, ctx.selectie);
   for (const v of items) {
-    const t = indelingAlsGetalFout(v, basis, ctx.d);
+    const t = indelingAlsGetalFout(v, basis, ctx.d, ctx.selectie?.F);
     if (t) return weiger(ds, spec, ctx, titel, 'privacy', t);
     if (tweeWaardenRegel(v.waarden, basis, null, 1, ctx.d, ctx.selectie)?.[0]) return weiger(ds, spec, ctx, titel, 'privacy', `“${v.label}” heeft maar twee waarden en een daarvan komt bij minder dan ${ctx.d} mensen voor.`);
     if (v.score && weggevallenRegel(v.reden, ctx.selectie ? ctx.selectie.F : iedereen(ds), null, 1, ctx.d)[0]) return weiger(ds, spec, ctx, titel, 'privacy', `“${v.label}”: ${P_WEGGEVALLEN}.`);

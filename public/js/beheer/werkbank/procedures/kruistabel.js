@@ -10,7 +10,7 @@ import { tabel, cel, tekstCel, verborgenCel, aantalCel, voeg, melding, sluitAf, 
 import {
   P_GEEN_TOETS, P_TE_WEINIG, P_SAMENGEVOEGD, UITLEG_RESIDUEN, ZIN_SIG_VERBAND, ZIN_GEEN_SIG_VERBAND, LET_OP_VERBAND, g, apaZinnen, effectWoord,
 } from '../uitvoer-tekst.js';
-import { geldigMasker, inSelectie, groepVanRijen, selectieControle, begin, weiger, overlapFout, variabelenUit, tel } from './basis.js';
+import { inSelectie, groepVanRijen, selectieControle, begin, weiger, overlapFout, variabelenUit, tel } from './basis.js';
 
 const ALFA = 0.05;
 const som = (a) => a.reduce((t, x) => t + x, 0);
@@ -26,7 +26,7 @@ export function voegKleineSamen(aantallen, groepen, d) {
     naar: Array.from(b.groepVan),
     groepen: b.groepen.map((gr) => (gr.categorieen.length === 1
       ? { ...groepen[gr.categorieen[0]] }
-      : { label: LABEL_OVERIG, labels: gr.categorieen.flatMap((i) => groepen[i].labels), samengevoegd: true })),
+      : { label: LABEL_OVERIG, labels: gr.categorieen.flatMap((i) => groepen[i].labels), samengevoegd: true, metLeeg: gr.categorieen.some((i) => groepen[i].metLeeg) })),
     bruikbaar: b.bruikbaar,
   };
 }
@@ -69,7 +69,7 @@ export function randenMetBuren(ctx, basisAlles, groep, groepen) {
     const nieuwNr = [];
     naar.forEach((x) => { if (!nieuwNr.includes(x)) nieuwNr.push(x); });
     const map = naar.map((x) => nieuwNr.indexOf(x));
-    const samen = nieuwNr.map((oud) => ({ label: '', labels: gr.flatMap((x, i) => (naar[i] === oud ? x.labels : [])), samengevoegd: true }));
+    const samen = nieuwNr.map((oud) => ({ label: '', labels: gr.flatMap((x, i) => (naar[i] === oud ? x.labels : [])), samengevoegd: true, metLeeg: gr.some((x, i) => naar[i] === oud && x.metLeeg) }));
     for (const x of samen) {
       const enkel = gr.filter((y, i) => naar[i] === nieuwNr[samen.indexOf(x)]);
       if (enkel.length === 1) Object.assign(x, enkel[0]);
@@ -124,11 +124,11 @@ export function kruistabel(ds, spec, ctx) {
   if (a.id === b.id) return weiger(ds, spec, ctx, titel, 'fout', 'Kies voor de rijen en de kolommen twee verschillende variabelen.');
   const overlap = overlapFout(ds, ctx, [a, b]);
   if (overlap) return weiger(ds, spec, ctx, titel, 'privacy', overlap);
+  // Wie in een groep zit (ook wie een achtergrondvraag oversloeg en bij "Overige groepen samen" hoort).
   let rij = groepVanRijen(ds, a);
   let kol = groepVanRijen(ds, b);
-  const geldig = geldigMasker(ds, [a, b]);
   const basisAlles = new Uint8Array(ds.n);
-  for (let r = 0; r < ds.n; r++) basisAlles[r] = geldig[r] && rij[r] >= 0 && kol[r] >= 0 ? 1 : 0;
+  for (let r = 0; r < ds.n; r++) basisAlles[r] = rij[r] >= 0 && kol[r] >= 0 ? 1 : 0;
   const sel = selectieControle(ctx, basisAlles);
   if (sel) return weiger(ds, spec, ctx, titel, 'privacy', sel);
   const basis = inSelectie(basisAlles, ctx.selectie);
@@ -179,7 +179,7 @@ export function kruistabel(ds, spec, ctx) {
   rijen.push([tekstCel('Totaal', { nadruk: true }), ...kolTot.map((c) => cel(c, 'aantal')), cel(N, 'aantal')]);
   voeg(u, tabel('kruistabel', `Kruistabel “${a.label}” × “${b.label}”`, ['', ...ki.groepen.map((x) => x.label), 'Totaal'], rijen,
     { samenstelling: { rijen: ri.groepen.map((x) => x.labels), kolommen: ki.groepen.map((x) => x.labels), procentrijen: procenten !== 'geen' } }));
-  for (const x of [...ri.groepen, ...ki.groepen].filter((y) => y.samengevoegd)) voeg(u, melding('privacy', P_SAMENGEVOEGD(x.labels)));
+  for (const x of [...ri.groepen, ...ki.groepen].filter((y) => y.samengevoegd)) voeg(u, melding('privacy', P_SAMENGEVOEGD(x.labels, x.metLeeg)));
 
   if (ietsWeg) {
     voeg(u, melding('privacy', P_GEEN_TOETS));
@@ -243,9 +243,8 @@ export function aanpassing(ds, spec, ctx) {
   const overlap = overlapFout(ds, ctx, [v]);
   if (overlap) return weiger(ds, spec, ctx, titel, 'privacy', overlap);
   const groep = groepVanRijen(ds, v);
-  const geldig = geldigMasker(ds, [v]);
   const basisAlles = new Uint8Array(ds.n);
-  for (let r = 0; r < ds.n; r++) basisAlles[r] = geldig[r] && groep[r] >= 0 ? 1 : 0;
+  for (let r = 0; r < ds.n; r++) basisAlles[r] = groep[r] >= 0 ? 1 : 0;
   const sel = selectieControle(ctx, basisAlles);
   if (sel) return weiger(ds, spec, ctx, titel, 'privacy', sel);
   const basis = inSelectie(basisAlles, ctx.selectie);
@@ -287,7 +286,8 @@ export function aanpassing(ds, spec, ctx) {
   });
   rijen.push([tekstCel('Totaal', { nadruk: true }), cel(N, 'aantal'), cel(N, 'verwacht'), tekstCel(''), cel(100, 'procent'), cel(100, 'procent'), tekstCel('')]);
   voeg(u, tabel('aanpassing', 'Waargenomen en verwacht', ['Groep', 'Waargenomen', 'Verwacht', 'Verschil', '% waargenomen', '% verwacht', 'Verschil (procentpunt)'], rijen));
-  for (const x of gr.filter((y) => y.samengevoegd)) voeg(u, melding('privacy', `${P_SAMENGEVOEGD(x.labels)} Hun verwachte aantallen zijn opgeteld.`));
+  for (const x of gr.filter((y) => y.samengevoegd)) voeg(u, melding('privacy', `${P_SAMENGEVOEGD(x.labels, x.metLeeg)} Hun verwachte aantallen zijn opgeteld.`));
+  if (!gelijk && gr.some((y) => y.metLeeg)) voeg(u, melding('waarschuwing', `In “${LABEL_OVERIG}” kunnen ook mensen meetellen die de vraag niet invulden. Die groep kan daardoor wat groter lijken dan verwacht.`));
   if (!toets || toets.reden) {
     voeg(u, melding('waarschuwing', toets?.reden === 'klein' ? 'De toets is niet berekend, omdat een verwacht aantal kleiner is dan 5. Voeg groepen samen.' : 'De toets is niet te berekenen.'));
     return sluitAf(u);

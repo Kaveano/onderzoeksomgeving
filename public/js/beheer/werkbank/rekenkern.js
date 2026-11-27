@@ -8,8 +8,9 @@
 // controleerIndeling(def, bron) → voorbeeld en meldingen voor de vensters "Variabelen maken"
 // maakRekenkern() geeft een eigen exemplaar (de standaardfuncties delen er één).
 
-import { DREMPEL, drempelVan, verbergReeks } from '../privacy.js';
-import { bouwDataset, bronSleutel, metadata, REDEN } from './dataset.js';
+import { DREMPEL, drempelVan, verbergReeks, VERBORGEN, VERBORGEN_UITLEG } from '../privacy.js';
+import { bouwDataset, bronSleutel, metadata, REDEN, isAchtergrond } from './dataset.js';
+import { metLijstBuren, verbergMet } from './privacy-selectie.js';
 import {
   pasDefinitiesToe, eigenschappenVan, maakSelectie, controleerSelectie, controleerNieuweIndeling, maakVariabele, voorwaardeTekst,
 } from './transformaties.js';
@@ -61,6 +62,7 @@ export function maakRekenkern() {
       drempel: invoer.d,
       eigenschappen: eig?.definitie || null,
     });
+    ds.naamVanRef = naamVoorRef;
     pasDefinitiesToe(ds, invoer.definities, { eigenschappen: eig?.definitie || null });
     opgebouwd.set(sleutel, ds);
     return ds;
@@ -78,14 +80,16 @@ export function maakRekenkern() {
       fouten: ds.fouten || [],
       variabelen: ds.variabelen.map((v) => {
         const m = metadata(v);
-        // Geldig (n): 1 tot 4 wordt × (D2 §11.3).
-        m.geldig = v.telling.geldig > 0 && v.telling.geldig < d ? null : v.telling.geldig;
+        // Geldig (n): 1 tot 4 wordt × (D2 §11.3). Bij een indeling ook als de beschermde verdeling (antwoorden plus
+        // ontbrekende redenen, zoals de frequentietabel en het dashboard) iets verbergt: anders volgt een verborgen
+        // aantal uit n min de zichtbare groepen.
+        m.geldig = (v.telling.geldig > 0 && v.telling.geldig < d) || verdelingVerbergt(ds, v, d) ? null : v.telling.geldig;
         m.verdeling = verdelingVoorLijst(v);
         return m;
       }),
       filters: [...(ds.filters?.values() || [])].map((f) => {
         const s = f.fout ? null : maakSelectie(ds, f.id);
-        const c = s && !s.fout ? controleerSelectie(ds, s, d) : null;
+        const c = s && !s.fout ? controleerSelectie(ds, metBuren(ds, s), d) : null;
         return { id: f.id, naam: f.naam, label: f.label, verwijderd: f.verwijderd, fout: f.fout || s?.fout || null, tekst: s?.tekst || '', n: c && c.ok ? c.n : null, ok: c ? c.ok : false, meldingen: c?.meldingen || [] };
       }),
     };
@@ -104,12 +108,39 @@ export function maakRekenkern() {
     return huidig ? overzicht(datasetVan(huidig)) : null;
   }
 
+  /**
+   * De naam van een variabele die (misschien) niet meer bestaat, voor de melding bij een bewaarde analyse (D2 §9.1):
+   * de tekst van de vraag, de naam van het thema, meetpunt, de code of de kolom, of de omschrijving van een eigen
+   * variabele (ook een verwijderde). Onbekend: null (de melding noemt dan geen naam, nooit een intern nummer).
+   */
   function naamVoorRef(ref) {
-    if (ref.startsWith('w:')) {
-      const def = invoer.definities.find((x) => x.id === Number(ref.slice(2)));
-      if (def) return def.label || def.naam;
+    const data = invoer.data || {};
+    const deel = String(ref).split(':');
+    const soort = deel[0];
+    const nr = Number(deel[1]);
+    if (soort === 'w') {
+      const def = invoer.definities.find((x) => x.id === nr);
+      return def ? def.label || def.naam : null;
     }
-    return ref;
+    if (soort === 'v') {
+      // v:<stam> of v:<stam>:<optie> (een antwoord van een vraag met meerdere antwoorden).
+      const q = (data.vragen || []).find((x) => x.id === nr) || (data.vragen || []).find((x) => x.bron_vraag_id === nr);
+      if (!q) return null;
+      if (deel[2] === undefined) return q.tekst;
+      let opties = [];
+      try { opties = JSON.parse(q.opties || '[]'); } catch { opties = []; }
+      const o = opties.find((x) => String(x.id) === deel[2]);
+      return o ? `${q.tekst} – ${o.label}` : q.tekst;
+    }
+    if (soort === 't') return (data.themas || []).find((x) => x.id === nr)?.naam || null;
+    if (soort === 'm') return (data.meetpunten || []).find((x) => x.id === nr)?.naam || null;
+    if (soort === 'c') return (data.codes || []).find((x) => x.id === Number(String(deel[1]).split('@')[0]))?.naam || null;
+    if (soort === 'sys') return deel[1] === 'meetmoment' ? 'Meetmoment' : 'Vragenlijst';
+    if (soort === 'd') {
+      for (const dset of invoer.datasets.values()) if (dset?.kolommen?.[nr] !== undefined) return String(dset.kolommen[nr]);
+      return null;
+    }
+    return null;
   }
 
   /**
@@ -137,10 +168,13 @@ export function maakRekenkern() {
     if (spec.filter !== null) {
       const s = maakSelectie(ds, spec.filter);
       if (s.fout) return geweigerd(basis, 'fout', s.fout);
-      const c = controleerSelectie(ds, s, invoer.d);
+      const c = controleerSelectie(ds, metBuren(ds, s), invoer.d);
       if (!c.ok) return geweigerd(basis, 'privacy', c.meldingen[0].tekst);
       selectie = s;
     }
+    // Alle vragenlijsten onder elkaar: elke vragenlijst apart is een buur (regel D tussen bronnen). Wat je hier
+    // ziet, mag nooit 1 tot 4 mensen verschillen van hetzelfde bij één vragenlijst.
+    selectie = metBuren(ds, selectie);
     const pauze = async () => {
       if (signaal?.aborted) throw stopFout();
       await new Promise((klaar) => setTimeout(klaar, 0));
@@ -184,7 +218,7 @@ export function maakRekenkern() {
       try {
         const s = maakSelectie(ds, tijdelijk.id);
         if (s.fout) return { ok: false, voorbeeld, meldingen: [s.fout] };
-        const c = controleerSelectie(ds, s, d);
+        const c = controleerSelectie(ds, metBuren(ds, s), d);
         voorbeeld.push(c.ok ? `Selectie: ${c.n.toLocaleString('nl-NL')} van ${iedereen.toLocaleString('nl-NL')} respondenten` : 'Selectie: niet te gebruiken');
         voorbeeld.push(s.tekst);
         meldingen.push(...c.meldingen.map((m) => m.tekst));
@@ -200,7 +234,7 @@ export function maakRekenkern() {
     let geldig = 0;
     const xs = [];
     for (let r = 0; r < ds.n; r++) if (v.reden[r] === REDEN.GELDIG) { geldig++; xs.push(v.waarden[r]); }
-    voorbeeld.push(geldig > 0 && geldig < d ? `Geldig: minder dan ${d} respondenten` : `Geldig: ${geldig.toLocaleString('nl-NL')} van ${iedereen.toLocaleString('nl-NL')} respondenten`);
+    if (def.soort !== 'hercoderen') voorbeeld.push(geldig > 0 && geldig < d ? `Geldig: minder dan ${d} respondenten` : `Geldig: ${geldig.toLocaleString('nl-NL')} van ${iedereen.toLocaleString('nl-NL')} respondenten`);
     if (def.soort === 'bereken' && geldig >= d) {
       const b = beschrijving(xs);
       voorbeeld.push(`Gemiddelde ${b.gemiddelde.toLocaleString('nl-NL', { maximumFractionDigits: 2 })}; SD ${b.sd === null ? '–' : b.sd.toLocaleString('nl-NL', { maximumFractionDigits: 2 })}`);
@@ -218,12 +252,14 @@ export function maakRekenkern() {
       if (weg > 0) voorbeeld.push(weg < d ? `Minder dan ${d} respondenten vielen weg omdat ze te weinig vragen beantwoordden. Met dit aantal toont de werkbank deze score niet naast het dashboard; kies een lager minimum of laat het zo.` : `${weg} respondenten vielen weg omdat ze te weinig vragen beantwoordden.`);
     }
     if (def.soort === 'hercoderen') {
-      const index = new Map(v.labels.map((l, i) => [l.code, i]));
-      const aantallen = v.labels.map(() => 0);
-      for (let r = 0; r < ds.n; r++) if (v.reden[r] === REDEN.GELDIG) aantallen[index.get(v.waarden[r])]++;
-      const weg = verbergReeks(aantallen, d);
-      v.labels.forEach((l, i) => voorbeeld.push(`${l.label}: ${weg[i] ? (aantallen[i] === 0 ? '×' : `minder dan ${d}`) : aantallen[i].toLocaleString('nl-NL')}`));
-      if (weg.some(Boolean)) voorbeeld.push('× = niet getoond. Groepen met minder dan 5 mensen worden bij analyses samengevoegd met andere.');
+      // De groepen met hun aantallen, beschermd zoals een frequentietabel van een indeling: antwoorden en ontbrekende
+      // redenen in één reeks (zoals het dashboard), en bij alle vragenlijsten onder elkaar ook tegenover elke
+      // vragenlijst apart. Elke verborgen groep is ×, of hij nu leeg, klein of ter bescherming verborgen is (PR-22).
+      // Is er iets verborgen, dan staat het aantal geldig er niet bij (anders volgt het verborgen aantal eruit).
+      const { aantallen, verborgen, ietsWeg } = beschermdeGroepen(ds, v, d);
+      if (!ietsWeg) voorbeeld.push(`Geldig: ${geldig.toLocaleString('nl-NL')} van ${iedereen.toLocaleString('nl-NL')} respondenten`);
+      v.labels.forEach((l, i) => voorbeeld.push(`${l.label}: ${verborgen[i] ? VERBORGEN : aantallen[i].toLocaleString('nl-NL')}`));
+      if (ietsWeg) voorbeeld.push(VERBORGEN_UITLEG, 'Kleine groepen worden bij analyses samengevoegd met andere.');
       meldingen.push(...controleerNieuweIndeling(ds, tijdelijk, d));
     }
     return { ok: !meldingen.length, voorbeeld, meldingen };
@@ -265,6 +301,74 @@ export function maakRekenkern() {
     get drempel() { return invoer.d; },
     voorwaardeTekst: (vw, bron = huidig) => voorwaardeTekst(datasetVan(bron), vw),
   };
+}
+
+/** Bij een gestapelde bron (twee of meer vragenlijsten): de selectie met de buren "alleen/zonder vragenlijst k". */
+function metBuren(ds, selectie) {
+  return ds.bron?.soort === 'gestapeld' && ds.lijsten.length >= 2 ? metLijstBuren(selectie, ds.rijLijst, ds.lijsten) : selectie;
+}
+
+/** De buren "alleen/zonder vragenlijst k" van een gestapelde bron (zonder eigen selectie), of null. */
+function lijstBurenVan(ds) {
+  return ds.bron?.soort === 'gestapeld' && ds.lijsten.length >= 2 ? metLijstBuren(null, ds.rijLijst, ds.lijsten) : null;
+}
+
+/** Aantallen per categorie en per ontbrekende reden (zonder "Niet gevraagd": dat volgt uit de vragenlijsten). */
+function tellingen(ds, v, masker = null) {
+  const index = new Map(v.labels.map((l, i) => [l.code, i]));
+  const cat = new Array(v.labels.length).fill(0);
+  const mis = new Array(6).fill(0);
+  for (let r = 0; r < ds.n; r++) {
+    if (masker && !masker[r]) continue;
+    if (v.reden[r] === REDEN.GELDIG) {
+      const i = index.get(v.waarden[r]);
+      if (i !== undefined) cat[i]++;
+    } else mis[v.reden[r]]++;
+  }
+  const missend = mis.filter((_, reden) => reden > 0 && reden !== REDEN.NIET_GEVRAAGD);
+  return { cat, missend };
+}
+
+/**
+ * De groepen van een (nieuwe) indeling, beschermd voor het voorbeeld: categorieën plus ontbrekende redenen in één
+ * reeks, met de vragenlijsten van een gestapelde bron als buren (regel D).
+ * @returns {{ aantallen: number[], verborgen: boolean[] }} per categorie
+ */
+function beschermdeGroepen(ds, v, d) {
+  const { cat, missend } = tellingen(ds, v);
+  const reeks = [...cat, ...missend];
+  const buren = lijstBurenVan(ds);
+  const vooraf = reeks.map(() => false);
+  const verschillen = [];
+  for (const b of buren?.buren || []) {
+    const t = tellingen(ds, v, b.masker);
+    const verschil = [...t.cat, ...t.missend].map((x, i) => Math.abs(x - reeks[i]));
+    verschil.forEach((x, i) => { if (x > 0 && x < d) vooraf[i] = true; });
+    verschillen.push(verschil);
+  }
+  const weg = verbergMet(reeks, d, { vooraf, verschillen });
+  return { aantallen: cat, verborgen: weg.slice(0, cat.length), ietsWeg: weg.some(Boolean) };
+}
+
+/**
+ * Verbergt de beschermde verdeling van indeling v het aantal geldig? Dat is zo als de frequentietabel (zonder
+ * selectie) het totaal geldig zou verbergen: bij een achtergrondvraag als er in de reeks antwoorden plus ontbrekende
+ * redenen een ontbrekende reden verborgen is (zoals "Niet ingevuld" op het dashboard), bij een andere indeling als
+ * een ontbrekende reden verborgen is. Bij een gestapelde bron geldt dat ook per vragenlijst.
+ */
+function verdelingVerbergt(ds, v, d) {
+  if (!v.groepering || !v.labels.length || v.soort === 'set' || !v.analyseerbaar) return false;
+  const achtergrond = isAchtergrond(v);
+  const scopes = [null];
+  const buren = lijstBurenVan(ds);
+  for (const b of buren?.buren || []) scopes.push(b.masker);
+  for (const masker of scopes) {
+    const { cat, missend } = tellingen(ds, v, masker);
+    if (!missend.length) continue;
+    const weg = achtergrond ? verbergReeks([...cat, ...missend], d).slice(cat.length) : verbergReeks(missend, d);
+    if (weg.some(Boolean)) return true;
+  }
+  return false;
 }
 
 /** De verdeling voor de variabelenlijst (kolom "Waarden"): labels, of het bereik bij een getal. */

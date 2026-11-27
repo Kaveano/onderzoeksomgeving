@@ -348,7 +348,7 @@ export function selectieDialoog(wb, bestaand = null) {
           const waarden = v.labels.filter((l) => g.labels.includes(l.label)).flatMap((l) => l.bronwaarden);
           const vid = uniekeId('wb-g');
           const vak = h('input', { id: vid, type: 'checkbox', checked: waarden.some((w) => bron.has(String(w))) });
-          return { vak, waarden, el: h('label', { class: 'keuze', for: vid }, vak, h('span', {}, g.samengevoegd ? `${g.label} (${g.labels.join(', ')})` : g.label)) };
+          return { vak, waarden, el: h('label', { class: 'keuze', for: vid }, vak, h('span', {}, g.samengevoegd ? `${g.label} (${g.labels.join(', ')}${g.metLeeg ? '; ook wie de vraag niet invulde' : ''})` : g.label)) };
         });
         vervang(deel, h('div', { class: 'veld' }, h('label', { for: soortId }, 'Voorwaarde'), soort), h('div', { class: 'wb-vinkjes' }, vakken.map((x) => x.el)));
         item.lees = () => {
@@ -530,7 +530,7 @@ export function toonVariabelen(paneel, wb) {
   vervang(paneel,
     h('section', { class: 'kaart wb-kaart', 'aria-labelledby': 'wb-var-kop' },
       h('h2', { id: 'wb-var-kop' }, 'Variabelen'),
-      h('p', { class: 'zacht' }, 'Dit zijn alle vragen, thema’s en eigen variabelen van de gekozen gegevens, met dezelfde korte namen als in het SPSS-pakket. Pas het meetniveau aan als een variabele anders gebruikt moet worden. × = minder dan 5.'),
+      h('p', { class: 'zacht' }, 'Dit zijn alle vragen, thema’s en eigen variabelen van de gekozen gegevens, met dezelfde korte namen als in het SPSS-pakket. Pas het meetniveau aan als een variabele anders gebruikt moet worden.'), h('p', { class: 'zacht wb-klein' }, VERBORGEN_UITLEG),
       fouten.length ? melding(h('ul', { class: 'wb-fouten' }, fouten.map((f) => h('li', {}, h('strong', {}, `${f.naam}: `), f.tekst))), 'waarschuwing') : null,
       nieuw,
       h('div', { class: 'wb-zoekbalk' }, h('div', { class: 'veld' }, h('label', { for: zoekId }, 'Zoek een variabele'), zoek), chips),

@@ -19,7 +19,7 @@ import {
 } from '../uitvoer-tekst.js';
 import {
   geldigMasker, inSelectie, iedereen, tel, groepVanRijen, selectieControle, begin, weiger, overlapFout, ordinaalMelding, variabelenUit,
-  indelingAlsGetalFout, getalFout,
+  indelingAlsGetalFout, getalFout, ontbreektTekst,
 } from './basis.js';
 import { voegKleineSamen, herindeel, randenMetBuren } from './kruistabel.js';
 import { vorm } from './beschrijven.js';
@@ -151,7 +151,7 @@ export function ontwerp(ds, ctx, { uitkomst = null, uitkomstGeldig = null, blokk
   const gezien = new Set();
   for (const [b, blok] of blokken.entries()) {
     for (const { id, v } of blok) {
-      if (!v) return { fout: `Deze analyse gebruikt een variabele die niet meer bestaat: “${id}”. Pas de analyse aan of verwijder hem.`, niveau: 'fout' };
+      if (!v) return { fout: ontbreektTekst(typeof ds.naamVanRef === 'function' ? ds.naamVanRef(id) : null), niveau: 'fout' };
       if (gezien.has(v.id)) return { fout: `“${v.label}” staat twee keer bij de voorspellers.`, niveau: 'fout' };
       if (uitkomst && v.id === uitkomst.id) return { fout: `“${v.label}” is de uitkomst en kan dus geen voorspeller zijn.`, niveau: 'fout' };
       gezien.add(v.id);
@@ -164,7 +164,9 @@ export function ontwerp(ds, ctx, { uitkomst = null, uitkomstGeldig = null, blokk
   const overlap = overlapFout(ds, ctx, lijst.filter((x) => x.soort === 'groep').map((x) => x.v));
   if (overlap) return { fout: overlap, niveau: 'privacy' };
   // Wie meedoet: een geldige uitkomst en een geldige waarde (of groep) op elke voorspeller (lijstgewijs, zoals SPSS).
-  const geldig = geldigMasker(ds, [...(uitkomst ? [uitkomst] : []), ...lijst.map((x) => x.v)]);
+  // Bij een indeling telt de groep: wie een achtergrondvraag oversloeg, hoort bij "Overige groepen samen" als
+  // "Niet ingevuld" daarin is samengevoegd (zoals op het dashboard).
+  const geldig = geldigMasker(ds, [...(uitkomst && !uitkomstGeldig ? [uitkomst] : []), ...lijst.filter((x) => x.soort !== 'groep').map((x) => x.v)]);
   if (uitkomstGeldig) for (let r = 0; r < ds.n; r++) if (!uitkomstGeldig[r]) geldig[r] = 0;
   for (const x of lijst) {
     if (x.soort !== 'groep') continue;
@@ -179,7 +181,7 @@ export function ontwerp(ds, ctx, { uitkomst = null, uitkomstGeldig = null, blokk
   for (const x of lijst) {
     const { v } = x;
     if (x.soort === 'getal') {
-      const alsGetal = indelingAlsGetalFout(v, basis, ctx.d);
+      const alsGetal = indelingAlsGetalFout(v, basis, ctx.d, ctx.selectie?.F);
       if (alsGetal) { meldingen.push(melding('privacy', alsGetal)); continue; }
       if (v.score && weggevallenRegel(v.reden, ctx.selectie ? ctx.selectie.F : iedereen(ds), null, 1, ctx.d)[0]) {
         meldingen.push(melding('privacy', `“${v.label}”: ${P_WEGGEVALLEN}.`));
@@ -214,7 +216,7 @@ export function ontwerp(ds, ctx, { uitkomst = null, uitkomstGeldig = null, blokk
     }
     const aantallen = new Array(gr.length).fill(0);
     for (let r = 0; r < ds.n; r++) if (basis[r]) aantallen[groep[r]]++;
-    for (const gg of gr.filter((y) => y.samengevoegd)) meldingen.push(melding('privacy', `${v.label}: ${P_SAMENGEVOEGD(gg.labels)}`));
+    for (const gg of gr.filter((y) => y.samengevoegd)) meldingen.push(melding('privacy', `${v.label}: ${P_SAMENGEVOEGD(gg.labels, gg.metLeeg)}`));
     let ref = 0;
     if (referentie === 'laatste') ref = gr.length - 1;
     else if (referentie !== 'eerste') aantallen.forEach((a, i) => { if (a > aantallen[ref]) ref = i; });
@@ -335,7 +337,7 @@ export async function regressie(ds, spec, ctx) {
   await ctx.pauze();
   // De uitkomst: als getal te gebruiken (B26), geen weggevallen respondenten (B7), en bij twee waarden de
   // kruistabelregel per groep van elke voorspeller (B6): dan is een B een verschil in percentages.
-  const alsGetal = indelingAlsGetalFout(y, o.basis, ctx.d);
+  const alsGetal = indelingAlsGetalFout(y, o.basis, ctx.d, ctx.selectie?.F);
   if (alsGetal) return weiger(ds, spec, ctx, titel, 'privacy', alsGetal);
   if (y.score && weggevallenRegel(y.reden, ctx.selectie ? ctx.selectie.F : iedereen(ds), null, 1, ctx.d)[0]) return weiger(ds, spec, ctx, titel, 'privacy', `“${y.label}”: ${P_WEGGEVALLEN}.`);
   const yWaarden = verschillend(y, o.basis);
@@ -435,11 +437,11 @@ export async function regressie(ds, spec, ctx) {
       u.duiding.zinnen.push(`De sterkste voorspeller is “${kol.label}” (β = ${g(sterkste.beta)}): die groep scoort gemiddeld ${g(Math.abs(sterkste.b))} punt ${sterkste.b > 0 ? 'hoger' : 'lager'} op “${y.label}” dan de referentiegroep “${x.groepen[x.referentie].label}”, als de andere voorspellers gelijk blijven.${sig}`);
     }
   }
-  if (verandering) u.duiding.zinnen.push(`Het tweede blok voorspellers verklaart ${Math.round(verandering.r2Verandering * 100)}% extra${verandering.p < ALFA ? '; dat is statistisch significant' : ', maar dat kan goed door toeval komen'}.`);
+  if (verandering) u.duiding.zinnen.push(`Het tweede blok voorspellers verklaart ${g(verandering.r2Verandering * 100, 1)}% extra${verandering.p < ALFA ? '; dat is statistisch significant' : ', maar dat kan goed door toeval komen'}.`);
   u.duiding.zinnen.push(LET_OP_VERBAND);
   u.apa = apaZinnen((s) => {
     let zin = `Het model verklaarde ${pct}% van de variantie in “${y.label}”, *F*(${s.df(f.k)}; ${s.df(f.dfRes)}) = ${s.g(f.f)}; ${s.p(f.pF)}; *R*² = ${s.begrensd(f.r2)}.`;
-    if (verandering) zin += ` Het tweede blok voegde ${Math.round(verandering.r2Verandering * 100)}% verklaarde variantie toe, *F*(${s.df(verandering.df1)}; ${s.df(verandering.df2)}) = ${s.g(verandering.f)}; ${s.p(verandering.p)}.`;
+    if (verandering) zin += ` Het tweede blok verklaarde extra variantie, *ΔR*² = ${s.begrensd(verandering.r2Verandering)}; *F*(${s.df(verandering.df1)}; ${s.df(verandering.df2)}) = ${s.g(verandering.f)}; ${s.p(verandering.p)}.`;
     if (sterkste) {
       const kol = o.kolommen[sterkste.k];
       zin += ` “${kol.label}” hing ${sterkste.p < ALFA ? '' : 'niet significant '}${sterkste.beta > 0 ? 'positief' : 'negatief'} samen met “${y.label}”, β = ${s.begrensd(sterkste.beta)}; *t*(${s.df(f.dfRes)}) = ${s.g(f.t[sterkste.j + 1])}; ${s.p(sterkste.p)}.`;

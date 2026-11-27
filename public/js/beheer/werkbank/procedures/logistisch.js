@@ -14,7 +14,7 @@ import { maskeerKruistabel } from '../../privacy.js';
 import { groepBuren, telTabel, buurTabellen } from '../privacy-selectie.js';
 import { tabel, cel, tekstCel, verborgenCel, aantalCel, voeg, melding, sluitAf, methode } from '../uitvoer.js';
 import { P_TE_WEINIG, P_LOGIT_CEL, P_SCHEIDING, P_WEINIG_PER_VOORSPELLER, LET_OP_VERBAND, uitlegLogistisch, g, apaZinnen, pWaarde } from '../uitvoer-tekst.js';
-import { tel, groepVanRijen, begin, weiger, overlapFout, ordinaalMelding, variabelenUit } from './basis.js';
+import { tel, groepVanRijen, begin, weiger, overlapFout, ordinaalMelding, variabelenUit, buurReden } from './basis.js';
 import { ontwerp, kolommenUit, groepenTabel, pasAanZonderAfhankelijke } from './regressie.js';
 import { groepVanBronwaarde } from './groepen.js';
 
@@ -184,7 +184,7 @@ export async function logistisch(ds, spec, ctx) {
   for (const r of o.rijen) nGroep[gw[r]]++;
   if (nGroep.some((x) => x < ctx.d)) return weiger(ds, spec, ctx, titel, 'privacy', `Beide groepen van “${w.label}” moeten minstens ${ctx.d} respondenten hebben.`);
   if (groepBuren(ctx.selectie, o.geldig, gw, 2, ctx.d).some(Boolean)) {
-    return weiger(ds, spec, ctx, titel, 'privacy', `Een groep van “${w.label}” verschilt met en zonder de selectie maar een paar mensen (minder dan ${ctx.d}). Dan zijn hun antwoorden terug te rekenen. Kies een andere selectie.`);
+    return weiger(ds, spec, ctx, titel, 'privacy', `Een groep van “${w.label}” verschilt ${buurReden(ctx)} maar een paar mensen (minder dan ${ctx.d}). Dan zijn hun antwoorden terug te rekenen. Kies een andere selectie${ctx.selectie?.impliciet ? ' of één vragenlijst' : ''}.`);
   }
   if (o.n < MIN_N) return weiger(ds, spec, ctx, titel, 'fout', `${P_TE_WEINIG(MIN_N)} Alleen respondenten met een antwoord op alle gekozen variabelen tellen mee.`);
   // Elke groep van elke indeling (en elk getal met twee waarden) heeft minstens d mensen met en zonder de uitkomst.
@@ -201,7 +201,7 @@ export async function logistisch(ds, spec, ctx) {
     if (T.some((rij) => rij.some((c) => c < ctx.d))) return weiger(ds, spec, ctx, titel, 'privacy', P_LOGIT_CEL(x.v.label, naamG));
     const buren = buurTabellen(ctx.selectie, o.geldig, groep, uitkomstIndex, ng, 2, ctx.d);
     if (buren.vooraf?.some((rij) => rij.some(Boolean))) {
-      return weiger(ds, spec, ctx, titel, 'privacy', `Bij “${x.v.label}” verschilt een combinatie met “${naamG}” met en zonder de selectie maar een paar mensen. Dan zou de uitkomst iets over een kleine groep verraden. Kies een ruimere selectie of laat deze voorspeller weg.`);
+      return weiger(ds, spec, ctx, titel, 'privacy', `Bij “${x.v.label}” verschilt een combinatie met “${naamG}” ${buurReden(ctx)} maar een paar mensen. Dan zou de uitkomst iets over een kleine groep verraden. Kies een ruimere selectie of laat deze voorspeller weg.`);
     }
   }
   voeg(u, o.meldingen);

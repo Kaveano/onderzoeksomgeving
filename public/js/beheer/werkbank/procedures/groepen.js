@@ -455,7 +455,7 @@ export async function gepaard(ds, spec, ctx) {
     const sel = selectieControle(ctx, geldig);
     if (sel) { voeg(u, melding('privacy', `${label}: ${sel}`)); teWeinig('niet getoond (selectie)'); continue; }
     const basis = inSelectie(geldig, ctx.selectie);
-    const privacy = indelingAlsGetalFout(a, basis, ctx.d) || indelingAlsGetalFout(b, basis, ctx.d)
+    const privacy = indelingAlsGetalFout(a, basis, ctx.d, ctx.selectie?.F) || indelingAlsGetalFout(b, basis, ctx.d, ctx.selectie?.F)
       || ([a, b].some((v) => v.score && weggevallenRegel(v.reden, ctx.selectie ? ctx.selectie.F : iedereen(ds), null, 1, ctx.d)[0]) ? `${label}: ${P_WEGGEVALLEN}.` : null)
       || ([a, b].some((v) => tweeWaardenRegel(v.waarden, basis, null, 1, ctx.d, ctx.selectie)?.[0]) ? `${label}: een van de vragen heeft maar twee waarden en een daarvan komt bij minder dan ${ctx.d} mensen voor.` : null);
     if (privacy) { voeg(u, melding('privacy', privacy)); teWeinig('niet getoond'); continue; }

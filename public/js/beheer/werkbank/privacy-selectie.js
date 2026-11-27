@@ -18,30 +18,54 @@ export const verschilVeilig = (a, b, d = DREMPEL) => a - b === 0 || a - b >= d |
 
 // ---------- Regel A: beschermde groepen ----------
 
+/** Naam van de groep respondenten die een achtergrondvraag oversloegen (zoals op het dashboard). */
+export const LABEL_NIET_INGEVULD = 'Niet ingevuld';
+
 /**
  * De beschermde groepen van een indeling (regel A, D2 §7.2), met de samenvoeging van het dashboard
  * (privacy.js verdeelInGroepen, strategie 'samenvoegen'): kleine groepen samen als "Overige groepen samen",
  * zo nodig met de kleinste grote groep erbij.
  * aantallen: per categorie (in de vaste volgorde) het aantal; labels: de namen.
+ * nietIngevuld: bij een achtergrondvraag het aantal respondenten dat hem oversloeg. Dat is dan een eigen groep
+ * (PR-05), net als op het dashboard; anders zouden de groepen van de werkbank afwijken van die van het dashboard
+ * en is een kleine groep terug te rekenen uit het verschil. Komt "Niet ingevuld" in de samengevoegde groep, dan
+ * horen die respondenten ook in de werkbank bij die groep (leegGroep). Staat "Niet ingevuld" apart (minstens d
+ * mensen), dan doet die groep in de werkbank niet mee (leegApart); weglaten van d of meer mensen is veilig.
  * @returns {{ groepVan: Int32Array /* categorie → groep, −1 = geen groep *\/,
- *             groepen: { label, categorieen: number[], labels: string[], samengevoegd: boolean, n }[],
+ *             groepen: { label, categorieen: number[], labels: string[], samengevoegd: boolean, n, metLeeg }[],
+ *             leegGroep: number /* groep van wie de vraag oversloeg, −1 = geen *\/, leegApart: boolean,
  *             bruikbaar: boolean /* minstens twee groepen met respondenten *\/ }}
  */
-export function beschermIndeling(aantallen, labels, d = DREMPEL) {
+export function beschermIndeling(aantallen, labels, d = DREMPEL, { nietIngevuld = 0, achtergrond = false } = {}) {
+  const LEEG = aantallen.length;
   const invoer = aantallen.map((n, i) => ({ sleutel: i, label: labels[i], n }));
+  if (nietIngevuld > 0) invoer.push({ sleutel: LEEG, label: LABEL_NIET_INGEVULD, n: nietIngevuld });
   const r = verdeelInGroepen(invoer, { d, strategie: 'samenvoegen' });
   const groepVan = new Int32Array(aantallen.length).fill(-1);
   const groepen = [];
+  let leegGroep = -1;
+  let leegApart = false;
   for (const z of r.zichtbaar) {
+    if (z.sleutel === LEEG) {
+      leegApart = true;
+      continue;
+    }
     groepVan[z.sleutel] = groepen.length;
-    groepen.push({ label: z.label, categorieen: [z.sleutel], labels: [z.label], samengevoegd: false, n: z.n });
+    groepen.push({ label: z.label, categorieen: [z.sleutel], labels: [z.label], samengevoegd: false, n: z.n, metLeeg: false });
   }
   if (r.samengevoegd) {
     const nr = groepen.length;
-    for (const s of r.samengevoegd.sleutels) groepVan[s] = nr;
-    groepen.push({ label: LABEL_OVERIG, categorieen: [...r.samengevoegd.sleutels], labels: [...r.samengevoegd.labels], samengevoegd: true, n: r.samengevoegd.n });
+    const echte = r.samengevoegd.sleutels.filter((s) => s !== LEEG);
+    for (const s of echte) groepVan[s] = nr;
+    if (r.samengevoegd.sleutels.includes(LEEG)) leegGroep = nr;
+    // metLeeg: de vaste zin "Ook wie deze vraag niet invulde, telt hier mee." (zoals het dashboard: altijd bij een
+    // achtergrondvraag, tenzij "Niet ingevuld" apart staat; zo verraadt de zin niet of iemand de vraag oversloeg).
+    groepen.push({
+      label: LABEL_OVERIG, categorieen: echte, labels: echte.map((s) => labels[s]), samengevoegd: true, n: r.samengevoegd.n,
+      metLeeg: achtergrond && !leegApart,
+    });
   }
-  return { groepVan, groepen, bruikbaar: groepen.filter((g) => g.n > 0).length >= 2 };
+  return { groepVan, groepen, leegGroep, leegApart, bruikbaar: groepen.filter((g) => g.n > 0).length >= 2 };
 }
 
 // ---------- Regel B: één reeks aantallen ----------
@@ -100,6 +124,34 @@ export function burenVan(lengte, voorwaarden) {
   return { F, buren };
 }
 
+/**
+ * Een gestapelde bron (alle vragenlijsten onder elkaar) tegenover één vragenlijst (regel D tussen bronnen,
+ * D2 §7.9 "een selectie min een buur"): "alleen vragenlijst k" en (bij drie of meer) "zonder vragenlijst k" zijn
+ * buren van de gestapelde bron. Wat je in de gestapelde bron ziet, mag dus nooit 1 tot 4 mensen verschillen van
+ * hetzelfde bij één vragenlijst (die je in de werkbank of op het dashboard ook ziet).
+ * rijLijst: per rij het nummer van de vragenlijst; lijsten: [{ naam }]; selectie: de gekozen selectie of null.
+ * Zonder eigen selectie komt er een selectie met iedereen en impliciet: true (de regels voor meningsvragen zonder
+ * selectie, B26, blijven dan gelden).
+ */
+export function metLijstBuren(selectie, rijLijst, lijsten) {
+  const n = rijLijst.length;
+  const F = selectie ? selectie.F : new Uint8Array(n).fill(1);
+  const buren = [...(selectie?.buren || [])];
+  lijsten.forEach((l, k) => {
+    const alleen = new Uint8Array(n);
+    const zonder = new Uint8Array(n);
+    for (let r = 0; r < n; r++) {
+      if (!F[r]) continue;
+      if (rijLijst[r] === k) alleen[r] = 1;
+      else zonder[r] = 1;
+    }
+    buren.push({ masker: alleen, soort: 'lijst', tekst: `alleen “${l.naam}”` });
+    if (lijsten.length >= 3) buren.push({ masker: zonder, soort: 'lijst', tekst: `zonder “${l.naam}”` });
+  });
+  if (selectie) return { ...selectie, buren };
+  return { F, buren, tekst: null, impliciet: true, voorwaarden: [], n };
+}
+
 /** Aantal rijen in basis ∩ masker (masker null = iedereen). */
 export function telIn(basis, masker) {
   let n = 0;
@@ -116,7 +168,7 @@ export function selectieFout(selectie, basis, d = DREMPEL) {
   const inF = telIn(basis, selectie.F);
   for (const b of selectie.buren) {
     const inN = telIn(basis, b.masker);
-    if (!verschilVeilig(inN, inF, d)) return { soort: b.soort === 'iedereen' ? 'rest' : 'buur', tekst: b.tekst };
+    if (!verschilVeilig(inN, inF, d)) return { soort: b.soort === 'iedereen' ? 'rest' : b.soort === 'lijst' ? 'lijst' : 'buur', tekst: b.tekst };
   }
   return null;
 }

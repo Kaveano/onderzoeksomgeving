@@ -6,12 +6,12 @@
 //   1 tot 4 verborgen (B26 geldt alleen op het eigen scherm), zodat kleinste_n altijd minstens 5 is;
 // - pauze(): geeft de browser even de tijd (en stopt bij "Stoppen"); voortgang(tekst) meldt hoe ver het is.
 
-import { REDEN, isGetal } from '../dataset.js';
+import { REDEN, isGetal, isAchtergrond } from '../dataset.js';
 import { verdeelInGroepen, verbergReeks, DREMPEL } from '../../privacy.js';
 import { selectieFout } from '../privacy-selectie.js';
 import { controleerWortels, P_FILTER_REST, pFilterBuur } from '../transformaties.js';
 import { maakUitvoer, geweigerd, melding } from '../uitvoer.js';
-import { P_INDELING_ALS_GETAL, P_ORDINAAL, P_OPEN } from '../uitvoer-tekst.js';
+import { P_INDELING_ALS_GETAL, P_ORDINAAL, P_OPEN, P_LIJST_BUUR } from '../uitvoer-tekst.js';
 
 /** 1 = rij heeft op alle variabelen een geldige waarde. */
 export function geldigMasker(ds, variabelen) {
@@ -31,12 +31,20 @@ export function inSelectie(basis, selectie) {
 export const iedereen = (ds) => new Uint8Array(ds.n).fill(1);
 export const tel = (m) => { let n = 0; for (let r = 0; r < m.length; r++) if (m[r]) n++; return n; };
 
-/** Per rij het nummer van de beschermde groep van indeling v (−1 = geen geldige waarde of geen groep). */
+/**
+ * Per rij het nummer van de beschermde groep van indeling v (−1 = geen geldige waarde of geen groep).
+ * Wie een achtergrondvraag oversloeg, hoort bij de groep waarin "Niet ingevuld" is samengevoegd (zoals op het
+ * dashboard); zo zijn de groepen van de werkbank precies die van het dashboard (PR-05).
+ */
 export function groepVanRijen(ds, v) {
   const index = new Map(v.labels.map((l, i) => [l.code, i]));
   const groep = new Int32Array(ds.n).fill(-1);
+  const leeg = v.beschermd?.leegGroep ?? -1;
   for (let r = 0; r < ds.n; r++) {
-    if (v.reden[r] !== REDEN.GELDIG) continue;
+    if (v.reden[r] !== REDEN.GELDIG) {
+      if (leeg >= 0 && v.reden[r] === REDEN.GEEN) groep[r] = leeg;
+      continue;
+    }
     const i = index.get(v.waarden[r]);
     if (i !== undefined) groep[r] = v.beschermd.groepVan[i];
   }
@@ -61,9 +69,15 @@ export function kiesGroepen(aantallen, { extraVerborgen = 0, uitgesloten = [], d
   };
 }
 
-/** De melding bij een selectie die regel D niet doorstaat. */
+/** De melding bij een selectie die regel D niet doorstaat (ook de buren "alleen/zonder vragenlijst" van een gestapelde bron). */
 export function selectieMelding(fout) {
+  if (fout.soort === 'lijst') return P_LIJST_BUUR;
   return fout.soort === 'rest' ? P_FILTER_REST : pFilterBuur(fout.tekst);
+}
+
+/** Waarom een groep niet meedoet als hij 1 tot 4 mensen verschilt van een buur (regel D). */
+export function buurReden(ctx) {
+  return ctx.selectie?.impliciet ? 'bij één vragenlijst' : 'met en zonder de selectie';
 }
 
 /** Regel D voor het geheel; null of de tekst. */
@@ -75,12 +89,20 @@ export function selectieControle(ctx, basis) {
 /**
  * B26: een indeling (kenmerk, eigen indeling, vragenlijst, code …) als getal gebruiken mag alleen als haar
  * verdeling in de basis geen kleine groep heeft; anders volgen de aantallen uit gemiddelde, spreiding en vorm.
+ * Bij een achtergrondvraag telt "Niet ingevuld" (binnen de selectie F) als groep, zoals op het dashboard: anders
+ * volgt het verborgen aantal uit n.
  */
-export function indelingAlsGetalFout(v, basis, d = DREMPEL) {
+export function indelingAlsGetalFout(v, basis, d = DREMPEL, F = null) {
   if (!v.groepering) return null;
   const tellingen = new Map();
   for (let r = 0; r < basis.length; r++) if (basis[r]) tellingen.set(v.waarden[r], (tellingen.get(v.waarden[r]) || 0) + 1);
-  return verbergReeks([...tellingen.values()], d).some(Boolean) ? P_INDELING_ALS_GETAL(v.label) : null;
+  const reeks = [...tellingen.values()];
+  if (isAchtergrond(v)) {
+    let leeg = 0;
+    for (let r = 0; r < v.reden.length; r++) if (v.reden[r] === REDEN.GEEN && (!F || F[r])) leeg++;
+    reeks.push(leeg);
+  }
+  return verbergReeks(reeks, d).some(Boolean) ? P_INDELING_ALS_GETAL(v.label) : null;
 }
 
 /** Kan v als getal? Anders de melding. */
@@ -155,4 +177,7 @@ export function variabelenUit(ds, spec, slot) {
   return ids.map((id) => ({ id, v: ds.perId.get(id) || null }));
 }
 
-export const ontbreektTekst = (id) => `Deze analyse gebruikt een variabele die niet meer bestaat: “${id}”. Pas de analyse aan of verwijder hem.`;
+/** Melding bij een variabele die niet meer bestaat; naam is de omschrijving (of null als die onbekend is). */
+export const ontbreektTekst = (naam) => (naam
+  ? `Deze analyse gebruikt een variabele die niet meer bestaat: “${naam}”. Pas de analyse aan of verwijder hem.`
+  : 'Deze analyse gebruikt een variabele die niet meer bestaat (een vraag of eigen variabele die is verwijderd). Pas de analyse aan of verwijder hem.');

@@ -6,16 +6,21 @@
 // niet in de keuzelijsten.
 
 import { DREMPEL } from '../privacy.js';
-import { REDEN, werkTellingBij, pasEigenschappenToe, isGetal } from './dataset.js';
+import { REDEN, werkTellingBij, pasEigenschappenToe, isGetal, inLeegGroep } from './dataset.js';
 import { eigenRefs, refsVan, EIGENSCHAPPEN_NAAM } from './definities.js';
 import { burenVan, controleerOverlap, telIn, verschilVeilig } from './privacy-selectie.js';
 import { nlGetal } from '../opmaak.js';
-import { P_FILTER_REST, pFilterBuur, pOverlap } from './uitvoer-tekst.js';
+import { P_FILTER_REST, pFilterBuur, pOverlap, P_SELECTIE_LIJST } from './uitvoer-tekst.js';
 
 export { P_FILTER_REST, pFilterBuur, pOverlap };
 
 export const FOUT_KRING = 'Deze variabelen verwijzen naar elkaar. Pas een van beide aan.';
-export const foutOntbreekt = (naam) => `Deze variabele gebruikt een variabele die niet meer bestaat: “${naam}”. Pas hem aan of verwijder hem.`;
+/** Melding bij een definitie die een variabele gebruikt die niet meer bestaat; naam = de omschrijving, of null. */
+export const foutOntbreekt = (naam) => (naam
+  ? `Deze variabele gebruikt een variabele die niet meer bestaat: “${naam}”. Pas hem aan of verwijder hem.`
+  : 'Deze variabele gebruikt een variabele die niet meer bestaat (een vraag of eigen variabele die is verwijderd). Pas hem aan of verwijder hem.');
+/** De omschrijving van een (verwijderde) variabele: de rekenkern zoekt die op (ds.naamVanRef); nooit een intern nummer. */
+const naamVan = (ds, ref) => (typeof ds.naamVanRef === 'function' ? ds.naamVanRef(ref) : null);
 
 /** Getal met hooguit twee decimalen, zonder overbodige nullen: 4,5 · 2 · 1.250 */
 export const kortGetal = (x) => nlGetal(x, 2).replace(/(,\d*?)0+$/, '$1').replace(/,$/, '');
@@ -246,7 +251,7 @@ function hercoderen(ds, def, bron) {
 export function maakVariabele(ds, def) {
   const refs = refsVan(def.soort, def.definitie);
   const ontbreekt = refs.find((r) => !ds.perId.has(r));
-  if (ontbreekt) return { tekst: foutOntbreekt(ontbreekt) };
+  if (ontbreekt) return { tekst: foutOntbreekt(naamVan(ds, ontbreekt)) };
   let v = null;
   if (def.soort === 'bereken') {
     const items = def.definitie.variabelen.map((x) => (typeof x === 'string' ? { v: ds.perId.get(x), omscoren: false } : { v: ds.perId.get(x.id), omscoren: !!x.omscoren }));
@@ -290,7 +295,7 @@ export function pasDefinitiesToe(ds, definities, { eigenschappen = null } = {}) 
     if (def.soort === 'filter') {
       ds.filters.set(def.id, { id: def.id, naam: def.naam, label: def.label || def.naam, voorwaarden: def.definitie.voorwaarden, verwijderd: !!def.verwijderd });
       const ontbreekt = refsVan('filter', def.definitie).find((r) => !ds.perId.has(r));
-      if (ontbreekt) ds.filters.get(def.id).fout = foutOntbreekt(ontbreekt.startsWith('w:') ? `eigen variabele ${ontbreekt.slice(2)}` : ontbreekt);
+      if (ontbreekt) ds.filters.get(def.id).fout = foutOntbreekt(naamVan(ds, ontbreekt));
       continue;
     }
     const { v, tekst } = maakVariabele(ds, def);
@@ -333,8 +338,16 @@ export function voorwaardeTekst(ds, vw) {
   return `“${naam}” is ${kortGetal(vw.tot)} of minder`;
 }
 
+/** De codes van de beschermde groep waarin "Niet ingevuld" zit (bij een achtergrondvraag), of null. */
+function leegCodes(v) {
+  const g = v.beschermd?.leegGroep ?? -1;
+  if (g < 0) return null;
+  return v.labels.filter((_, i) => v.beschermd.groepVan[i] === g).map((l) => l.code);
+}
+
 /**
- * Vertaalt één voorwaarde naar rijen (1 = voldoet). Rijen zonder geldige waarde voldoen nooit.
+ * Vertaalt één voorwaarde naar rijen (1 = voldoet). Rijen zonder geldige waarde voldoen niet, behalve wie een
+ * achtergrondvraag oversloeg: die hoort bij de groep waarin "Niet ingevuld" is samengevoegd (PR-05).
  * eenheden: bij "is" en "niet" per beschermde groep een masker van de voorwaarde zonder die groep (regel D).
  */
 export function voorwaardeMasker(ds, vw) {
@@ -348,12 +361,19 @@ export function voorwaardeMasker(ds, vw) {
     return { masker, eenheden: [] };
   }
   const v = ds.perId.get(vw.variabele);
-  if (!v) return { fout: foutOntbreekt(vw.variabele) };
+  if (!v) return { fout: foutOntbreekt(naamVan(ds, vw.variabele)) };
   if (vw.is || vw.niet) {
     const gekozen = gelijkeWaarde(v.labels, vw.is || vw.niet);
     const codes = new Set(gekozen.map((l) => l.code));
+    // Wie een achtergrondvraag oversloeg, hoort bij de groep waarin "Niet ingevuld" is samengevoegd (zoals op het
+    // dashboard). Kies je die hele groep ("is"), of niets ervan ("is niet"), dan telt die persoon mee.
+    const leeg = leegCodes(v);
+    const leegIn = (set) => !!leeg && leeg.every((c) => set.has(c));
+    const leegUit = (set) => !!leeg && leeg.every((c) => !set.has(c));
+    const leegPast = (set) => (vw.niet ? leegUit(set) : leegIn(set));
+    const metLeeg = leegPast(codes);
     const zit = (r) => v.reden[r] === REDEN.GELDIG && codes.has(v.waarden[r]);
-    for (let r = 0; r < n; r++) masker[r] = v.reden[r] === REDEN.GELDIG && (vw.niet ? !zit(r) : zit(r)) ? 1 : 0;
+    for (let r = 0; r < n; r++) masker[r] = v.reden[r] === REDEN.GELDIG ? ((vw.niet ? !zit(r) : zit(r)) ? 1 : 0) : (metLeeg && inLeegGroep(v, r) ? 1 : 0);
     // Eenheden: de gekozen waarden per beschermde groep (een kleine categorie kies je nooit los).
     const eenheden = [];
     if (v.beschermd) {
@@ -367,10 +387,15 @@ export function voorwaardeMasker(ds, vw) {
       if (perGroep.size >= 2) {
         for (const [g, weg] of perGroep) {
           const m = new Uint8Array(n);
+          const rest = new Set([...codes].filter((c) => !weg.has(c)));
+          const restLeeg = leegPast(rest);
           for (let r = 0; r < n; r++) {
-            if (v.reden[r] !== REDEN.GELDIG) continue;
+            if (v.reden[r] !== REDEN.GELDIG) {
+              if (restLeeg && inLeegGroep(v, r)) m[r] = 1;
+              continue;
+            }
             const c = v.waarden[r];
-            const inRest = codes.has(c) && !weg.has(c);
+            const inRest = rest.has(c);
             m[r] = (vw.niet ? !(inRest) : inRest) ? 1 : 0;
           }
           const groepNaam = g >= 0 ? v.beschermd.groepen[g].label : [...weg].map((c) => v.labels[index.get(c)].label).join(', ');
@@ -419,7 +444,7 @@ export function controleerSelectie(ds, selectie, d = DREMPEL) {
   for (const b of selectie.buren) {
     const inN = telIn(iedereen, b.masker);
     if (!verschilVeilig(inN, inF, d)) {
-      meldingen.push(b.soort === 'iedereen' ? { soort: 'rest', tekst: P_FILTER_REST } : { soort: 'buur', tekst: pFilterBuur(b.tekst) });
+      meldingen.push(b.soort === 'iedereen' ? { soort: 'rest', tekst: P_FILTER_REST } : b.soort === 'lijst' ? { soort: 'lijst', tekst: P_SELECTIE_LIJST } : { soort: 'buur', tekst: pFilterBuur(b.tekst) });
       break;
     }
   }
@@ -445,15 +470,22 @@ export function indelingenVan(ds, w, { uitzondering = null } = {}) {
   const n = ds.n;
   const uit = [];
   const geldig = (r) => w.reden[r] === REDEN.GELDIG;
+  // Bij een achtergrondvraag horen ook wie hem oversloegen bij een groep (zie groepVanRijen); die tellen hier mee,
+  // zodat een indeling of selectie die hen buiten laat, niet stilletjes een klein groepje afbakent.
+  const leegGroep = w.beschermd?.leegGroep ?? -1;
+  const doetMee = (r) => geldig(r) || (leegGroep >= 0 && inLeegGroep(w, r));
   if (w.beschermd && w.labels.length) {
     const index = codeIndex(w);
     const groep = new Int32Array(n).fill(-1);
-    for (let r = 0; r < n; r++) if (geldig(r)) groep[r] = w.beschermd.groepVan[index.get(w.waarden[r])] ?? -1;
+    for (let r = 0; r < n; r++) {
+      if (geldig(r)) groep[r] = w.beschermd.groepVan[index.get(w.waarden[r])] ?? -1;
+      else if (doetMee(r)) groep[r] = leegGroep;
+    }
     uit.push({
       naam: w.label,
       soort: 'wortel',
       groep,
-      groepen: w.beschermd.groepen.map((g) => ({ label: g.label, dekking: { soort: 'codes', codes: g.categorieen.map((i) => w.labels[i].code) } })),
+      groepen: w.beschermd.groepen.map((g, i) => ({ label: g.label, dekking: { soort: 'codes', codes: g.categorieen.map((k) => w.labels[k].code), leeg: i === leegGroep } })),
     });
   }
   for (const v of ds.variabelen) {
@@ -472,7 +504,7 @@ export function indelingenVan(ds, w, { uitzondering = null } = {}) {
       const m = voorwaardeMasker(ds, vw);
       if (m.fout) continue;
       const groep = new Int32Array(n).fill(-1);
-      for (let r = 0; r < n; r++) if (geldig(r)) groep[r] = m.masker[r] ? 0 : 1;
+      for (let r = 0; r < n; r++) if (doetMee(r)) groep[r] = m.masker[r] ? 0 : 1;
       uit.push({ naam: f.label || f.naam, soort: 'selectie', definitie_id: f.id, groep, groepen: [{ label: 'in de selectie', dekking: dekkingVanVoorwaarde(ds, v, vw, true) }, { label: 'buiten de selectie', dekking: dekkingVanVoorwaarde(ds, v, vw, false) }] });
     }
   }
@@ -499,7 +531,9 @@ function verschilTekst(w, a, b) {
   if (a?.soort === 'codes' && b?.soort === 'codes') {
     const inB = new Set(b.codes);
     const labels = a.codes.filter((c) => !inB.has(c)).map((c) => w.labels.find((l) => l.code === c)?.label).filter(Boolean);
-    return labels.length ? `in ${lijstTekst(labels, 'en')}` : null;
+    if (labels.length) return `in ${lijstTekst(labels, 'en')}`;
+    if (a.leeg && !b.leeg) return `in de groep die “${w.label}” niet invulde`;
+    return null;
   }
   if (a?.soort === 'bereik' && b?.soort === 'bereik' && a.delen.length === 1 && b.delen.length === 1) {
     const [a0, a1] = a.delen[0];
@@ -553,7 +587,7 @@ export function controleerNieuweIndeling(ds, def, d = DREMPEL) {
   const meldingen = [];
   if (def.soort === 'hercoderen') {
     const bron = ds.perId.get(def.definitie.variabele);
-    if (!bron) return [foutOntbreekt(def.definitie.variabele)];
+    if (!bron) return [foutOntbreekt(naamVan(ds, def.definitie.variabele))];
     const v = hercoderen(ds, tijdelijk, bron);
     const w = wortelVan(ds, v);
     const andere = indelingenVan(ds, w, { uitzondering: tijdelijk.id });
@@ -571,13 +605,13 @@ export function controleerNieuweIndeling(ds, def, d = DREMPEL) {
       for (const vw of def.definitie.voorwaarden) {
         if (!vw.variabele) continue;
         const v = ds.perId.get(vw.variabele);
-        if (!v) return [foutOntbreekt(vw.variabele)];
+        if (!v) return [foutOntbreekt(naamVan(ds, vw.variabele))];
         const w = wortelVan(ds, v);
         const andere = indelingenVan(ds, w);
         const m = voorwaardeMasker(ds, vw);
         if (m.fout) return [m.fout];
         const groep = new Int32Array(ds.n).fill(-1);
-        for (let r = 0; r < ds.n; r++) if (w.reden[r] === REDEN.GELDIG) groep[r] = m.masker[r] ? 0 : 1;
+        for (let r = 0; r < ds.n; r++) if (w.reden[r] === REDEN.GELDIG || inLeegGroep(w, r)) groep[r] = m.masker[r] ? 0 : 1;
         const mij = { naam: def.label || def.naam, groep, groepen: [{ label: 'in de selectie', dekking: dekkingVanVoorwaarde(ds, v, vw, true) }, { label: 'buiten de selectie', dekking: dekkingVanVoorwaarde(ds, v, vw, false) }] };
         for (const o of controleerOverlap([...andere, mij], d, { nieuw: andere.length })) meldingen.push(overlapMelding(w, o, mij.naam));
       }

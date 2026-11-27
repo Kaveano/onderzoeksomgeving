@@ -1,6 +1,6 @@
 // Werkbank: frequenties, beschrijvende statistiek en gemiddelden per groep (D2 §5.2). Zuivere module, geen DOM.
 
-import { REDEN, REDEN_LABELS, isVerdeling, isIndeling } from '../dataset.js';
+import { REDEN, REDEN_LABELS, isVerdeling, isIndeling, isAchtergrond } from '../dataset.js';
 import { verbergMet, ordeStatistieken, tweeWaardenRegel, weggevallenRegel, groepBuren, selectieFout } from '../privacy-selectie.js';
 import { tKwantiel, momenten } from '../../statistiek.js';
 import { tabel, cel, tekstCel, verborgenCel, aantalCel, voeg, melding, sluitAf } from '../uitvoer.js';
@@ -9,7 +9,7 @@ import {
 } from '../uitvoer-tekst.js';
 import {
   geldigMasker, inSelectie, iedereen, tel, groepVanRijen, kiesGroepen, selectieControle, selectieMelding, indelingAlsGetalFout,
-  getalFout, begin, weiger, overlapFout, ordinaalMelding, waardenIn, variabelenUit,
+  getalFout, begin, weiger, overlapFout, ordinaalMelding, waardenIn, variabelenUit, buurReden,
 } from './basis.js';
 
 const MAX_WAARDEN = 50;
@@ -18,21 +18,64 @@ const pct = (a, b) => (b > 0 ? (a / b) * 100 : null);
 
 // ---------- Frequenties ----------
 
-/** De rijen (categorieën en ontbrekende redenen) van een frequentietabel, met per rij een masker-functie. */
+/**
+ * Wordt de verdeling van v zonder selectie getoond zoals op het dashboard (B26)? Alleen bij een meningsvraag uit een
+ * vragenlijst. Achtergrondvragen en andere indelingen, scores (thema, meetpunt, eigen score) en kolommen van een eigen
+ * dataset staan niet zo op het dashboard: daar gaan aantallen van 1 tot 4 altijd weg (PR-12, B5, B7).
+ */
+export const isMeningsvraag = (v) => v.bron === 'vraag' && !v.groepering && !v.score;
+
+/**
+ * De rijen (categorieën en ontbrekende redenen) van een frequentietabel, met per rij een masker-functie en de reeks
+ * waarin hij verborgen wordt (regel B):
+ * - bij een achtergrondvraag is "Geen antwoord" een groep, zoals "Niet ingevuld" op het dashboard (maskeerVerdeling):
+ *   antwoorden en ontbrekende redenen vormen één reeks (reeks 0);
+ * - anders is het aantal geldige antwoorden elders te zien (n bij beschrijvende statistiek en andere analyses): de
+ *   antwoorden (reeks 0) en de ontbrekende redenen (reeks 1) worden elk apart beschermd;
+ * - "Niet gevraagd" (de vraag stond niet in die vragenlijst) volgt uit de grootte van de vragenlijsten: reeks 2.
+ */
 function verdelingRijen(ds, v) {
   const rijen = [];
+  const achtergrond = isAchtergrond(v);
   if (v.labels.length) {
-    for (const l of v.labels) rijen.push({ label: l.label, geldig: true, past: (r) => v.reden[r] === REDEN.GELDIG && v.waarden[r] === l.code });
+    for (const l of v.labels) rijen.push({ label: l.label, geldig: true, reeks: 0, past: (r) => v.reden[r] === REDEN.GELDIG && v.waarden[r] === l.code });
   } else {
     const waarden = [...new Set([...v.waarden].filter((x, r) => v.reden[r] === REDEN.GELDIG))].sort((a, b) => a - b);
     if (waarden.length > MAX_WAARDEN) return null;
-    for (const w of waarden) rijen.push({ label: g(w, Number.isInteger(w) ? 0 : 2), geldig: true, past: (r) => v.reden[r] === REDEN.GELDIG && v.waarden[r] === w });
+    for (const w of waarden) rijen.push({ label: g(w, Number.isInteger(w) ? 0 : 2), geldig: true, reeks: 0, past: (r) => v.reden[r] === REDEN.GELDIG && v.waarden[r] === w });
   }
   // Ontbrekende redenen die in de hele bron voorkomen (zo hangt de lijst met rijen niet af van de selectie).
   for (let reden = 1; reden < REDEN_LABELS.length; reden++) {
-    if (v.telling.perReden[reden] > 0) rijen.push({ label: REDEN_LABELS[reden], geldig: false, past: (r) => v.reden[r] === reden });
+    if (v.telling.perReden[reden] > 0) {
+      const reeks = reden === REDEN.NIET_GEVRAAGD ? 2 : achtergrond ? 0 : 1;
+      rijen.push({ label: REDEN_LABELS[reden], geldig: false, reeks, past: (r) => v.reden[r] === reden });
+    }
   }
   return rijen;
+}
+
+/** Verbergt per reeks (zie verdelingRijen) met regel B en D; vooraf en verschillen gelden voor alle rijen. */
+function verbergPerReeks(rijen, aantallen, d, { vooraf, verschillen }) {
+  const verborgen = aantallen.map(() => false);
+  for (const reeks of [0, 1, 2]) {
+    const idx = rijen.map((x, i) => (x.reeks === reeks ? i : -1)).filter((i) => i >= 0);
+    if (!idx.length) continue;
+    const weg = verbergMet(idx.map((i) => aantallen[i]), d, {
+      vooraf: idx.map((i) => vooraf[i]),
+      verschillen: verschillen.map((vs) => idx.map((i) => vs[i])),
+    });
+    idx.forEach((i, k) => { verborgen[i] = weg[k]; });
+  }
+  return verborgen;
+}
+
+/** Een meningsvraag zonder selectie (B26): niet bij minder dan d antwoorden (PR-03), en in een gestapelde bron niet
+ *  als één vragenlijst 1 tot 4 antwoorden geeft (dan volgen die uit het verschil met de andere). Geeft null of de tekst. */
+function meningsvraagFout(ds, v, ctx, geldig) {
+  const n = tel(geldig);
+  if (n > 0 && n < ctx.d) return `“${v.label}”: minder dan ${ctx.d} antwoorden. Die tonen we niet.`;
+  const f = ctx.selectie ? selectieFout(ctx.selectie, geldig, ctx.d) : null;
+  return f ? `“${v.label}”: ${selectieMelding(f)}` : null;
 }
 
 function telRijen(ds, rijen, masker) {
@@ -55,9 +98,12 @@ function frequentieTabel(ds, v, ctx, u) {
     const fout = selectieFout(ctx.selectie, iedereen(ds), ctx.d);
     if (fout) return [melding('privacy', `“${v.label}”: ${selectieMelding(fout)}`)];
   }
+  // B7: een score waarbij 1 tot 4 respondenten wegvielen (te weinig vragen beantwoord), toont niets.
+  if (v.score && weggevallenRegel(v.reden, F || iedereen(ds), null, 1, ctx.d)[0]) return [melding('privacy', `“${v.label}”: ${P_WEGGEVALLEN}.`)];
   // B26: zonder selectie zie je bij een meningsvraag de hele verdeling (zoals op het dashboard); bij een indeling,
-  // met een selectie of bij het vastleggen in een rapport gaan aantallen van 1 tot 4 weg (regel B en D).
-  const beschermen = !!ctx.selectie || ctx.streng || v.groepering;
+  // een score, een kolom van een eigen dataset, met een selectie of bij het vastleggen in een rapport gaan
+  // aantallen van 1 tot 4 weg (regel B en D). De buren van een gestapelde bron (één vragenlijst) tellen mee.
+  const beschermen = (!!ctx.selectie && !ctx.selectie.impliciet) || ctx.streng || !isMeningsvraag(v);
   let verborgen = aantallen.map(() => false);
   if (beschermen) {
     const verschillen = [];
@@ -68,7 +114,10 @@ function frequentieTabel(ds, v, ctx, u) {
       verschil.forEach((x, i) => { if (x > 0 && x < ctx.d) vooraf[i] = true; });
       verschillen.push(verschil);
     }
-    verborgen = verbergMet(aantallen, ctx.d, { vooraf, verschillen });
+    verborgen = verbergPerReeks(rijen, aantallen, ctx.d, { vooraf, verschillen });
+  } else {
+    const fout = meningsvraagFout(ds, v, ctx, geldigMasker(ds, [v]));
+    if (fout) return [melding('privacy', fout)];
   }
   const ietsWeg = verborgen.some(Boolean);
   const ontbrekendWeg = rijen.some((x, i) => !x.geldig && verborgen[i]);
@@ -110,6 +159,7 @@ function frequentieTabel(ds, v, ctx, u) {
   const voetnoten = [];
   if (ietsWeg) voetnoten.push('De kolom met het cumulatieve percentage staat er niet bij, omdat er cellen verborgen zijn.');
   if (ontbrekendWeg) voetnoten.push('Het geldig procent staat er niet bij, omdat er een verborgen ontbrekende waarde is.');
+  if (!v.labels.length && rijen.some((x, i) => x.geldig && verborgen[i])) voetnoten.push('Waarden die bij minder dan 5 mensen voorkomen, zijn verborgen. Wil je meer zien, deel de variabele dan eerst in groepen in (Indelen in groepen).');
   // Het vaakst gekozen (alleen als er niets verborgen is).
   if (!ietsWeg && geldigTotaal > 0) {
     let beste = -1;
@@ -129,12 +179,18 @@ function frequentieTabel(ds, v, ctx, u) {
   ];
 }
 
+/**
+ * Meerdere antwoorden: per antwoordmogelijkheid hoe vaak die gekozen is. Elke mogelijkheid is een aandeel van wie de
+ * vraag beantwoordde (n staat erbij), dus met bescherming geldt de regel voor kruistabellen (B6, PR-07): gekozen
+ * én niet gekozen moeten elk minstens d zijn (0 telt als klein), ook ten opzichte van elke buur (regel D).
+ */
 function setTabel(ds, v, ctx) {
   const leden = v.leden.map((id) => ds.perId.get(id)).filter(Boolean);
-  const basis = inSelectie(geldigMasker(ds, [v]), ctx.selectie);
+  const geldig = geldigMasker(ds, [v]);
+  const basis = inSelectie(geldig, ctx.selectie);
   const n = tel(basis);
   if (ctx.selectie) {
-    const fout = selectieFout(ctx.selectie, geldigMasker(ds, [v]), ctx.d);
+    const fout = selectieFout(ctx.selectie, geldig, ctx.d);
     if (fout) return [melding('privacy', `“${v.label}”: ${selectieMelding(fout)}`)];
   }
   const gekozen = (m) => leden.map((l) => {
@@ -143,14 +199,23 @@ function setTabel(ds, v, ctx) {
     return c;
   });
   const aantallen = gekozen(basis);
-  const beschermen = !!ctx.selectie || ctx.streng || v.groepering;
-  const verborgen = aantallen.map((c) => beschermen && c > 0 && c < ctx.d);
-  if (ctx.selectie) {
-    const geldig = geldigMasker(ds, [v]);
-    for (const b of ctx.selectie.buren) {
+  const beschermen = (!!ctx.selectie && !ctx.selectie.impliciet) || ctx.streng || !isMeningsvraag(v);
+  const verborgen = aantallen.map(() => false);
+  if (beschermen) {
+    if (n > 0 && n < ctx.d) return [melding('privacy', `“${v.label}”: minder dan ${ctx.d} antwoorden. Die tonen we niet.`)];
+    aantallen.forEach((c, i) => { if (c < ctx.d || n - c < ctx.d) verborgen[i] = true; });
+    for (const b of ctx.selectie?.buren || []) {
       const m = b.masker ? inSelectie(geldig, { F: b.masker }) : geldig;
-      gekozen(m).forEach((x, i) => { const v = Math.abs(x - aantallen[i]); if (v > 0 && v < ctx.d) verborgen[i] = true; });
+      const nN = tel(m);
+      gekozen(m).forEach((x, i) => {
+        const wel = Math.abs(x - aantallen[i]);
+        const niet = Math.abs((nN - x) - (n - aantallen[i]));
+        if ((wel > 0 && wel < ctx.d) || (niet > 0 && niet < ctx.d)) verborgen[i] = true;
+      });
     }
+  } else {
+    const fout = meningsvraagFout(ds, v, ctx, geldig);
+    if (fout) return [melding('privacy', fout)];
   }
   const som = aantallen.reduce((a, b) => a + b, 0);
   const ietsWeg = verborgen.some(Boolean);
@@ -163,7 +228,7 @@ function setTabel(ds, v, ctx) {
   rijen.push([tekstCel('Respondenten die de vraag beantwoordden', { nadruk: true }), cel(n, 'aantal'), tekstCel(''), ...(ietsWeg ? [] : [tekstCel('')])]);
   return [
     tabel(`set-${v.id}`, `Meerdere antwoorden: “${v.label}”`, ['Antwoord', 'Aantal keer gekozen', '% van de respondenten', ...(ietsWeg ? [] : ['% van de antwoorden'])], rijen,
-      { voetnoten: ietsWeg ? ['Het percentage van de antwoorden staat er niet bij, omdat er cellen verborgen zijn.'] : [] }),
+      { voetnoten: ietsWeg ? ['Het percentage van de antwoorden staat er niet bij, omdat er cellen verborgen zijn. × staat ook bij een antwoord dat bijna iedereen of bijna niemand koos: anders zou te zien zijn wat een paar mensen deden.'] : [] }),
     null,
     { stat: { label: v.label, geldig: n, ontbrekend: null }, totaal: n },
   ];
@@ -267,10 +332,14 @@ export function beschrijvend(ds, spec, ctx) {
     const sel = selectieControle(ctx, geldig);
     if (sel) { teWeinig('niet getoond (selectie)'); meldingen.push(melding('privacy', `“${v.label}”: ${sel}`)); continue; }
     // B7: wie een score kreeg en wie wegviel omdat te weinig vragen beantwoord waren.
-    if (v.score && weggevallenRegel(v.reden, ctx.selectie ? ctx.selectie.F : iedereen(ds), null, 1, ctx.d)[0]) { teWeinig(P_WEGGEVALLEN); continue; }
+    if (v.score && weggevallenRegel(v.reden, ctx.selectie ? ctx.selectie.F : iedereen(ds), null, 1, ctx.d)[0]) {
+      teWeinig(P_WEGGEVALLEN);
+      meldingen.push(melding('privacy', `“${v.label}”: ${P_WEGGEVALLEN}.`));
+      continue;
+    }
     const xs = waardenIn(v, basis);
     if (xs.length < ctx.d) { teWeinig(`Te weinig (minder dan ${ctx.d})`); continue; }
-    const alsGetal = indelingAlsGetalFout(v, basis, ctx.d);
+    const alsGetal = indelingAlsGetalFout(v, basis, ctx.d, ctx.selectie?.F);
     if (alsGetal) { teWeinig('niet getoond'); meldingen.push(melding('privacy', alsGetal)); continue; }
     if (tweeWaardenRegel(v.waarden, basis, null, 1, ctx.d, ctx.selectie)?.[0]) { teWeinig('niet getoond'); meldingen.push(melding('privacy', P_TWEE_WAARDEN(v.label))); continue; }
     const b = beschrijving(xs);
@@ -348,11 +417,11 @@ export function groepenVoor(ds, ctx, v, w) {
   const naam = (i) => w.beschermd.groepen[i].label;
   const meldingen = [];
   const samengevoegd = w.beschermd.groepen.filter((gr) => gr.samengevoegd);
-  if (samengevoegd.length) meldingen.push(melding('privacy', P_SAMENGEVOEGD(samengevoegd[0].labels)));
+  if (samengevoegd.length) meldingen.push(melding('privacy', P_SAMENGEVOEGD(samengevoegd[0].labels, samengevoegd[0].metLeeg)));
   if (keuze.klein.length) meldingen.push(melding('privacy', P_GROEP_KLEIN(keuze.klein.map(naam))));
   if (redenen.weggevallen.length) meldingen.push(melding('privacy', `${redenen.weggevallen.map((i) => `“${naam(i)}”`).join(', ')}: ${P_WEGGEVALLEN}.`));
   if (redenen.tweeWaarden.length) meldingen.push(melding('privacy', P_TWEE_WAARDEN(v.label)));
-  if (redenen.selectie.length) meldingen.push(melding('privacy', `Niet meegenomen, omdat ze met en zonder de selectie maar een paar mensen verschillen: ${redenen.selectie.map((i) => `“${naam(i)}”`).join(', ')}.`));
+  if (redenen.selectie.length) meldingen.push(melding('privacy', `Niet meegenomen, omdat ze ${buurReden(ctx)} maar een paar mensen verschillen: ${redenen.selectie.map((i) => `“${naam(i)}”`).join(', ')}.`));
   if (keuze.ookNiet.length) meldingen.push(melding('privacy', P_OOK_NIET(keuze.ookNiet.map(naam))));
   const waarden = Array.from({ length: ng }, () => []);
   for (let r = 0; r < ds.n; r++) if (basis[r]) waarden[groep[r]].push(v.waarden[r]);
@@ -363,7 +432,7 @@ export function groepenVoor(ds, ctx, v, w) {
     for (let r = 0; r < ds.n; r++) inMee[r] = mee.has(groep[r]) && (!ctx.selectie || ctx.selectie.F[r]) ? 1 : 0;
     if (weggevallenRegel(v.reden, inMee, null, 1, ctx.d)[0]) return { fout: `“${v.label}”: ${P_WEGGEVALLEN}.`, niveau: 'privacy' };
   }
-  const alsGetal = indelingAlsGetalFout(v, basis, ctx.d);
+  const alsGetal = indelingAlsGetalFout(v, basis, ctx.d, ctx.selectie?.F);
   if (alsGetal) return { fout: alsGetal, niveau: 'privacy' };
   return { basis, groep, ng, mee: keuze.mee, meldingen, waarden, naam };
 }
