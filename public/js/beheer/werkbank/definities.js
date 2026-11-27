@@ -291,11 +291,11 @@ export function zoekKring(definities) {
 /**
  * Per procedure: de vraag (zoals in het menu), de technische naam, waarvoor je hem gebruikt, de vakjes voor
  * variabelen en de toegestane opties. De rekenregels zelf staan in procedures/*.js; welke procedures al te
- * gebruiken zijn, staat in procedures/index.js (fase 5 en 6 voegen regressie, logistisch, gepaard en
- * factoranalyse toe).
+ * gebruiken zijn, staat in procedures/index.js.
  * Vakje: { sleutel, label, meerdere, min, max, soort } met soort:
  *   'verdeling' (categorie, meerdere antwoorden of getal met weinig waarden), 'getal' (ordinaal of interval, of
- *   ja/nee als 0/1), 'groep' (indeling met beschermde groepen), 'item' (getal voor een schaal).
+ *   ja/nee als 0/1), 'groep' (indeling met beschermde groepen), 'item' (getal voor een schaal), 'voorspeller'
+ *   (een getal, of een indeling die als groepen meedoet).
  * Optie: { soort: 'keuze', waarden, standaard } | { soort: 'vlag', standaard } | { soort: 'waarden', min, max }
  *        | { soort: 'aantallen' } | { soort: 'refs', van } | { soort: 'waarde' }.
  */
@@ -385,7 +385,6 @@ export const PROCEDURES = {
     slots: [{ sleutel: 'items', label: 'Vragen', meerdere: true, min: 2, max: 60, soort: 'item' }],
     opties: { omscoren: { soort: 'refs', van: 'items', label: 'Omscoren' } },
   },
-  // Fase 5 en 6 (BOUWPLAN P4): de vorm ligt vast, zodat bewaarde analyses al te controleren zijn.
   regressie: {
     vraag: 'Wat voorspelt een score?', naam: 'Lineaire regressie', groep: 'Voorspellen',
     gebruik: 'Gebruik dit als je wilt weten welke dingen samen een score voorspellen.',
@@ -394,7 +393,7 @@ export const PROCEDURES = {
       { sleutel: 'voorspellers', label: 'Voorspellers', meerdere: true, min: 1, max: 30, soort: 'voorspeller' },
       { sleutel: 'blok2', label: 'Tweede blok voorspellers', meerdere: true, min: 0, max: 30, soort: 'voorspeller' },
     ],
-    opties: {},
+    opties: { referentie: { soort: 'keuze', waarden: ['grootste', 'eerste', 'laatste'], standaard: 'grootste', label: 'Referentiegroep bij voorspellers met groepen' } },
   },
   logistisch: {
     vraag: 'Wat voorspelt een ja/nee-uitkomst, zoals vertrekwens?', naam: 'Logistische regressie', groep: 'Voorspellen',
@@ -403,11 +402,14 @@ export const PROCEDURES = {
       { sleutel: 'uitkomst', label: 'Uitkomst', meerdere: false, min: 1, max: 1, soort: 'groep' },
       { sleutel: 'voorspellers', label: 'Voorspellers', meerdere: true, min: 1, max: 20, soort: 'voorspeller' },
     ],
-    opties: { gebeurtenis: { soort: 'waarde', van: 'uitkomst', label: 'Waar kijk je naar?' } },
+    opties: {
+      gebeurtenis: { soort: 'waarde', van: 'uitkomst', label: 'Waar kijk je naar?' },
+      referentie: { soort: 'keuze', waarden: ['grootste', 'eerste', 'laatste'], standaard: 'grootste', label: 'Referentiegroep bij voorspellers met groepen' },
+    },
   },
   gepaard: {
     vraag: 'Verschillen twee vragen bij dezelfde mensen?', naam: 'Gepaarde t-toets en Wilcoxon', groep: 'Groepen vergelijken',
-    gebruik: 'Gebruik dit als dezelfde mensen twee vragen beantwoordden en je die wilt vergelijken.',
+    gebruik: 'Gebruik dit als dezelfde mensen twee vragen beantwoordden en je die wilt vergelijken. Kies de eerste en de tweede vragen in dezelfde volgorde: de eerste vraag die je aanvinkt, hoort bij de eerste tweede vraag.',
     slots: [
       { sleutel: 'x', label: 'Eerste vraag van elk paar', meerdere: true, min: 1, max: 10, soort: 'getal' },
       { sleutel: 'y', label: 'Tweede vraag van elk paar', meerdere: true, min: 1, max: 10, soort: 'getal' },
@@ -422,6 +424,8 @@ export const PROCEDURES = {
       methode: { soort: 'keuze', waarden: ['pca', 'paf'], standaard: 'paf', label: 'Methode' },
       aantal: { soort: 'keuze', waarden: ['kaiser', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10'], standaard: 'kaiser', label: 'Aantal factoren' },
       rotatie: { soort: 'keuze', waarden: ['varimax', 'geen'], standaard: 'varimax', label: 'Rotatie' },
+      sorteren: { soort: 'vlag', standaard: true, label: 'Vragen sorteren op de factor waar ze het sterkst bij horen' },
+      klein: { soort: 'vlag', standaard: true, label: 'Ladingen kleiner dan 0,30 niet tonen' },
     },
   },
 };

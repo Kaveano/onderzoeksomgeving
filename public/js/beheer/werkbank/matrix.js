@@ -43,6 +43,24 @@ export function cholesky(A) {
   return L;
 }
 
+/** Lost L·Lᵀ·x = b op met de Cholesky-factor L (voorwaarts en terug invullen). */
+export function choleskyOplossen(L, b) {
+  const p = L.length;
+  const z = new Float64Array(p);
+  for (let i = 0; i < p; i++) {
+    let s = b[i];
+    for (let k = 0; k < i; k++) s -= L[i][k] * z[k];
+    z[i] = s / L[i][i];
+  }
+  const x = new Float64Array(p);
+  for (let i = p - 1; i >= 0; i--) {
+    let s = z[i];
+    for (let k = i + 1; k < p; k++) s -= L[k][i] * x[k];
+    x[i] = s / L[i][i];
+  }
+  return x.every(eindig) ? x : null;
+}
+
 /** ln |A| uit de Cholesky-factor: 2 Σ ln L_ii. */
 export function logDeterminant(L) {
   let s = 0;
@@ -167,12 +185,29 @@ export function kleinsteKwadraten(X, y) {
  * Eigenwaarden en -vectoren van een symmetrische matrix met de cyclische methode van Jacobi (drempelvariant van
  * Rutishauser). Gesorteerd van groot naar klein; elke vector heeft zijn grootste element (in absolute waarde)
  * positief. vectoren[j] is de eigenvector bij waarden[j].
+ * start: de vectoren van een bijna gelijke matrix (bijvoorbeeld de vorige stap van de principale-assenmethode).
+ * Dan begint Jacobi bij Vᵀ·A·V, die al bijna diagonaal is, en zijn er veel minder rondes nodig.
  */
-export function jacobiEigen(A) {
-  const M = alsMatrix(A);
+export function jacobiEigen(A, { start = null } = {}) {
+  let M = alsMatrix(A);
   if (!M) return null;
   const p = M.length;
-  const V = Array.from({ length: p }, (_, i) => { const r = new Float64Array(p); r[i] = 1; return r; });
+  let V = Array.from({ length: p }, (_, i) => { const r = new Float64Array(p); r[i] = 1; return r; });
+  if (Array.isArray(start) && start.length === p && start.every((v) => v && v.length === p && Array.from(v).every(eindig))) {
+    // V[k][a] = component k van vector a; M ← Vᵀ M V.
+    V = Array.from({ length: p }, (_, k) => Float64Array.from(start, (v) => v[k]));
+    const MV = M.map((rij) => Float64Array.from({ length: p }, (_, a) => { let t = 0; for (let k = 0; k < p; k++) t += rij[k] * V[k][a]; return t; }));
+    const B = Array.from({ length: p }, () => new Float64Array(p));
+    for (let a = 0; a < p; a++) {
+      for (let b = a; b < p; b++) {
+        let t = 0;
+        for (let k = 0; k < p; k++) t += V[k][a] * MV[k][b];
+        B[a][b] = t;
+        B[b][a] = t;
+      }
+    }
+    M = B;
+  }
   let frob = 0;
   for (let i = 0; i < p; i++) for (let j = 0; j < p; j++) frob += M[i][j] * M[i][j];
   for (let ronde = 0; ronde < 60; ronde++) {

@@ -281,5 +281,199 @@ y = X @ np.array([1.0, 0.5, -0.3, 0.2]) + rng.normal(0, 0.5, 50)
 fit = sm.OLS(y, X).fit()
 uit["kleinste_kwadraten"] = {"X": [lijst(r) for r in X], "y": lijst(y), "beta": lijst(fit.params), "bse": lijst(fit.bse), "rss": float(fit.ssr)}
 
+# ---------- Lineaire regressie (fase 5) ----------
+# Drie getallen, een indeling met drie groepen (twee dummy's; referentie = de grootste groep 0) en een tweede blok.
+from statsmodels.stats.outliers_influence import variance_inflation_factor
+
+n = 160
+rg_afd = rng.choice(3, n, p=[0.45, 0.35, 0.2])
+rg_x1 = r2(rng.normal(3.0, 0.8, n))
+rg_x2 = r2(rng.normal(0.0, 1.0, n))
+rg_x3 = rng.integers(1, 6, n).astype(float)
+rg_y = r2(1.2 + 0.5 * rg_x1 - 0.3 * rg_x2 + 0.15 * rg_x3 + np.array([0.0, 0.4, -0.3])[rg_afd] + rng.normal(0, 0.7, n))
+rg_d1 = (rg_afd == 1).astype(float)
+rg_d2 = (rg_afd == 2).astype(float)
+rg_X = np.column_stack([rg_x1, rg_x2, rg_x3, rg_d1, rg_d2])
+
+
+def ols_ref(X, y, dummies=None):
+    Xc = sm.add_constant(X, has_constant="add")
+    fit = sm.OLS(y, Xc).fit()
+    ci = fit.conf_int(0.05)
+    p = X.shape[1]
+    sdy = y.std(ddof=1)
+    beta_std = [float(fit.params[j + 1] * X[:, j].std(ddof=1) / sdy) for j in range(p)]
+    vif = [float(variance_inflation_factor(Xc, j + 1)) for j in range(p)] if p > 1 else [1.0]
+    z = fit.resid / math.sqrt(fit.mse_resid)
+    rij = {
+        "X": [lijst(r) for r in X], "y": lijst(y),
+        "params": lijst(fit.params), "bse": lijst(fit.bse), "t": lijst(fit.tvalues), "p": lijst(fit.pvalues),
+        "ci_laag": lijst(ci[:, 0]), "ci_hoog": lijst(ci[:, 1]),
+        "r2": float(fit.rsquared), "r2_adj": float(fit.rsquared_adj), "f": float(fit.fvalue), "p_f": float(fit.f_pvalue),
+        "df_model": float(fit.df_model), "df_resid": float(fit.df_resid),
+        "ss_res": float(fit.ssr), "ss_reg": float(fit.ess), "se_schatting": math.sqrt(fit.mse_resid),
+        "beta_std": beta_std, "vif": vif,
+        "residuen": {"gemiddelde": float(z.mean()), "sd": float(z.std(ddof=1)), "scheef": float(stats.skew(z, bias=False)),
+                     "kurtosis": float(stats.kurtosis(z, bias=False)), "boven3": int((np.abs(z) > 3).sum())},
+    }
+    if dummies:
+        R = np.zeros((len(dummies), p + 1))
+        for i, j in enumerate(dummies):
+            R[i, j + 1] = 1
+        ft = fit.f_test(R)
+        rij["f_groep"] = {"kolommen": dummies, "f": float(np.squeeze(ft.fvalue)), "p": float(ft.pvalue), "df1": float(ft.df_num), "df2": float(ft.df_denom)}
+    return rij, fit
+
+
+rg_ref, rg_fit2 = ols_ref(rg_X, rg_y, dummies=[3, 4])
+rg_ref1, rg_fit1 = ols_ref(rg_X[:, :2], rg_y)
+fchange = rg_fit2.compare_f_test(rg_fit1)
+rg_ref["blok"] = {"kolommen1": [0, 1], "r2_1": float(rg_fit1.rsquared), "f": float(fchange[0]), "p": float(fchange[1]), "df1": float(fchange[2]),
+                  "df2": float(rg_fit2.df_resid)}
+uit["regressie"] = [rg_ref, ols_ref(np.column_stack([rg_x1]), rg_y)[0]]
+
+# ---------- Logistische regressie (fase 5) ----------
+n = 300
+lg_x1 = r2(rng.normal(3.0, 0.9, n))
+lg_g = rng.choice(3, n, p=[0.5, 0.3, 0.2])
+lg_x3 = rng.integers(1, 6, n).astype(float)
+lg_eta = -2.0 + 0.6 * lg_x1 + np.array([0.0, 0.7, -0.5])[lg_g] - 0.2 * lg_x3
+lg_y = (rng.random(n) < 1 / (1 + np.exp(-lg_eta))).astype(float)
+lg_X = np.column_stack([lg_x1, (lg_g == 1).astype(float), (lg_g == 2).astype(float), lg_x3])
+
+
+def logit_ref(X, y, dummies=None):
+    Xc = sm.add_constant(X, has_constant="add")
+    fit = sm.Logit(y, Xc).fit(method="newton", tol=1e-12, maxiter=100, disp=0)
+    nn = len(y)
+    cs = 1 - math.exp((2 / nn) * (fit.llnull - fit.llf))
+    nk = cs / (1 - math.exp((2 / nn) * fit.llnull))
+    ci = fit.conf_int(0.05)
+    pred = (fit.predict() >= 0.5).astype(int)
+    klas = [[int(((y == a) & (pred == b)).sum()) for b in (0, 1)] for a in (0, 1)]
+    rij = {
+        "X": [lijst(r) for r in X], "y": lijst(y),
+        "params": lijst(fit.params), "bse": lijst(fit.bse), "p": lijst(fit.pvalues),
+        "or_laag": lijst(np.exp(ci[:, 0])), "or_hoog": lijst(np.exp(ci[:, 1])),
+        "ll": float(fit.llf), "ll0": float(fit.llnull), "chi2": float(fit.llr), "p_model": float(fit.llr_pvalue), "df": float(fit.df_model),
+        "cox_snell": cs, "nagelkerke": nk, "klassen": klas,
+    }
+    if dummies:
+        R = np.zeros((len(dummies), X.shape[1] + 1))
+        for i, j in enumerate(dummies):
+            R[i, j + 1] = 1
+        wt = fit.wald_test(R, scalar=True, use_f=False)
+        rij["wald_groep"] = {"kolommen": dummies, "chi2": float(np.squeeze(wt.statistic)), "p": float(wt.pvalue), "df": float(wt.df_denom)}
+    return rij
+
+
+uit["logistisch"] = [logit_ref(lg_X, lg_y, dummies=[1, 2]), logit_ref(lg_X[:, :1], lg_y)]
+
+# ---------- Gepaarde vergelijking (fase 5) ----------
+gp_x = r2(rng.normal(3.4, 0.8, 70))
+gp_y = r2(gp_x - 0.25 + rng.normal(0, 0.6, 70))
+gp_lx = rng.integers(1, 6, 55).astype(float)
+gp_ly = np.clip(gp_lx + rng.integers(-1, 2, 55), 1, 5).astype(float)
+
+
+def gepaard_ref(x, y):
+    tt = stats.ttest_rel(x, y)
+    ci = tt.confidence_interval(0.95)
+    d = x - y
+    wx = stats.wilcoxon(x, y, zero_method="wilcox", correction=False, method="approx")
+    nz = d[d != 0]
+    rang = stats.rankdata(np.abs(nz))
+    return {
+        "x": lijst(x), "y": lijst(y),
+        "t": float(tt.statistic), "p": float(tt.pvalue), "df": float(tt.df), "ci": [float(ci.low), float(ci.high)],
+        "verschil": float(d.mean()), "sd": float(d.std(ddof=1)), "se": float(d.std(ddof=1) / math.sqrt(len(d))),
+        "dz": float(d.mean() / d.std(ddof=1)),
+        "wilcoxon": {"n": int(len(nz)), "w_plus": float(rang[nz > 0].sum()), "z_abs": float(abs(wx.zstatistic)), "p": float(wx.pvalue)},
+    }
+
+
+uit["gepaard"] = [gepaard_ref(gp_x, gp_y), gepaard_ref(gp_lx, gp_ly)]
+
+# ---------- Factoranalyse (fase 6): 12 vragen, 3 factoren ----------
+from statsmodels.multivariate.factor_rotation import rotate_factors
+
+n = 300
+fa_f = rng.normal(0, 1, (n, 3))
+fa_lad = np.zeros((12, 3))
+for j in range(12):
+    fa_lad[j, j // 4] = 0.55 + 0.05 * (j % 4)
+fa_lad[1, 1] = 0.25
+fa_lad[6, 2] = 0.2
+fa_lad[10, 0] = -0.15
+fa_items = r2(fa_f @ fa_lad.T + rng.normal(0, 0.75, (n, 12)))
+
+
+def tekenregel(V):
+    V = V.copy()
+    for j in range(V.shape[1]):
+        i = np.argmax(np.abs(V[:, j]))
+        if V[i, j] < 0:
+            V[:, j] = -V[:, j]
+    return V
+
+
+def eigen(A):
+    w, V = np.linalg.eigh(A)
+    o = np.argsort(w)[::-1]
+    return w[o], tekenregel(V[:, o])
+
+
+def varimax_ref(L):
+    h = np.sqrt((L ** 2).sum(axis=1))
+    Ln = L / h[:, None]
+    Lr, _ = rotate_factors(Ln, "varimax", tol=1e-14, max_tries=20000)
+    Lr = Lr * h[:, None]
+    for j in range(Lr.shape[1]):
+        if Lr[:, j].sum() < 0:
+            Lr[:, j] = -Lr[:, j]
+    return Lr
+
+
+def factor_ref(X, m):
+    nn, k = X.shape
+    R = np.corrcoef(X, rowvar=False)
+    Ri = np.linalg.inv(R)
+    P = -Ri / np.sqrt(np.outer(np.diag(Ri), np.diag(Ri)))
+    np.fill_diagonal(P, 0)
+    R0 = R.copy()
+    np.fill_diagonal(R0, 0)
+    kmo = (R0 ** 2).sum() / ((R0 ** 2).sum() + (P ** 2).sum())
+    msa = (R0 ** 2).sum(axis=0) / ((R0 ** 2).sum(axis=0) + (P ** 2).sum(axis=0))
+    logdet = np.linalg.slogdet(R)[1]
+    chi2 = -(nn - 1 - (2 * k + 5) / 6) * logdet
+    df = k * (k - 1) / 2
+    w, V = eigen(R)
+    pca = V[:, :m] * np.sqrt(w[:m])
+    smc = 1 - 1 / np.diag(Ri)
+    h2 = smc.copy()
+    iteraties = 0
+    for it in range(250):
+        Rs = R.copy()
+        np.fill_diagonal(Rs, h2)
+        ws, Vs = eigen(Rs)
+        L = Vs[:, :m] * np.sqrt(np.maximum(ws[:m], 0))
+        nieuw = (L ** 2).sum(axis=1)
+        verschil = np.max(np.abs(nieuw - h2))
+        h2 = nieuw
+        iteraties = it + 1
+        if verschil < 1e-6:
+            break
+    return {
+        "rijen": [lijst(r) for r in X], "m": m, "R": [lijst(r) for r in R],
+        "kmo": float(kmo), "msa": lijst(msa), "bartlett": {"chi2": float(chi2), "df": df, "p": float(stats.chi2.sf(chi2, df))},
+        "eigenwaarden": lijst(w), "kaiser": int((w > 1).sum()), "smc": lijst(smc),
+        "pca": [lijst(r) for r in pca], "pca_varimax": [lijst(r) for r in varimax_ref(pca)],
+        "paf": [lijst(r) for r in L], "paf_communaliteit": lijst(h2), "paf_iteraties": iteraties,
+        "paf_varimax": [lijst(r) for r in varimax_ref(L)],
+    }
+
+
+uit["factoranalyse"] = [factor_ref(fa_items, 3), factor_ref(fa_items[:, :8], 2)]
+
 json.dump(uit, sys.stdout, ensure_ascii=False, indent=1)
 sys.stdout.write("\n")

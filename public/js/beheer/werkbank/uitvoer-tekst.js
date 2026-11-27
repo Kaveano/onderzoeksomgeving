@@ -56,6 +56,21 @@ export const UITLEG_LEVENE = 'De toets van Levene kijkt of de spreiding in de gr
 export const UITLEG_POSTHOC = 'Deze tabel laat zien wélke groepen van elkaar verschillen. De p-waarden zijn al gecorrigeerd voor het aantal vergelijkingen.';
 export const UITLEG_RESIDUEN = 'Een aangepast residu groter dan 2 of kleiner dan −2 wijst op een combinatie die vaker of minder vaak voorkomt dan je zonder verband zou verwachten.';
 
+// Voorspellen, gepaard vergelijken en factoranalyse (fase 5 en 6, D2 §5.2, §6.3 en §8.3).
+export const P_AFHANKELIJK = (label) => `“${label}” is weggelaten: deze voorspeller is volledig te voorspellen uit de andere.`;
+export const P_WEINIG_RESPONDENTEN_MODEL = 'Weinig respondenten voor zoveel voorspellers; de uitkomsten zijn onzeker.';
+export const P_VIF = (namen) => `Deze voorspellers hangen sterk met elkaar samen (VIF groter dan 5): ${opsomming(namen)}. Hun afzonderlijke B en β zijn daardoor onzeker; laat er eventueel een weg of maak er één score van.`;
+export const P_SCHEIDING = 'Er is (bijna) volledige scheiding: een voorspeller voorspelt de uitkomst (bijna) perfect. Dan zijn de odds ratio’s niet te schatten. Voeg groepen samen of laat deze voorspeller weg.';
+export const P_WEINIG_PER_VOORSPELLER = 'Weinig respondenten in de kleinste groep van de uitkomst voor zoveel voorspellers (minder dan 10 per voorspeller); de uitkomsten zijn onzeker.';
+export const P_GEPAARD = 'Dit kan alleen binnen één vragenlijst: antwoorden van verschillende meetmomenten zijn anoniem en niet per persoon te koppelen.';
+export const P_NIET_PD = 'De vragen hangen zo sterk samen dat de berekening niet kan (bijvoorbeeld twee keer dezelfde vraag).';
+export const P_HEYWOOD = (namen) => `Bij ${opsomming(namen)} is de communaliteit 1 of meer geworden (een Heywood-geval). De oplossing is dan niet betrouwbaar. Kies minder factoren of laat deze vraag weg.`;
+export const P_WEINIG_FACTOR = 'Weinig respondenten voor een factoranalyse (minder dan 100, of minder dan 5 per vraag). De uitkomst is onzeker; kijk vooral naar het patroon, niet naar de precieze getallen.';
+export const uitlegRegressie = (y, pct) => `R² is het deel van de verschillen in “${y}” dat de voorspellers samen verklaren (hier ${pct}%). B zegt hoeveel “${y}” gemiddeld verandert als een voorspeller 1 punt hoger is en de andere gelijk blijven. β maakt de voorspellers onderling vergelijkbaar.`;
+export const uitlegLogistisch = (uitkomst) => `Exp(B) is de odds ratio: hoeveel keer groter de kans-verhouding op “${uitkomst}” is als een voorspeller 1 punt hoger is. Boven 1: meer kans; onder 1: minder kans.`;
+export const UITLEG_FACTOR = 'KMO boven 0,6 en een significante toets van Bartlett betekenen dat de vragen genoeg samenhangen voor een factoranalyse. Een lading laat zien hoe sterk een vraag bij een factor hoort; vanaf 0,40 telt hij duidelijk mee.';
+export const UITLEG_GEPAARD = 'De gepaarde t-toets kijkt of mensen gemiddeld anders scoren op de ene vraag dan op de andere. De toets van Wilcoxon doet hetzelfde met rangnummers; die is handig bij losse vragen van 1 tot 5.';
+
 /** Opsomming in een zin: “A”, “B” en “C” */
 export function opsomming(namen, woord = 'en') {
   const q = namen.map((n) => `“${n}”`);

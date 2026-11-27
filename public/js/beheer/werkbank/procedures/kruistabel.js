@@ -20,7 +20,7 @@ const som = (a) => a.reduce((t, x) => t + x, 0);
  * groepen: de beschermde groepen [{ label, labels, samengevoegd }]. Geeft per oude groep de nieuwe groep (−1 = valt
  * weg) en de nieuwe groepen; een groep die uit meer dan één beschermde groep bestaat heet "Overige groepen samen".
  */
-function voegKleineSamen(aantallen, groepen, d) {
+export function voegKleineSamen(aantallen, groepen, d) {
   const b = beschermIndeling(aantallen, groepen.map((x) => x.label), d);
   return {
     naar: Array.from(b.groepVan),
@@ -32,7 +32,7 @@ function voegKleineSamen(aantallen, groepen, d) {
 }
 
 /** Rijen naar nieuwe groepnummers. */
-function herindeel(groep, naar) {
+export function herindeel(groep, naar) {
   const uit = new Int32Array(groep.length).fill(-1);
   for (let r = 0; r < groep.length; r++) if (groep[r] >= 0) uit[r] = naar[groep[r]];
   return uit;
@@ -42,7 +42,7 @@ function herindeel(groep, naar) {
  * Regel D voor randtotalen: een rij of kolom waarvan het totaal met een buur 1 tot 4 verschilt, gaat samen met de
  * kleinste andere (herhalen). Geeft de nieuwe indeling, of null als er minder dan 2 overblijven.
  */
-function randenMetBuren(ctx, basisAlles, groep, groepen) {
+export function randenMetBuren(ctx, basisAlles, groep, groepen) {
   if (!ctx.selectie) return { groep, groepen };
   let g2 = groep;
   let gr = groepen;

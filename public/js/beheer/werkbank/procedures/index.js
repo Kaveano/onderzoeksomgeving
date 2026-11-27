@@ -5,21 +5,17 @@
 // ze geeft een Uitvoer met een melding (zie uitvoer.js geweigerd). De privacyregels zijn al toegepast.
 // De vorm van de spec (vakjes en opties) staat in ../definities.js (PROCEDURES); die controleert ook de server.
 //
-// Uitbreiden (fase 5 en 6 van pakket P4):
-// - regressie   → procedures/regressie.js  export function regressie(ds, spec, ctx)   (matrix.js kleinsteKwadraten)
-// - logistisch  → procedures/logistisch.js export function logistisch(ds, spec, ctx)  (matrix.js cholesky, P_LOGIT_CEL)
-// - gepaard     → procedures/groepen.js    export function gepaard(ds, spec, ctx)
-// - factoranalyse → procedures/schalen.js  export function factoranalyse(ds, spec, ctx) (matrix.js jacobiEigen)
-// Voeg de functie hieronder toe aan PROCEDURES; het formulier (schermen/werkbank-formulieren.js) en "Mijn analyses"
-// tonen dan vanzelf de nieuwe analyse, met de vakjes en opties uit definities.js. Zet de sleutels van de gebruikte
-// methoden (METHODEN in BOUWPLAN §3.11, bijv. 'regressie', 'logistisch', 'gepaard-t', 'wilcoxon', 'pca', 'paf',
-// 'varimax') met methode(u, …) in de uitvoer.
+// Een nieuwe analyse: zet de functie hieronder in PROCEDURES en beschrijf de vakjes en opties in definities.js; het
+// formulier (schermen/werkbank-formulieren.js) en "Mijn analyses" tonen hem dan vanzelf. Zet de sleutels van de
+// gebruikte methoden (METHODEN in BOUWPLAN §3.11) met methode(u, …) in de uitvoer.
 
 import { frequenties, beschrijvend, pergroep } from './beschrijven.js';
 import { kruistabel, aanpassing } from './kruistabel.js';
-import { ttoets, anova } from './groepen.js';
+import { ttoets, anova, gepaard } from './groepen.js';
 import { correlatie } from './samenhang.js';
-import { betrouwbaarheid } from './schalen.js';
+import { betrouwbaarheid, factoranalyse } from './schalen.js';
+import { regressie } from './regressie.js';
+import { logistisch } from './logistisch.js';
 
 export const PROCEDURES = {
   frequenties: { voerUit: frequenties },
@@ -31,10 +27,10 @@ export const PROCEDURES = {
   anova: { voerUit: anova },
   correlatie: { voerUit: correlatie },
   betrouwbaarheid: { voerUit: betrouwbaarheid },
-  // regressie: { voerUit: regressie },        fase 5
-  // logistisch: { voerUit: logistisch },      fase 5
-  // gepaard: { voerUit: gepaard },            fase 5
-  // factoranalyse: { voerUit: factoranalyse }, fase 6
+  regressie: { voerUit: regressie },
+  logistisch: { voerUit: logistisch },
+  gepaard: { voerUit: gepaard },
+  factoranalyse: { voerUit: factoranalyse },
 };
 
 /** Is deze procedure al te gebruiken? */

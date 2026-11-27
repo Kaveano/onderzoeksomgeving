@@ -1,15 +1,19 @@
-// Werkbank: groepen vergelijken – t-toets en variantieanalyse met post-hoc en rangtoetsen (D2 §5.2, §6.3).
-// Zuivere module, geen DOM. Fase 5 voegt hier de gepaarde vergelijking (gepaard) aan toe.
+// Werkbank: groepen vergelijken – t-toets en variantieanalyse met post-hoc en rangtoetsen, en de gepaarde
+// vergelijking van twee vragen bij dezelfde mensen (gepaarde t-toets en Wilcoxon) (D2 §5.2, §6.3).
+// Zuivere module, geen DOM.
 
 import { isIndeling } from '../dataset.js';
-import { welchT, cohensD, mannWhitney, anova as anovaToets, welchAnova, kruskalWallis, tCdf, tKwantiel, momenten, rangnummers, effectGrootte } from '../../statistiek.js';
+import { welchT, cohensD, mannWhitney, anova as anovaToets, welchAnova, kruskalWallis, tCdf, tKwantiel, momenten, rangnummers, effectGrootte, pearson } from '../../statistiek.js';
 import { ptukeyBoven, qtukey, normaalTweezijdig, bonferroni } from '../verdelingen.js';
-import { tabel, cel, tekstCel, voeg, melding, sluitAf, methode } from '../uitvoer.js';
+import { tweeWaardenRegel, weggevallenRegel } from '../privacy-selectie.js';
+import { tabel, cel, tekstCel, verborgenCel, voeg, melding, sluitAf, methode } from '../uitvoer.js';
 import {
   UITLEG_LEVENE, UITLEG_POSTHOC, ZIN_SIG_VERSCHIL, ZIN_GEEN_SIG_VERSCHIL, ZIN_SIG_GROEPEN, ZIN_GEEN_SIG_GROEPEN, LET_OP_VERSCHIL,
-  g, apaZinnen, effectWoord, pWaarde,
+  P_GEPAARD, P_WEGGEVALLEN, UITLEG_GEPAARD, g, apaZinnen, effectWoord, pWaarde,
 } from '../uitvoer-tekst.js';
-import { getalFout, begin, weiger, overlapFout, ordinaalMelding, variabelenUit } from './basis.js';
+import {
+  getalFout, begin, weiger, overlapFout, ordinaalMelding, variabelenUit, geldigMasker, inSelectie, iedereen, selectieControle, indelingAlsGetalFout,
+} from './basis.js';
 import { groepenVoor, beschrijving } from './beschrijven.js';
 
 const ALFA = 0.05;
@@ -143,7 +147,8 @@ export function anovaTabel(ruw) {
   return uit;
 }
 
-function groepVanBronwaarde(w, bron) {
+/** Het nummer van de beschermde groep waarin een ruwe waarde (optie-id, 'ja', getal …) valt; −1 als die er niet is. */
+export function groepVanBronwaarde(w, bron) {
   const i = w.labels.findIndex((l) => String(l.bronwaarde) === String(bron) || (l.bronwaarden || []).some((x) => String(x) === String(bron)));
   return i < 0 ? -1 : w.beschermd.groepVan[i];
 }
@@ -370,6 +375,150 @@ export async function anova(ds, spec, ctx) {
     u.apa = apaZinnen((f) => (wa
       ? `Er was ${significant ? 'een' : 'geen significant'} verschil tussen de groepen in “${v.label}”, Welch *F*(${f.df(wa.df1)}; ${f.df(wa.df2)}) = ${f.g(wa.f)}; ${f.p(wa.p)}; η² = ${f.begrensd(at.eta2)}.`
       : `Er was ${significant ? 'een' : 'geen significant'} verschil tussen de groepen in “${v.label}”, *F*(${f.df(at.dfb)}; ${f.df(at.dfw)}) = ${f.g(at.f)}; ${f.p(at.p)}; η² = ${f.begrensd(at.eta2)}.`));
+  }
+  return sluitAf(u);
+}
+
+// ---------- Gepaarde vergelijking ----------
+
+/** Paren met op beide plaatsen een eindig getal. */
+function paren(xRuw, yRuw) {
+  const x = Array.isArray(xRuw) || ArrayBuffer.isView(xRuw) ? Array.from(xRuw) : [];
+  const y = Array.isArray(yRuw) || ArrayBuffer.isView(yRuw) ? Array.from(yRuw) : [];
+  const a = [];
+  const b = [];
+  for (let i = 0; i < Math.min(x.length, y.length); i++) if (eindig(x[i]) && eindig(y[i])) { a.push(x[i]); b.push(y[i]); }
+  return [a, b];
+}
+
+/** Gepaarde t-toets; verschil = eerste − tweede (zoals SPSS). d_z = gemiddeld verschil / SD van de verschillen. */
+export function gepaardeT(xRuw, yRuw) {
+  const [x, y] = paren(xRuw, yRuw);
+  const n = x.length;
+  if (n < 2) return null;
+  const d = x.map((w, i) => w - y[i]);
+  const { m, ss } = momenten(d);
+  const sd = Math.sqrt(ss / (n - 1));
+  if (!(sd > 0)) return null;
+  const se = sd / Math.sqrt(n);
+  const t = m / se;
+  const df = n - 1;
+  const k = tKwantiel(0.975, df);
+  return zonderNaN({ n, verschil: m, sd, se, t, df, p: Math.min(1, 2 * tCdf(-Math.abs(t), df)), ciLaag: m - k * se, ciHoog: m + k * se, dz: m / sd });
+}
+
+/**
+ * Toets van Wilcoxon voor gepaarde waarden: verschillen van 0 vallen weg (Wilcox), rangnummers van |verschil| met
+ * gelijke waarden, var = n(n+1)(2n+1)/24 − Σ(t³ − t)/48, z zonder continuïteitscorrectie, p tweezijdig.
+ * z > 0: de eerste waarde is meestal hoger. r = z/√n (n = paren met een verschil).
+ */
+export function wilcoxonGepaard(xRuw, yRuw) {
+  const [x, y] = paren(xRuw, yRuw);
+  const d = x.map((w, i) => w - y[i]).filter((v) => v !== 0);
+  const n = d.length;
+  if (n < 1) return null;
+  const { rangen, knopen } = rangnummers(d.map(Math.abs));
+  let wPlus = 0;
+  d.forEach((v, i) => { if (v > 0) wPlus += rangen[i]; });
+  const totaal = (n * (n + 1)) / 2;
+  const variantie = (n * (n + 1) * (2 * n + 1)) / 24 - knopen / 48;
+  if (!(variantie > 0)) return null;
+  const z = (wPlus - totaal / 2) / Math.sqrt(variantie);
+  return zonderNaN({ n, nGelijk: x.length - n, wPlus, wMin: totaal - wPlus, z, p: normaalTweezijdig(z), r: z / Math.sqrt(n) });
+}
+
+const MIN_PAREN = 10;
+
+export async function gepaard(ds, spec, ctx) {
+  const titel = 'Gepaarde t-toets en Wilcoxon';
+  const xs = variabelenUit(ds, spec, 'x');
+  const ys = variabelenUit(ds, spec, 'y');
+  if (!xs.length || xs.length !== ys.length) return weiger(ds, spec, ctx, titel, 'fout', 'Kies evenveel eerste als tweede vragen: elk paar bestaat uit een eerste en een tweede vraag.');
+  const parenLijst = xs.map((x, i) => [x, ys[i]]);
+  const naam = (x) => x.v?.label || x.id;
+  const u = begin(ds, spec, ctx, titel, `Paren: ${parenLijst.map(([a, b]) => `${naam(a)} en ${naam(b)}`).join('; ')}`);
+  const stat = [];
+  const samen = [];
+  const tRijen = [];
+  const wRijen = [];
+  let nMax = 0;
+  let eerste = null;
+  let verborgen = false;
+  for (const [i, [{ v: a }, { v: b }]] of parenLijst.entries()) {
+    await ctx.pauze();
+    const label = `Paar ${i + 1}`;
+    const teWeinig = (tekst) => tRijen.push([tekstCel(label), tekstCel(tekst, { breed: true })]);
+    const fout = getalFout(a) || getalFout(b);
+    if (fout) { voeg(u, melding('waarschuwing', `${label}: ${fout}`)); teWeinig('niet te berekenen'); continue; }
+    if (a.id === b.id) { voeg(u, melding('waarschuwing', `${label}: kies twee verschillende vragen.`)); teWeinig('niet te berekenen'); continue; }
+    const geldig = geldigMasker(ds, [a, b]);
+    const sel = selectieControle(ctx, geldig);
+    if (sel) { voeg(u, melding('privacy', `${label}: ${sel}`)); teWeinig('niet getoond (selectie)'); continue; }
+    const basis = inSelectie(geldig, ctx.selectie);
+    const privacy = indelingAlsGetalFout(a, basis, ctx.d) || indelingAlsGetalFout(b, basis, ctx.d)
+      || ([a, b].some((v) => v.score && weggevallenRegel(v.reden, ctx.selectie ? ctx.selectie.F : iedereen(ds), null, 1, ctx.d)[0]) ? `${label}: ${P_WEGGEVALLEN}.` : null)
+      || ([a, b].some((v) => tweeWaardenRegel(v.waarden, basis, null, 1, ctx.d, ctx.selectie)?.[0]) ? `${label}: een van de vragen heeft maar twee waarden en een daarvan komt bij minder dan ${ctx.d} mensen voor.` : null);
+    if (privacy) { voeg(u, melding('privacy', privacy)); teWeinig('niet getoond'); continue; }
+    const x = [];
+    const y = [];
+    for (let r = 0; r < ds.n; r++) if (basis[r]) { x.push(a.waarden[r]); y.push(b.waarden[r]); }
+    if (x.length < MIN_PAREN) { teWeinig(`Te weinig (minder dan ${MIN_PAREN} paren)`); continue; }
+    nMax = Math.max(nMax, x.length);
+    const A = beschrijving(x);
+    const B = beschrijving(y);
+    stat.push([tekstCel(label), tekstCel(a.label), cel(A.n, 'aantal'), cel(A.gemiddelde, 'gem'), cel(A.sd, 'gem'), cel(A.se, 'gem')]);
+    stat.push([tekstCel(''), tekstCel(b.label), cel(B.n, 'aantal'), cel(B.gemiddelde, 'gem'), cel(B.sd, 'gem'), cel(B.se, 'gem')]);
+    const pr = pearson(x, y);
+    samen.push([tekstCel(`${label}: ${a.label} en ${b.label}`), cel(x.length, 'aantal'), cel(pr?.r, 'r'), cel(pr?.p, 'p')]);
+    const t = gepaardeT(x, y);
+    const md = momenten(x.map((xw, k) => xw - y[k])); // ook als alle verschillen gelijk zijn (dan is er geen toets)
+    tRijen.push([tekstCel(`${label}: ${a.label} − ${b.label}`), cel(x.length, 'aantal'), cel(md.m, 'gem'), cel(Math.sqrt(md.ss / (x.length - 1)), 'gem'), cel(t?.se, 'gem'),
+      tekstCel(t ? `${g(t.ciLaag)} tot ${g(t.ciHoog)}` : '–'), cel(t?.t, 'stat'), cel(x.length - 1, 'df'), cel(t?.p, 'p'), cel(t?.dz, 'stat')]);
+    const w = wilcoxonGepaard(x, y);
+    if (!w || w.n < ctx.d) {
+      wRijen.push([tekstCel(label), tekstCel(`Te weinig paren met een verschil (minder dan ${ctx.d})`, { breed: true })]);
+    } else {
+      // Het aantal paren zonder verschil volgt uit N en "N zonder gelijke": 1 tot 4 wordt verborgen.
+      const weg = w.nGelijk > 0 && w.nGelijk < ctx.d;
+      if (weg) verborgen = true;
+      wRijen.push([tekstCel(label), weg ? verborgenCel('aantal') : cel(w.n, 'aantal'), cel(w.wPlus, 'stat'), cel(w.z, 'stat'), cel(w.p, 'p'), cel(w.r, 'r')]);
+    }
+    u.toetsen += w && w.n >= ctx.d ? 2 : 1;
+    if (!eerste && t) eerste = { a, b, A, B, t, w: w && w.n >= ctx.d ? w : null, n: x.length };
+  }
+  if (!stat.length) {
+    const m = u.onderdelen.find((o) => o.soort === 'melding' && o.niveau !== 'info');
+    return weiger(ds, spec, ctx, titel, m?.niveau || 'fout', m?.tekst || `Te weinig respondenten: er zijn per paar minstens ${MIN_PAREN} mensen nodig die beide vragen beantwoordden.`);
+  }
+  u.gegevens.n = nMax;
+  voeg(u,
+    melding('info', P_GEPAARD),
+    tabel('gemiddelden', 'Gemiddelden per vraag', ['Paar', 'Vraag', 'N', 'Gemiddelde', 'SD', 'SE'], stat),
+    tabel('samenhang', 'Samenhang binnen de paren', ['Paar', 'N', 'r', 'p'], samen),
+    tabel('gepaard', 'Gepaarde verschillen', ['Paar', 'N', 'Gemiddeld verschil', 'SD', 'SE', '95%-BI', 't', 'df', 'p', 'dz'], tRijen,
+      { voetnoten: ['Verschil = de eerste vraag min de tweede. dz = het gemiddelde verschil gedeeld door de SD van de verschillen.'] }),
+    tabel('wilcoxon', 'Toets van Wilcoxon (rangnummers)', ['Paar', 'N (zonder gelijke)', 'W+', 'z', 'p', 'r'], wRijen,
+      { voetnoten: ['Paren zonder verschil tellen niet mee. z zonder continuïteitscorrectie; r = z / √N.', verborgen ? 'Bij × zijn er 1 tot 4 paren zonder verschil; het aantal staat er daarom niet bij.' : null] }),
+    ordinaalMelding(parenLijst.flatMap(([x, y]) => [x.v, y.v]).filter(Boolean)));
+  methode(u, 'gepaard-t', 'wilcoxon');
+  if (eerste) {
+    const { a, b, A, B, t, w } = eerste;
+    const significant = t.p < ALFA;
+    const effect = effectGrootte(t.dz, 'd');
+    u.duiding.significant = significant;
+    u.duiding.effect = effect;
+    u.duiding.zinnen.push(UITLEG_GEPAARD,
+      Math.abs(t.verschil) < 0.005 ? `Op “${a.label}” en “${b.label}” scoren dezelfde mensen gemiddeld ongeveer gelijk.`
+        : `Dezelfde mensen scoren gemiddeld ${g(Math.abs(t.verschil))} punt hoger op “${t.verschil > 0 ? a.label : b.label}” dan op “${t.verschil > 0 ? b.label : a.label}”.`,
+      significant ? ZIN_SIG_VERSCHIL : ZIN_GEEN_SIG_VERSCHIL);
+    if (effect) u.duiding.zinnen.push(`Het verschil is ${effectWoord(effect)} (dz = ${g(t.dz)}).`);
+    if (w && (w.p < ALFA) !== significant) u.duiding.zinnen.push(`De toets met rangnummers (Wilcoxon, p = ${pWaarde(w.p)}) komt op een andere conclusie uit. Wees daarom extra voorzichtig.`);
+    u.duiding.zinnen.push(LET_OP_VERSCHIL);
+    u.apa = apaZinnen((f) => {
+      const [h, l, Mh, Ml] = t.verschil >= 0 ? [a.label, b.label, A, B] : [b.label, a.label, B, A];
+      const werkwoord = significant ? 'hoger' : 'niet significant anders';
+      return `Respondenten scoorden op “${h}” (*M* = ${f.g(Mh.gemiddelde)}; *SD* = ${f.g(Mh.sd)}) ${werkwoord} dan op “${l}” (*M* = ${f.g(Ml.gemiddelde)}; *SD* = ${f.g(Ml.sd)}), *t*(${f.df(t.df)}) = ${f.g(Math.abs(t.t))}; ${f.p(t.p)}; *d*z = ${f.g(Math.abs(t.dz))}.`;
+    });
   }
   return sluitAf(u);
 }
