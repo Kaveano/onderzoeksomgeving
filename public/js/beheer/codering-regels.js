@@ -119,8 +119,11 @@ export function interviews(data) {
  * lijstIds: alleen deze vragenlijsten (null = alle).
  * → { vragen: [{ vraag_id, stam, tekst, lijst_id, lijst_titel, n_antwoorden, codes: [{ code_id, naam, aantal, verborgen }], geen_code }],
  *     interviews: { n, codes: [...], geen_code } | null,
- *     citaten: [{ code_naam, tekst, bron: 'vragenlijst'|'interview', vraag: tekst|null }] }
+ *     citaten: [{ code_naam, tekst, bron: 'vragenlijst'|'interview', vraag: tekst|null, vraag_id, lijst_id }] }
  * Een vraag staat erin als hij minstens d niet-lege antwoorden heeft en er minstens één code bij is gegeven.
+ * vraag_id en lijst_id van een citaat zijn null bij een interview. Met lijst_id kan het rapport bij een meelezer zonder
+ * tussenstand de citaten weglaten uit vragenlijsten die op de peildatum nog open waren (verbergOpen, PR-13): de tekst
+ * van de vraag is daarvoor niet genoeg, want een gekopieerde vraag staat met dezelfde tekst in meer vragenlijsten.
  */
 export function coderingFeiten(data, { d = DREMPEL, lijstIds = null } = {}) {
   const codes = codeboek(data.codes);
@@ -128,11 +131,11 @@ export function coderingFeiten(data, { d = DREMPEL, lijstIds = null } = {}) {
   const naamVan = new Map(codes.map((c) => [c.id, c.naam]));
   const vragen = [];
   const groteVragen = new Set(); // `${inzending_id}:${vraag_id}` mag een citaat geven
-  const vraagTekst = new Map();
+  const vraagVan = new Map(); // vraag_id → { tekst, lijst_id }
   for (const { vraag, lijst, items, teksten } of openVragen(data, { lijstIds })) {
     if (items.length < d) continue;
     for (const inzId of teksten.keys()) groteVragen.add(`${inzId}:${vraag.id}`);
-    vraagTekst.set(vraag.id, vraag.tekst);
+    vraagVan.set(vraag.id, { tekst: vraag.tekst, lijst_id: lijst.id });
     if (!items.some((k) => perItem.get(k)?.size)) continue;
     const t = telling(items, perItem, codes, { d });
     vragen.push({
@@ -152,11 +155,16 @@ export function coderingFeiten(data, { d = DREMPEL, lijstIds = null } = {}) {
     .sort((a, b) => (a.volgorde ?? 0) - (b.volgorde ?? 0) || a.id - b.id)
     .filter((c) => Number(c.gecontroleerd) === 1 && Number(c.in_rapport) === 1 && isAntwoord(c.tekst))
     .filter((c) => (c.invoer_id ? ivIds.has(c.invoer_id) : groteVragen.has(`${c.inzending_id}:${c.vraag_id}`)))
-    .map((c) => ({
-      code_naam: c.code_id ? naamVan.get(c.code_id) ?? null : null,
-      tekst: String(c.tekst).trim(),
-      bron: c.invoer_id ? 'interview' : 'vragenlijst',
-      vraag: c.invoer_id ? null : vraagTekst.get(c.vraag_id) ?? null,
-    }));
+    .map((c) => {
+      const vraag = c.invoer_id ? null : vraagVan.get(c.vraag_id) ?? null;
+      return {
+        code_naam: c.code_id ? naamVan.get(c.code_id) ?? null : null,
+        tekst: String(c.tekst).trim(),
+        bron: c.invoer_id ? 'interview' : 'vragenlijst',
+        vraag: vraag ? vraag.tekst : null,
+        vraag_id: vraag ? c.vraag_id : null,
+        lijst_id: vraag ? vraag.lijst_id : null,
+      };
+    });
   return { vragen, interviews: ivFeiten, citaten };
 }

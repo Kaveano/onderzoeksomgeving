@@ -51,7 +51,9 @@ function zaad() {
   r.push(`INSERT INTO eigen_invoer (id, onderzoek_id, thema_id, soort, datum, titel, tekst, aangemaakt_op) VALUES
     (6005, 600, 6000, 'interview', '2026-10-02', 'Interview teamleider', 'Veel overwerk door late wijzigingen.', '${NU}'),
     (6015, 601, 6010, 'interview', '2026-10-02', 'Gesprek', 'Tekst', '${NU}'),
-    (6025, 602, 6020, 'interview', '2026-10-02', 'Gesprek', 'Tekst', '${NU}');`);
+    (6025, 602, 6020, 'interview', '2026-10-02', 'Gesprek', 'Tekst', '${NU}'),
+    (6027, 602, 6020, 'cijfer', '2026-10-02', 'Verzuim', 'Toelichting bij het cijfer', '${NU}'),
+    (6028, 602, 6020, 'observatie', '2026-10-03', 'Werkoverleg', 'Korte lijnen.', '${NU}');`);
   r.push(`INSERT INTO codes (id, onderzoek_id, naam, volgorde, aangemaakt_op) VALUES (6016, 601, 'Oud', 1, '${NU}'), (6026, 602, 'Ander', 1, '${NU}');`);
   return r.join('\n');
 }
@@ -148,6 +150,15 @@ test('de codes van één antwoord vervangen, met de controles van het plan', asy
   assert.equal(r.status, 200);
   assert.equal((await zet({ invoer_id: 6025, code_ids: [s.a] })).status, 400);
   assert.equal((await zet({ invoer_id: 6005, inzending_id: 61001, vraag_id: 6002, code_ids: [s.a] })).status, 400);
+  // Alleen interviews en observaties (BOUWPLAN P5 B): een cijfer uit Eigen invoer niet, ook niet met een lege lijst
+  const zet602 = (body) => roep(`${B}/onderzoeken/602/coderingen`, { methode: 'PUT', body });
+  r = await zet602({ invoer_id: 6027, code_ids: [6026] });
+  assert.equal(r.status, 400);
+  assert.equal(r.data.fout, 'Alleen interviews en observaties kun je coderen.');
+  assert.equal((await zet602({ invoer_id: 6027, code_ids: [] })).status, 400);
+  assert.equal((await zet({ invoer_id: 6027, code_ids: [s.a] })).data.fout, 'Deze invoer hoort niet bij dit onderzoek.', 'eerst: van dit onderzoek');
+  assert.equal((await zet602({ invoer_id: 6028, code_ids: [6026] })).status, 200, 'een observatie mag');
+  assert.equal((await zet602({ invoer_id: 6028, code_ids: [] })).status, 200);
   assert.deepEqual((await stand()).coderingen.map((c) => [c.invoer_id, c.code_id]), [[6005, s.a]]);
 });
 
@@ -165,6 +176,8 @@ test('criterium 7: een citaat kan niet in het rapport zonder "gecontroleerd"', a
   assert.equal(r.status, 201);
   s.citaatInterview = r.data.id;
   assert.equal((await roep(`${B}/onderzoeken/600/citaten`, { methode: 'POST', body: { inzending_id: 61013, vraag_id: 6002, tekst: 'x' } })).status, 400);
+  r = await roep(`${B}/onderzoeken/602/citaten`, { methode: 'POST', body: { invoer_id: 6027, tekst: 'Toelichting' } });
+  assert.deepEqual([r.status, r.data.fout], [400, 'Alleen interviews en observaties kun je coderen.']);
   // Een nieuwe tekst moet opnieuw gecontroleerd worden.
   r = await roep(`${B}/citaten/${s.citaat}`, { methode: 'PUT', body: { tekst: 'Over de planning (ingekort)' } });
   assert.deepEqual([r.data.gecontroleerd, r.data.in_rapport], [0, 0]);
@@ -204,6 +217,39 @@ test('codes samenvoegen en verwijderen', async () => {
   assert.equal(st.coderingen.some((x) => x.code_id === d), false);
   assert.equal(st.citaten.find((x) => x.id === cit).code_id, null);
   assert.equal((await roep(`${B}/citaten/${cit}`, { methode: 'DELETE' })).status, 200);
+});
+
+test('GET …/codering: JSON uit de database, coderingen in delen (?na=, ?max=)', async () => {
+  assert.equal((await zet({ inzending_id: 61005, vraag_id: 6002, code_ids: [s.a] })).status, 200);
+  const alles = await stand();
+  assert.deepEqual(Object.keys(alles), ['codes', 'coderingen', 'citaten', 'volgende']);
+  assert.equal(alles.volgende, null);
+  assert.ok(alles.coderingen.length >= 4);
+  assert.deepEqual(Object.keys(alles.coderingen[0]), ['id', 'code_id', 'inzending_id', 'vraag_id', 'invoer_id']);
+  assert.deepEqual(Object.keys(alles.codes[0]), ['id', 'onderzoek_id', 'naam', 'omschrijving', 'groep', 'volgorde', 'aangemaakt_op']);
+  assert.ok(alles.citaten.every((c) => typeof c.tekst === 'string' && [0, 1].includes(c.gecontroleerd)));
+  const ids = alles.coderingen.map((c) => c.id);
+  assert.deepEqual(ids, [...ids].sort((a, b) => a - b), 'in volgorde van id');
+  // In delen van 2: samen precies dezelfde coderingen; codes en citaten alleen in het eerste deel
+  const delen = [];
+  let r = (await roep(`${B}/onderzoeken/600/codering?max=2`)).data;
+  delen.push(...r.coderingen);
+  assert.equal(r.coderingen.length, 2);
+  assert.ok(Array.isArray(r.codes) && Array.isArray(r.citaten));
+  while (r.volgende !== null) {
+    r = (await roep(`${B}/onderzoeken/600/codering?max=2&na=${r.volgende}`)).data;
+    assert.equal(r.codes, undefined);
+    assert.equal(r.citaten, undefined);
+    delen.push(...r.coderingen);
+  }
+  assert.deepEqual(delen, alles.coderingen);
+  assert.equal((await roep(`${B}/onderzoeken/600/codering?max=0`)).status, 400);
+  assert.equal((await roep(`${B}/onderzoeken/600/codering?max=10001`)).status, 400);
+  r = (await roep(`${B}/onderzoeken/602/codering`)).data;
+  assert.ok(r.codes.some((c) => c.naam === 'Ander') && r.codes.every((c) => c.onderzoek_id === 602));
+  assert.deepEqual([r.coderingen, r.citaten, r.volgende], [[], [], null]);
+  assert.equal((await roep(`${B}/onderzoeken/999/codering`)).status, 404);
+  await zet({ inzending_id: 61005, vraag_id: 6002, code_ids: [] });
 });
 
 test('gearchiveerd onderzoek: niets wijzigen (409), wel bekijken', async () => {

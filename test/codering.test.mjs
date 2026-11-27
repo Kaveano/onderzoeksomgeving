@@ -130,12 +130,27 @@ test('criterium 7 / PR-19: citaten alleen gecontroleerd én in rapport, en bij e
   ];
   const f = coderingFeiten(data);
   assert.deepEqual(f.citaten, [
-    { code_naam: 'Werkdruk', tekst: 'Citaat 1', bron: 'vragenlijst', vraag: 'Wat kan beter?' },
-    { code_naam: null, tekst: 'Citaat 5', bron: 'interview', vraag: null },
-    { code_naam: 'Planning', tekst: 'Citaat 7', bron: 'vragenlijst', vraag: 'Wat kan beter?' },
+    { code_naam: 'Werkdruk', tekst: 'Citaat 1', bron: 'vragenlijst', vraag: 'Wat kan beter?', vraag_id: 11, lijst_id: 1 },
+    { code_naam: null, tekst: 'Citaat 5', bron: 'interview', vraag: null, vraag_id: null, lijst_id: null },
+    { code_naam: 'Planning', tekst: 'Citaat 7', bron: 'vragenlijst', vraag: 'Wat kan beter?', vraag_id: 21, lijst_id: 2 },
   ]);
   assert.deepEqual(coderingFeiten(data, { lijstIds: [1] }).citaten.map((x) => x.tekst), ['Citaat 1', 'Citaat 5']);
   assert.equal(MAX_CITAAT, 1000);
+});
+
+test('PR-13: elk citaat uit een vragenlijst zegt uit welke lijst het komt, ook bij een gekopieerde vraag met dezelfde tekst', () => {
+  // Vraag 21 (Vervolg) is een kopie van vraag 11 (Nulmeting): dezelfde tekst. Is de Vervolg op de peildatum nog open,
+  // dan moet het rapport voor een meelezer zonder tussenstand precies de citaten uit lijst 2 kunnen weglaten.
+  const data = onderzoek();
+  const c = (id, extra) => ({ id, volgorde: id, code_id: null, invoer_id: null, tekst: `Citaat ${id}`, gecontroleerd: 1, in_rapport: 1, ...extra });
+  data.citaten = [c(1, { inzending_id: 1003, vraag_id: 11 }), c(2, { inzending_id: 3002, vraag_id: 21 }), c(3, { inzending_id: null, vraag_id: null, invoer_id: 50 })];
+  const f = coderingFeiten(data);
+  assert.equal(f.citaten[0].vraag, f.citaten[1].vraag, 'dezelfde tekst: daaraan herken je de lijst niet');
+  assert.deepEqual(f.citaten.map((x) => [x.tekst, x.lijst_id, x.vraag_id]), [['Citaat 1', 1, 11], ['Citaat 2', 2, 21], ['Citaat 3', null, null]]);
+  const open = new Set([2]); // zoals P6 bij verbergOpen doet
+  assert.deepEqual(f.citaten.filter((x) => x.bron !== 'vragenlijst' || !open.has(x.lijst_id)).map((x) => x.tekst), ['Citaat 1', 'Citaat 3']);
+  // Elk citaat uit een vragenlijst heeft een lijst_id (anders kan het rapport het niet weglaten)
+  for (const x of f.citaten) if (x.bron === 'vragenlijst') assert.ok(Number.isInteger(x.lijst_id) && Number.isInteger(x.vraag_id));
 });
 
 test('telling voor het codeboek op het scherm (met codes die nog niet voorkomen)', () => {

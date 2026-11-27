@@ -16,8 +16,12 @@ import { Fout, json, leesJson } from '../lib/http.js';
 import * as v from '../lib/validatie.js';
 import { een, haalOnderzoek, haalBewerkbaarOnderzoek, nuIso } from '../lib/db.js';
 import {
-  MAX_CODES, MAX_CODERINGEN, MAX_CITATEN, MAX_CITAAT, MAX_CODENAAM, MAX_OMSCHRIJVING, CITAAT_NIET_GECONTROLEERD,
+  MAX_CODES, MAX_CODERINGEN, MAX_CITATEN, MAX_CITAAT, MAX_CODENAAM, MAX_OMSCHRIJVING, CITAAT_NIET_GECONTROLEERD, INTERVIEW_SOORTEN,
 } from '../../public/js/beheer/codering-regels.js';
+
+/** Alleen deze soorten eigen invoer kun je coderen of citeren (vaste tekst in de SQL; de lijst staat in codering-regels.js). */
+const SOORTEN_SQL = INTERVIEW_SOORTEN.map((x) => `'${x.replace(/'/g, "''")}'`).join(', ');
+export const ALLEEN_INTERVIEWS = 'Alleen interviews en observaties kun je coderen.';
 
 const isUniekFout = (e) => /UNIQUE/i.test(String(e?.message || e));
 const GEARCHIVEERD = 'Dit onderzoek is gearchiveerd en kan niet meer worden gewijzigd.';
@@ -45,7 +49,10 @@ function stukControles(body, onderzoekId, { metAntwoord = '1' } = {}) {
     return {
       stuk: { invoer_id: invoerId },
       params: [invoerId, null, null],
-      controles: [['stuk', 'EXISTS (SELECT 1 FROM eigen_invoer WHERE id = ?4 AND onderzoek_id = ?1 AND ?5 IS NULL AND ?6 IS NULL)', 'Deze invoer hoort niet bij dit onderzoek.', 400]],
+      controles: [
+        ['stuk', 'EXISTS (SELECT 1 FROM eigen_invoer WHERE id = ?4 AND onderzoek_id = ?1 AND ?5 IS NULL AND ?6 IS NULL)', 'Deze invoer hoort niet bij dit onderzoek.', 400],
+        ['soort', `EXISTS (SELECT 1 FROM eigen_invoer WHERE id = ?4 AND soort IN (${SOORTEN_SQL}))`, ALLEEN_INTERVIEWS, 400],
+      ],
     };
   }
   const inzendingId = v.id(body.inzending_id, 'antwoord');
@@ -74,17 +81,43 @@ function gooiEersteFout(rij, controles) {
 
 // ---------- Overzicht ----------
 
-/** GET /onderzoeken/:id/codering → { codes, coderingen, citaten } (zoals in export/data). */
-export async function overzicht({ env, params }) {
+/** Zoveel coderingen per deel van GET …/codering: ongeveer 1 MB JSON, ruim onder de 2 MB van één waarde in D1. */
+export const CODERINGEN_PER_DEEL = 10_000;
+
+const CODE_JSON = `json_object('id', id, 'onderzoek_id', onderzoek_id, 'naam', naam, 'omschrijving', omschrijving, 'groep', groep,
+  'volgorde', volgorde, 'aangemaakt_op', aangemaakt_op)`;
+const CITAAT_JSON = `json_object('id', id, 'onderzoek_id', onderzoek_id, 'code_id', code_id, 'inzending_id', inzending_id,
+  'vraag_id', vraag_id, 'invoer_id', invoer_id, 'tekst', tekst, 'gecontroleerd', gecontroleerd, 'in_rapport', in_rapport,
+  'volgorde', volgorde, 'aangemaakt_op', aangemaakt_op, 'bijgewerkt_op', bijgewerkt_op)`;
+// ?1 onderzoek, ?2 na (id), ?3 hoeveel. Codes en citaten alleen in het eerste deel (?2 = 0).
+const OVERZICHT = `WITH d AS (SELECT id, code_id, inzending_id, vraag_id, invoer_id FROM coderingen
+    WHERE onderzoek_id = ?1 AND id > ?2 ORDER BY id LIMIT ?3)
+  SELECT (SELECT json_group_array(json_object('id', id, 'code_id', code_id, 'inzending_id', inzending_id, 'vraag_id', vraag_id,
+      'invoer_id', invoer_id)) FROM (SELECT * FROM d ORDER BY id)) AS coderingen,
+    (SELECT MAX(id) FROM d) AS laatste,
+    (SELECT COUNT(*) FROM coderingen WHERE onderzoek_id = ?1 AND id > ?2) - (SELECT COUNT(*) FROM d) AS rest,
+    CASE WHEN ?2 = 0 THEN (SELECT json_group_array(json(j)) FROM (SELECT ${CODE_JSON} AS j FROM codes WHERE onderzoek_id = ?1 ORDER BY volgorde, id)) END AS codes,
+    CASE WHEN ?2 = 0 THEN (SELECT json_group_array(json(j)) FROM (SELECT ${CITAAT_JSON} AS j FROM citaten WHERE onderzoek_id = ?1 ORDER BY volgorde, id)) END AS citaten`;
+
+/**
+ * GET /onderzoeken/:id/codering?na=<id>&max=<n> → { codes, coderingen, citaten, volgende } (dezelfde velden als in export/data).
+ * De database bouwt de JSON op; de Worker plakt hem alleen door (geen werk per codering). Coderingen komen in delen van
+ * hooguit CODERINGEN_PER_DEEL, in volgorde van id; volgende is het id om met ?na= verder te gaan, of null. Codes en
+ * citaten staan alleen in het eerste deel (zonder na).
+ */
+export async function overzicht({ env, params, url, request }) {
   const onderzoekId = v.id(params.id);
+  const p = (url || new URL(request.url)).searchParams;
+  const na = v.geheelGetal(p.get('na'), 'na', { min: 0, max: Number.MAX_SAFE_INTEGER }) ?? 0;
+  const max = v.geheelGetal(p.get('max'), 'max', { min: 1, max: CODERINGEN_PER_DEEL }) ?? CODERINGEN_PER_DEEL;
   await haalOnderzoek(env, onderzoekId);
-  const q = (sql) => env.DB.prepare(sql).bind(onderzoekId);
-  const [codes, coderingen, citaten] = await env.DB.batch([
-    q('SELECT * FROM codes WHERE onderzoek_id = ? ORDER BY volgorde, id'),
-    q('SELECT id, code_id, inzending_id, vraag_id, invoer_id FROM coderingen WHERE onderzoek_id = ? ORDER BY id'),
-    q('SELECT * FROM citaten WHERE onderzoek_id = ? ORDER BY volgorde, id'),
-  ]);
-  return json({ codes: codes.results, coderingen: coderingen.results, citaten: citaten.results });
+  const rij = await een(env, OVERZICHT, onderzoekId, na, max);
+  const volgende = rij.rest > 0 && rij.laatste !== null ? Number(rij.laatste) : null;
+  const eersteDeel = na === 0 ? `"codes":${rij.codes || '[]'},` : '';
+  const citaten = na === 0 ? `,"citaten":${rij.citaten || '[]'}` : '';
+  return new Response(`{${eersteDeel}"coderingen":${rij.coderingen || '[]'}${citaten},"volgende":${volgende === null ? 'null' : volgende}}`, {
+    headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' },
+  });
 }
 
 // ---------- Codes ----------
