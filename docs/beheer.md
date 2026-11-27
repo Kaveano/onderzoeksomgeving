@@ -16,6 +16,10 @@ Dit document is voor onderhoud: waar staat wat, hoe zet je een nieuwe versie onl
 | Gegevens in de browser | `public/js/beheer/gegevens.js` | De enige manier waarop schermen aan de antwoorden komen: één kopie per onderzoek per sessie, daarna alleen veranderde vragenlijsten (zie "Grote onderzoeken") |
 | Verschilwacht | `public/js/beheer/verschilwacht.js` | Waarschuwt als een meelezer twee uitkomsten kan vergelijken die 1 tot 4 respondenten verschillen |
 | Belastingtest | `scripts/belasting.mjs` | Meet hoe groot een onderzoek kan worden op de gratis laag (zie "Belastingtest") |
+| Achtergrondkenmerken | `public/js/beheer/kenmerken.js` | Zuiver (Worker en browser): de kenmerken, de standaard achtergrondvragen, `kenmerkVoorTekst`, `klasseVan` (klassegrenzen zoals "35 tot 55 jaar") en `isLieverNiet` |
+| Cijfervraag | `src/lib/schalen.js` (`CIJFERSCHALEN`, `ENPS`) | Vraagtype `cijfer`; de soort staat in `vragen.schaal_soort`: `nps` (0 tot 10) of `rapport` (1 tot 10) |
+| Dialoog "Achtergrondvragen toevoegen" | `public/js/beheer/schermen/kenmerk-dialoog.js` | Gebruikt door de vragenlijsteditor (route `POST /vragenlijsten/:id/kenmerkvragen`) en de sjablooneditor |
+| Sjabloonmigratie maken | `scripts/sjablonen-migratie.mjs` | Maakt de migratie die ongewijzigde standaardsjablonen bijwerkt (zie "Standaardsjablonen bijwerken") |
 
 Je andere projecten (AF Partners-site, InterimRadar) staan los hiervan en worden niet geraakt.
 
@@ -147,6 +151,13 @@ Het eerste verzoek in een vers proces kost 12 tot 30 ms, bij elke grootte vanaf 
 - Een rapport wordt voor een meelezer aan de serverkant opgebouwd uit de vastgelegde feiten, alleen met de hoofdstukken die aanstaan. Zonder tussenstand gebruikt `rapportVoorKijker` de optie `verbergOpen` (standaard aan): van een vragenlijst die op de peildatum openstond (`feiten.lijsten[].status`) komen Resultaten, de bijlagen, de responszin, de verlooppunten van dat meetmoment en de toetsen van of naar dat meetmoment niet mee; de responstabel wel. Dat werkt ook voor oude rapporten.
 - Van meelezers wordt alleen de datum van het laatste bezoek per link bewaard, plus bij verkeerde toegangscodes de afzendercode (een dag).
 
+**Cijfervraag en achtergrondkenmerk**
+- Een cijfervraag (`type = 'cijfer'`) telt nooit mee in thema- of meetpuntgemiddelden, Cronbach, "% 4 of 5" of de toetsen: al die code kijkt alleen naar `type = 'schaal'`. Mist er ergens een stuk code voor cijfers, dan ontbreekt er een getal; er komt nooit een verkeerd getal.
+- De server controleert een antwoord op een cijfervraag: een geheel getal binnen de schaal (0–10 of 1–10), of `weet_niet` als dat aan staat. Na de eerste antwoorden ligt de schaal vast (409).
+- Een cijfervraag met minder dan 5 cijfers (`n_score`) is voor een meelezer helemaal verborgen (verdeling, gemiddelde en eNPS). In de uitsplitsing heeft elke cijfervraag een eigen kolom die apart wordt onderdrukt (`onderdrukKolom`), één getal per cel (gemiddelde of eNPS, geen verdeling per groep).
+- `vragen.kenmerk` (`''` = geen) mag alleen bij ja/nee of meerkeuze met één antwoord, één keer per vragenlijst (behalve `overig`). De openbare vragenlijst (`GET /api/publiek/:code`) geeft het kenmerk nooit mee; `test/vraagmodel-api.test.mjs` controleert dat.
+- SPSS: achtergrondvragen heten naar hun kenmerk (`afdeling`, `leeftijd` …) en een cijfervraag van 0 tot 10 krijgt `vNN_enps`. Alle namen komen uit `spssVariabeleNamen` (`export-bestanden.js`), zodat de werkbank dezelfde namen gebruikt. In exports van vóór deze versie hadden achtergrondvragen een nummer (`v03`).
+
 **Rapporten**
 - De feiten in een rapport worden in de browser met vaste regels uit de gegevens samengesteld (geen AI) en met een peildatum in de database vastgelegd. Uitkomsten van minder dan 5 respondenten worden niet opgenomen.
 - Een toets (verloop tussen meetmomenten) gebruikt themascores per respondent, het dashboard alle losse antwoorden. Vallen in een vragenlijst 1 tot 4 gedeeltelijk ingevulde respondenten weg, dan wordt die toets niet getoond (anders zijn hun antwoorden uit de twee getallen terug te rekenen).
@@ -204,7 +215,7 @@ Lokaal testen:
 npm test
 ```
 
-De servertests starten elk een eigen lokale testserver met een lege database, op een vaste poort: `api` 8799, `sjablonen` 8798, `delen` 8797, `rapport` 8796, `inlezen` 8795 en `fundament` 8790 (de uitbreidingen gebruiken 8788 tot en met 8794). `migratie` en `dashboard-rekenen` hebben geen poort nodig; ze werken rechtstreeks op een tijdelijke lokale database. Zorg dat die poorten vrij zijn.
+De servertests starten elk een eigen lokale testserver met een lege database, op een vaste poort: `api` 8799, `sjablonen` 8798, `delen` 8797, `rapport` 8796, `inlezen` 8795, `fundament` 8790 en `vraagmodel-api` 8791 (de andere uitbreidingen gebruiken 8788, 8789 en 8792 tot en met 8794). `migratie` en `dashboard-rekenen` hebben geen poort nodig; ze werken rechtstreeks op een tijdelijke lokale database. Zorg dat die poorten vrij zijn.
 
 Database-aanpassingen doorvoeren, als er nieuwe bestanden in `migrations/` staan. Doe dit altijd **vóór** het online zetten:
 
@@ -219,6 +230,14 @@ npx wrangler d1 export onderzoeksomgeving --remote --output backup-voor-0011.sql
 ```
 
 Wil je extra zeker zijn, probeer de migraties dan eerst op een lokale kopie van die reservekopie: `npx wrangler d1 execute DB --local --file backup-voor-0011.sql`, daarna `npm run db:lokaal`. Gaat er live toch iets mis, dan zet je de database met D1 Time Travel terug naar het moment vóór de migratie (`npx wrangler d1 time-travel restore onderzoeksomgeving --timestamp=<tijdstip>`). Migraties 0012 tot en met 0015 voegen alleen nieuwe tabellen en hun indexen toe. Elke verwijzing met `ON DELETE CASCADE` of `SET NULL` heeft een index die met die kolom begint (bijvoorbeeld `coderingen(inzending_id)`); anders doorzoekt SQLite bij elke verwijderde inzending de hele tabel. `test/migratie.test.mjs` controleert dat voor alle nieuwe tabellen.
+
+**Standaardsjablonen bijwerken (migratie 0017).** De standaardsjablonen staan in de database. Verandert hun inhoud in de code (`src/sjablonen.js`, `src/sjablonen-extra.js`), dan werkt een gegenereerde migratie de sjablonen bij die de onderzoeker niet zelf heeft aangepast: alleen als naam, omschrijving en inhoud nog precies gelijk zijn aan de vorige versie. Zo'n migratie maak je met:
+
+```bash
+node scripts/sjablonen-migratie.mjs <oude-commit> --uit migrations/0017_sjablonen_kenmerken.sql
+```
+
+`<oude-commit>` is de versie die nu live staat (voor 0017: `4e7aa5e`). Het script haalt die versie uit git, zet de sjablonen van beide versies in hun vaste vorm en schrijft per gewijzigd sjabloon één `UPDATE … WHERE bron = … AND naam = … AND omschrijving = … AND inhoud = …` (elk ongeveer 30 KB, ruim onder de 100 KB per opdracht). De sjabloonmigratie moet altijd het **hoogste nummer** hebben; verandert er later weer iets aan de sjablonen, maak hem dan opnieuw. `test/vraagmodel.test.mjs` controleert dat elke nieuwe inhoud precies gelijk is aan de code en dat de oude inhoud is wat migratie 0010 erin zette; `test/vraagmodel-api.test.mjs` voert 0017 uit op een database met de oude sjablonen en controleert dat ze daarna "gewijzigd: nee" lezen (en dat een aangepast sjabloon blijft staan).
 
 Online zetten:
 
