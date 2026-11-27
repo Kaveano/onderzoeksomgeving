@@ -97,7 +97,9 @@ const BEHEER_ROUTES = [
   ['PUT', `${B}/acties/:id`, acties.wijzig],
   ['DELETE', `${B}/acties/:id`, acties.verwijder],
 
+  // export/data?zonder_inzendingen=1 geeft alleen de kop; de antwoorden komen dan in delen via export/inzendingen.
   ['GET', `${B}/onderzoeken/:id/export/data`, exporteren.data],
+  ['GET', `${B}/onderzoeken/:id/export/inzendingen`, exporteren.inzendingen],
   ['GET', `${B}/onderzoeken/:id/export/stukken.txt`, exporteren.stukkenTxt],
 
   ['GET', `${B}/onderzoeken/:id/rapporten`, rapporten.lijst],
