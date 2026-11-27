@@ -10,13 +10,16 @@ import { opmaakCel, metaTekst, pWaarde } from './uitvoer-tekst.js';
 const eindig = (x) => typeof x === 'number' && Number.isFinite(x);
 const NIVEAU = { privacy: 'melding wb-melding-privacy', waarschuwing: 'melding melding-waarschuwing', fout: 'melding melding-gevaar', info: 'melding wb-melding-info' };
 
+/** Een betrouwbaarheidsinterval als tekst ("2,30 tot 2,63"): niet afbreken, net als een getal. */
+const INTERVAL = /^[−-]?\d[\d.,]* tot [−-]?\d[\d.,]*$/;
+
 function celEl(c, kopTekst, eerste) {
   const tekst = opmaakCel(c);
   const attrs = { 'data-label': kopTekst };
   if (c && c.verborgen) {
     attrs.class = 'rechts getal wb-verborgen';
     attrs.title = VERBORGEN_UITLEG;
-  } else if (c && c.soort !== 'tekst') {
+  } else if (c && (c.soort !== 'tekst' || INTERVAL.test(tekst))) {
     attrs.class = `rechts getal${c.nadruk ? ' wb-nadruk' : ''}`;
   } else if (c && c.nadruk) {
     attrs.class = 'wb-nadruk';
@@ -56,8 +59,10 @@ function parenEl(o) {
       : h('span', { class: 'wb-paar-waarde getal' }, `${o.maat || 'r'} = ${opmaakCel({ w: p.r, soort: 'r', ster: p.ster })}; p ${p.p < 0.001 ? '' : '= '}${pWaarde(p.p)}; n = ${Math.round(p.n).toLocaleString('nl-NL')}`))));
 }
 
+/** Staafjes: percentages (frequenties) of getallen (eenheid 'getal', bijv. de eigenwaarden van een screeplot). */
 function grafiekEl(o) {
-  const max = Math.max(1, ...o.reeksen.map((r) => (eindig(r.waarde) ? r.waarde : 0)));
+  const getal = o.eenheid === 'getal';
+  const max = Math.max(getal ? 0 : 1, ...o.reeksen.map((r) => (eindig(r.waarde) ? r.waarde : 0))) || 1;
   return h('figure', { class: 'wb-grafiek' },
     h('figcaption', { class: 'sr-only' }, o.titel),
     h('ul', { class: 'wb-staven', 'aria-hidden': 'true' }, o.reeksen.map((r) => {
@@ -66,13 +71,15 @@ function grafiekEl(o) {
       return h('li', {},
         h('span', { class: 'wb-staaf-label' }, r.label),
         h('span', { class: 'wb-staaf-baan' }, balk),
-        h('span', { class: 'wb-staaf-waarde getal' }, eindig(r.waarde) ? `${r.waarde.toLocaleString('nl-NL', { maximumFractionDigits: 1 })}%` : VERBORGEN));
+        h('span', { class: 'wb-staaf-waarde getal' }, !eindig(r.waarde) ? VERBORGEN
+          : getal ? r.waarde.toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : `${r.waarde.toLocaleString('nl-NL', { maximumFractionDigits: 1 })}%`));
     })));
 }
 
 /**
  * Eén uitvoer als section. acties: { bewaar, stuk, excel, word, weghalen, schaalscore } (functies; ontbreekt er een, dan geen
- * knop). notatie: 'rapport' | 'apa'. nieuwste: "Wat betekent dit?" staat open.
+ * knop; schaalscore(voorstel) krijgt { label?, variabelen }). notatie: 'rapport' | 'apa'. nieuwste: "Wat betekent dit?"
+ * staat open. Een factoranalyse heeft per factor een voorstel (u.schaalscores), betrouwbaarheid één (u.schaalscore).
  */
 export function toonUitvoer(u, { notatie = 'rapport', acties = {}, nieuwste = false } = {}) {
   const kopId = `wb-uitvoer-${u.id}`;
@@ -90,10 +97,15 @@ export function toonUitvoer(u, { notatie = 'rapport', acties = {}, nieuwste = fa
         tabelEl(o),
         o.weergave === 'matrix' && o.paren ? parenEl(o) : null,
         (o.voetnoten || []).map((v) => h('p', { class: 'wb-voetnoot' }, v)));
-      (o.verborgenStandaard ? extra : onderdelen).push(blok);
+      if (o.verborgenStandaard) extra.push({ blok, uitklap: o.uitklap });
+      else onderdelen.push(blok);
     }
   }
-  if (extra.length) onderdelen.push(h('details', { class: 'wb-extra' }, h('summary', {}, 'p-waarden en aantallen per paar tonen'), extra));
+  if (extra.length) {
+    onderdelen.push(h('details', { class: 'wb-extra' },
+      h('summary', {}, extra.find((x) => x.uitklap)?.uitklap || 'p-waarden en aantallen per paar tonen'),
+      extra.map((x) => x.blok)));
+  }
   if (verborgen) onderdelen.push(h('p', { class: 'wb-voetnoot' }, VERBORGEN_UITLEG));
   const zin = u.apa ? u.apa[notatie === 'apa' ? 'apa' : 'rapport'] : '';
   const knop = (tekst, fn, extraAttrs = {}) => (fn ? h('button', { type: 'button', class: 'knop knop-klein', onclick: fn, ...extraAttrs }, tekst, h('span', { class: 'sr-only' }, `: ${u.titel}`)) : null);
@@ -117,7 +129,8 @@ export function toonUitvoer(u, { notatie = 'rapport', acties = {}, nieuwste = fa
         }, 'Kopieer zin'))
       : null,
     u.geweigerd ? null : h('div', { class: 'knoppen wb-acties' },
-      u.schaalscore ? knop('Maak hiervan een schaalscore', acties.schaalscore, { 'aria-haspopup': 'dialog' }) : null,
+      u.schaalscore && acties.schaalscore ? knop('Maak hiervan een schaalscore', () => acties.schaalscore(u.schaalscore), { 'aria-haspopup': 'dialog' }) : null,
+      (acties.schaalscore ? u.schaalscores || [] : []).map((s) => knop(`Maak van ${s.label.toLowerCase()} een schaalscore`, () => acties.schaalscore(s), { 'aria-haspopup': 'dialog' })),
       knop('Bewaren als analyse', acties.bewaar, { 'aria-haspopup': 'dialog' }),
       knop('Neem op in stuk', acties.stuk, { 'aria-haspopup': 'dialog' }),
       knop('Naar Excel', acties.excel),

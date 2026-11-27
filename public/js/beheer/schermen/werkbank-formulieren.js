@@ -1,6 +1,6 @@
 // Werkbank, tabblad Analyseren: het menu met analyses en één formulier per analyse (D2 §11.4).
-// De formulieren volgen uit de beschrijving in werkbank/definities.js (vakjes en opties); welke analyses er al
-// zijn, staat in werkbank/procedures/index.js. Een nieuwe analyse (fase 5 en 6) verschijnt hier dus vanzelf.
+// De formulieren volgen uit de beschrijving in werkbank/definities.js (vakjes en opties); welke analyses er
+// zijn, staat in werkbank/procedures/index.js. Een nieuwe analyse verschijnt hier dus vanzelf.
 
 import { h, vervang, uniekeId, meld, meldFout } from '../ui.js';
 import { api } from '../api.js';
@@ -18,6 +18,7 @@ const KEUZE_TEKST = {
   ontbrekend: { paarsgewijs: 'Per paar (paarsgewijs)', lijstgewijs: 'Alleen wie alles beantwoordde (lijstgewijs)' },
   rotatie: { varimax: 'Varimax', geen: 'Geen' },
   aantal: { kaiser: 'Eigenwaarde groter dan 1 (Kaiser)' },
+  referentie: { grootste: 'De grootste groep', eerste: 'De eerste groep', laatste: 'De laatste groep' },
 };
 const NIET_IN_LIJST = 'Niet in de lijst? Alleen variabelen met het juiste meetniveau staan erbij. Je kunt het meetniveau aanpassen bij Variabelen.';
 const GROEP_VOLGORDE = ['Beschrijven', 'Groepen vergelijken', 'Samenhang', 'Schalen', 'Voorspellen'];
@@ -211,6 +212,16 @@ export function toonAnalyseren(paneel, wb) {
   const bewerk = f.bewerk;
   const andereBron = bewerk && JSON.stringify(bewerk.spec.bron) !== JSON.stringify(wb.bron());
   const opnieuw = () => toonAnalyseren(paneel, wb);
+  // Bij de gepaarde vergelijking: welke vragen een paar vormen (in de volgorde van aanvinken).
+  const parenEl = f.procedure === 'gepaard' ? h('ol', { class: 'wb-paren-voorbeeld', 'aria-live': 'polite', 'aria-label': 'De paren' }) : null;
+  const tekenParen = () => {
+    if (!parenEl) return;
+    const x = f.vakken.x || [];
+    const y = f.vakken.y || [];
+    const n = Math.max(x.length, y.length);
+    const naam = (id) => (id ? wb.variabele(id)?.label || id : '(nog kiezen)');
+    vervang(parenEl, n ? Array.from({ length: n }, (_, i) => h('li', {}, `Paar ${i + 1}: ${naam(x[i])} en ${naam(y[i])}`)) : h('li', { class: 'zacht' }, 'Nog geen paren gekozen.'));
+  };
   const slots = meta.slots.map((slot) => {
     if (slot.meerdere) {
       if (!Array.isArray(f.vakken[slot.sleutel])) f.vakken[slot.sleutel] = [];
@@ -218,6 +229,7 @@ export function toonAnalyseren(paneel, wb) {
       f.vakken[slot.sleutel] = f.vakken[slot.sleutel].filter((id) => wb.variabele(id));
       return meerdereKiezer(wb, slot, f.vakken[slot.sleutel], () => {
         if (Object.values(meta.opties).some((o) => o.van === slot.sleutel)) tekenOpties();
+        tekenParen();
       });
     }
     const id = uniekeId('wb-slot');
@@ -237,6 +249,7 @@ export function toonAnalyseren(paneel, wb) {
   const optiesEl = h('div', { class: 'wb-opties' });
   const tekenOpties = () => vervang(optiesEl, optieVelden(wb, meta, f.opties, f.vakken));
   tekenOpties();
+  tekenParen();
   const spec = () => ({
     versie: 1,
     bron: bewerk && andereBron ? bewerk.spec.bron : wb.bron(),
@@ -280,6 +293,7 @@ export function toonAnalyseren(paneel, wb) {
     },
   },
   slots,
+  parenEl ? h('div', { class: 'wb-slot' }, h('p', { class: 'wb-kiesgroep-kop' }, 'De paren'), parenEl) : null,
   h('p', { class: 'wb-noot zacht' }, NIET_IN_LIJST),
   Object.keys(meta.opties).length ? h('details', { class: 'wb-meer', open: !!bewerk }, h('summary', {}, 'Meer opties'), optiesEl) : null,
   fout,

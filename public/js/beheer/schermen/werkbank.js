@@ -397,7 +397,7 @@ export async function toon(container, ctx) {
         st.uitvoeren = st.uitvoeren.filter((x) => x !== u);
         teken();
       },
-      schaalscore: ctx.alleenLezen || !u.schaalscore ? null : () => berekenDialoog(wb, { variabelen: u.schaalscore.variabelen }),
+      schaalscore: ctx.alleenLezen || !(u.schaalscore || u.schaalscores?.length) ? null : (voorstel) => berekenDialoog(wb, { variabelen: voorstel.variabelen, label: voorstel.label || '' }),
     });
     vervang(p,
       h('div', { class: 'wb-uitvoer-balk' },

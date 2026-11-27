@@ -125,6 +125,8 @@ fieldset.wb-slot legend { font-weight: 650; padding: 0 var(--ruimte-1); }
 .wb-groepen-invoer { display: grid; gap: var(--ruimte-2); grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); }
 .wb-groep-rij { margin: 0; }
 .wb-groep-nr { display: block; font-size: 0.85rem; color: var(--tekst-zacht); }
+/* Gepaard vergelijken: welke vragen samen een paar vormen. */
+.wb-paren-voorbeeld { margin: 0; padding-left: var(--ruimte-5); display: grid; gap: 2px; font-size: 0.92rem; overflow-wrap: anywhere; }
 
 /* Vensters voor variabelen en selecties */
 .wb-dialoog { width: min(46rem, calc(100vw - 2 * var(--ruimte-4))); }
