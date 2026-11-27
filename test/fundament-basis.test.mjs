@@ -3,6 +3,7 @@
 // Uitvoeren: node --test test/fundament-basis.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import * as opmaak from '../public/js/beheer/opmaak.js';
 import * as feiten from '../public/js/beheer/rapport-feiten.js';
 import { KENMERKEN, KENMERKVRAGEN, KLASSEGRENZEN, LIEVER_NIET, KENMERK_THEMA, KENMERK_TOELICHTING } from '../public/js/beheer/kenmerken.js';
@@ -205,4 +206,20 @@ test('schaalScoreTelling geeft voor een thema dezelfde scores als waardenVan', (
   const uit = schaalScoreTelling(schaalvragen, lijst.inz);
   assert.deepEqual(uit.scores, waardenVan(lijst, 't:7'));
   assert.equal(uit.weggevallen, 1);
+});
+
+// ---------- Momentopname van rapporten met v1-feiten (P1; P6 criterium 1) ----------
+
+test('momentopname: rapportNaarBlokken geeft voor v1-feiten (nieuw en oud) precies de vastgelegde blokken', () => {
+  const pad = new URL('./fixtures/rapport-v1-blokken.json', import.meta.url);
+  const { gevallen } = JSON.parse(readFileSync(pad, 'utf8'));
+  assert.equal(gevallen.length, 3);
+  for (const g of gevallen) {
+    assert.equal(g.feiten.versie, 1, g.naam);
+    const blokken = feiten.rapportNaarBlokken({ titel: g.titel, soort: g.soort, inhoud: g.inhoud, feiten: g.feiten });
+    assert.deepEqual(JSON.parse(JSON.stringify(blokken)), g.blokken, g.naam);
+  }
+  // Oude feiten (zonder beschermd) worden bij het tonen even streng gemaskeerd als nieuwe.
+  const tekst = (g) => feiten.blokkenNaarTekst(g.blokken);
+  assert.equal((tekst(gevallen[2]).match(/×/g) || []).length, (tekst(gevallen[0]).match(/×/g) || []).length);
 });
