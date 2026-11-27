@@ -162,7 +162,8 @@ export async function logistisch(ds, spec, ctx) {
   if (!isIndeling(w)) return weiger(ds, spec, ctx, titel, 'fout', `“${w?.label || 'De uitkomst'}” is geen indeling met vaste groepen.`);
   const groepen = w.beschermd.groepen;
   if (groepen.length !== 2) {
-    return weiger(ds, spec, ctx, titel, 'fout', `“${w.label}” heeft ${groepen.length} groepen. Een logistische regressie heeft een uitkomst met precies twee groepen nodig, zoals ja en nee. Deel hem eerst in twee groepen in (Indelen in groepen).`);
+    const aantal = groepen.length === 1 ? 'maar één groep met genoeg respondenten' : `${groepen.length} groepen`;
+    return weiger(ds, spec, ctx, titel, 'fout', `“${w.label}” heeft ${aantal}. Een logistische regressie heeft een uitkomst met precies twee groepen nodig, zoals ja en nee. Deel hem eerst in twee groepen in (Indelen in groepen).`);
   }
   const keuze = spec.opties?.gebeurtenis;
   const gebeurtenis = keuze === undefined ? 0 : groepVanBronwaarde(w, keuze);

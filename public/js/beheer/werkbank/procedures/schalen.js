@@ -182,11 +182,12 @@ export function pcaLadingen(R, m) {
 }
 
 /**
- * Principale assen (PAF): begin met de SMC op de diagonaal; herhaal eigen-ontbinding en nieuwe communaliteiten
- * (rijsommen van L²) tot ze minder dan 1e-6 veranderen of na 250 stappen. Een communaliteit van 1 of meer
- * (Heywood-geval) stopt de berekening (heywood: de nummers van die vragen).
+ * Principale assen (PAF) stap voor stap: begin met de SMC op de diagonaal; herhaal eigen-ontbinding en nieuwe
+ * communaliteiten (rijsommen van L²) tot ze minder dan 1e-6 veranderen of na 250 stappen. Een communaliteit van 1 of
+ * meer (Heywood-geval) stopt de berekening (heywood: de nummers van die vragen). De generator geeft na elke stap de
+ * stand; de laatste waarde is de uitkomst. Zo kan de procedure tussendoor het scherm de beurt geven.
  */
-export function pafLadingen(R, m, { smc = null, maxStappen = 250, tol = 1e-6 } = {}) {
+export function* pafStappen(R, m, { smc = null, maxStappen = 250, tol = 1e-6 } = {}) {
   const k = R.length;
   let h2 = smc ? Float64Array.from(smc) : null;
   if (!h2) {
@@ -213,8 +214,18 @@ export function pafLadingen(R, m, { smc = null, maxStappen = 250, tol = 1e-6 } =
     heywood = nieuw.map((x, j) => (x >= 1 ? j : -1)).filter((j) => j >= 0);
     if (heywood.length) break;
     if (verschil < tol) { geconvergeerd = true; break; }
+    yield stappen;
   }
   return { ladingen, communaliteiten: Array.from(h2), stappen, geconvergeerd, heywood };
+}
+
+/** Principale assen in één keer (zie pafStappen). */
+export function pafLadingen(R, m, opties = {}) {
+  const g = pafStappen(R, m, opties);
+  for (;;) {
+    const s = g.next();
+    if (s.done) return s.value;
+  }
 }
 
 /**
@@ -336,7 +347,16 @@ export async function factoranalyse(ds, spec, ctx) {
     extractie = { ladingen: ladingenUit(eigen, m), geconvergeerd: true, heywood: [] };
     extractie.communaliteiten = rijKwadraten(extractie.ladingen);
   } else {
-    extractie = pafLadingen(R, m, { smc: kb.smc });
+    // Stap voor stap, met af en toe een pauze: zo blijft het scherm bruikbaar en werkt Stoppen.
+    const stappen = pafStappen(R, m, { smc: kb.smc });
+    for (;;) {
+      const s = stappen.next();
+      if (s.done) { extractie = s.value; break; }
+      if (s.value % 10 === 0) {
+        ctx.voortgang?.(`Bezig met rekenen… (stap ${s.value})`);
+        await ctx.pauze();
+      }
+    }
     if (!extractie) return weiger(ds, spec, ctx, titel, 'fout', P_NIET_PD);
   }
   const L = extractie.ladingen;
