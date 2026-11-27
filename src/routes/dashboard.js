@@ -9,7 +9,7 @@
 import { json } from '../lib/http.js';
 import * as v from '../lib/validatie.js';
 import { haalOnderzoek } from '../lib/db.js';
-import { SCHALEN } from '../lib/schalen.js';
+import { SCHALEN, CIJFERSCHALEN } from '../lib/schalen.js';
 import { dashboardUitRijen } from '../../public/js/beheer/dashboard-rekenen.js';
 
 export async function dashboard({ request, env, params }) {
@@ -63,6 +63,7 @@ export async function berekenDashboard(env, onderzoek, keuze = {}) {
   return dashboardUitRijen({
     onderzoek,
     schalen: SCHALEN,
+    cijferschalen: CIJFERSCHALEN,
     themas: themasR.results,
     meetpunten: meetpuntenR.results,
     meetmomenten: meetmomentenR.results,

@@ -455,6 +455,62 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Cijfervraag (0–10 of 1–10): een staafje per cijfer, met de eindteksten eronder */
+.db-cijfer {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 3px;
+  align-items: stretch;
+  height: 8.5rem;
+  max-width: 36rem;
+  margin: var(--ruimte-2) 0 var(--ruimte-1);
+}
+.db-cijfer-kolom {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.db-cijfer-aantal {
+  min-height: 1.15em;
+  font-size: 0.75rem;
+  line-height: 1.15;
+  text-align: center;
+  color: var(--tekst-zacht);
+  font-variant-numeric: tabular-nums;
+}
+.db-cijfer-baan {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: flex-end;
+  border-bottom: 1px solid var(--rand-sterk);
+}
+.db-cijfer-staaf {
+  width: 100%;
+  border-radius: 2px 2px 0 0;
+}
+.db-cijfer-waarde {
+  padding-top: 2px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.db-cijfer-eind {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--ruimte-3);
+  max-width: 36rem;
+  font-size: 0.8rem;
+  color: var(--tekst-zacht);
+}
+.db-cijfer-eind span:last-child { text-align: right; }
+.db-enps { margin-top: var(--ruimte-3); max-width: 36rem; }
+.db-enps-kop { margin: 0; }
+.db-enps-waarde { font-size: 1.2rem; font-variant-numeric: tabular-nums; }
+.db-enps .db-legenda { margin-top: var(--ruimte-1); }
+.db-cijfer-kolomkop { min-width: 6.5rem; }
+
 /* Grafiek of tabel */
 .db-tabelweergave { display: none; margin: var(--ruimte-2) 0; }
 .db-als-tabel .db-tabelweergave { display: block; }

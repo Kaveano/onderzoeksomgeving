@@ -17,9 +17,13 @@
 //   verdeling over alle respondenten gaat door maskeerVerdeling, met "Niet ingevuld" erbij (K M2). Anders staat
 //   "Anders: 1" gewoon in beeld, ook bij een meelezer.
 //
+// - een cijfervraag (0–10 aanbevelen/eNPS of rapportcijfer 1–10) telt NOOIT mee in een thema- of meetpuntgemiddelde;
+//   hij heeft zijn eigen gemiddelde, eNPS en verdeling, en in de uitsplitsing een eigen kolom per groep, die apart
+//   wordt onderdrukt (onderdrukKolom; niet gekoppeld aan de thema's).
+//
 // Rekenwerk: elke inzending wordt één keer doorlopen (gratis laag: 10 ms rekentijd per verzoek).
 
-import { DREMPEL, LABEL_OVERIG, onderdrukAlles, verdeelInGroepen, maskeerVerdeling, verbergReeks } from './privacy.js';
+import { DREMPEL, LABEL_OVERIG, onderdrukAlles, onderdrukKolom, verdeelInGroepen, maskeerVerdeling, verbergReeks } from './privacy.js';
 
 const WEET_NIET = 'weet_niet';
 
@@ -40,6 +44,36 @@ function schaalWaarde(a) {
   return Number.isInteger(a) && a >= 1 && a <= 5 ? a : null;
 }
 
+/** eNPS: 9–10 promotor, 7–8 passief, 0–6 criticaster (dezelfde grenzen als ENPS in src/lib/schalen.js). */
+const PROMOTOR_VANAF = 9;
+const CRITICASTER_TOT = 6;
+
+/** Bereik van een cijfervraag uit de cijferschalen ({ nps: {min, max, …}, rapport: … }); null als onbekend. */
+function cijferBereik(q, cijferschalen) {
+  return (cijferschalen && (cijferschalen[q.schaal_soort] || cijferschalen.rapport)) || null;
+}
+
+/** eNPS uit de tellingen per cijfer (index = cijfer 0 tot 10). */
+function enpsUit(tellingen, n) {
+  if (!n) return null;
+  let promotors = 0;
+  let criticasters = 0;
+  tellingen.forEach((aantal, waarde) => {
+    if (waarde >= PROMOTOR_VANAF) promotors += aantal;
+    else if (waarde <= CRITICASTER_TOT) criticasters += aantal;
+  });
+  const passief = n - promotors - criticasters;
+  return {
+    promotors,
+    passief,
+    criticasters,
+    pct_promotors: pct(promotors, n),
+    pct_passief: pct(passief, n),
+    pct_criticasters: pct(criticasters, n),
+    score: pct(promotors, n) - pct(criticasters, n),
+  };
+}
+
 /** Achtergrondvraag: een kenmerk (afdeling, leeftijd …) of een vraag om op uit te splitsen, met één antwoord. */
 export function isBeschermd(q) {
   return !!(q.kenmerk || q.uitsplitsen) && (q.type === 'janee' || (q.type === 'meerkeuze' && !q.meerdere_antwoorden));
@@ -49,10 +83,11 @@ export function isBeschermd(q) {
  * Telt in één doorloop alles wat het dashboard nodig heeft voor een set vragen en inzendingen.
  * Geeft per vraag tellingen en per thema/meetpunt (schaalvragen) som, aantal antwoorden en respondenten.
  */
-function aggregeer(vragen, inzendingen) {
+function aggregeer(vragen, inzendingen, cijferschalen = null) {
   const perVraag = vragen.map((q) => ({
     q,
-    tellingen: [0, 0, 0, 0, 0],
+    tellingen: q.type === 'cijfer' ? Array(11).fill(0) : [0, 0, 0, 0, 0],
+    bereik: q.type === 'cijfer' ? cijferBereik(q, cijferschalen) : null,
     som: 0,
     n: 0,
     weetNiet: 0,
@@ -95,6 +130,14 @@ function aggregeer(vragen, inzendingen) {
           } else if (w === WEET_NIET) s.weetNiet++;
           break;
         }
+        case 'cijfer':
+          // Alleen in de eigen tellingen van de vraag; nooit in de groepen (thema's en meetpunten).
+          if (s.bereik && Number.isInteger(w) && w >= s.bereik.min && w <= s.bereik.max && w <= 10) {
+            s.tellingen[w]++;
+            s.som += w;
+            s.n++;
+          } else if (w === WEET_NIET) s.weetNiet++;
+          break;
         case 'janee':
           if (w === 'ja') s.ja++;
           else if (w === 'nee') s.nee++;
@@ -151,6 +194,20 @@ function vraagStatistiek(s, SCHALEN) {
     r.gemiddelde = deel(s.som, s.n);
     r.verdeling = labels.map((label, i) => ({ waarde: i + 1, label, aantal: s.tellingen[i], percentage: pct(s.tellingen[i], totaal) }));
     if (q.weet_niet) r.verdeling.push({ waarde: WEET_NIET, label: 'Weet niet / n.v.t.', aantal: s.weetNiet, percentage: pct(s.weetNiet, totaal) });
+  } else if (q.type === 'cijfer') {
+    const b = s.bereik || { min: 0, max: 10, laag: '', hoog: '' };
+    const totaal = s.n + s.weetNiet;
+    r.schaal_soort = q.schaal_soort;
+    r.cijferschaal = { min: b.min, max: b.max, laag: b.laag, hoog: b.hoog };
+    r.n = totaal;
+    r.n_score = s.n;
+    r.gemiddelde = deel(s.som, s.n);
+    r.verdeling = [];
+    for (let w = b.min; w <= b.max; w++) r.verdeling.push({ waarde: w, label: String(w), aantal: s.tellingen[w], percentage: pct(s.tellingen[w], totaal) });
+    if (q.weet_niet) r.verdeling.push({ waarde: WEET_NIET, label: 'Weet niet / n.v.t.', aantal: s.weetNiet, percentage: pct(s.weetNiet, totaal) });
+    if (q.schaal_soort === 'nps') r.enps = enpsUit(s.tellingen, s.n);
+    // Rapportcijfer: het deel onvoldoendes (5 of lager), van wie een cijfer gaf.
+    else r.pct_onvoldoende = pct(s.tellingen.slice(0, 6).reduce((t, x) => t + x, 0), s.n);
   } else if (q.type === 'janee') {
     const n = s.ja + s.nee;
     r.n = n;
@@ -187,7 +244,7 @@ function beschermVerdeling(r, lijstN) {
 }
 
 /** Uitsplitsing naar de antwoorden op één vraag (meerkeuze met één antwoord, of ja/nee). */
-function uitsplitsing(vraag, lijstVragen, inzendingen, themaNamen) {
+function uitsplitsing(vraag, lijstVragen, inzendingen, themaNamen, cijferschalen) {
   const groepen = [];
   const perSleutel = new Map();
   const opties = vraag.type === 'janee' ? [['ja', 'Ja'], ['nee', 'Nee']] : JSON.parse(vraag.opties || '[]').map((o) => [o.id, o.label]);
@@ -206,6 +263,7 @@ function uitsplitsing(vraag, lijstVragen, inzendingen, themaNamen) {
 
   const schaalVragen = lijstVragen.filter((q) => q.type === 'schaal');
   const themaIds = [...new Set(schaalVragen.map((q) => q.thema_id))];
+  const cijferVragen = lijstVragen.filter((q) => q.type === 'cijfer');
 
   const uit = indeling.zichtbaar.map((z) => {
     const g = groepVan.get(z.sleutel);
@@ -253,16 +311,28 @@ function uitsplitsing(vraag, lijstVragen, inzendingen, themaNamen) {
       return { thema_id: tid, naam: themaNamen.get(tid), n: t ? t.respondenten : 0, gemiddelde: t ? deel(t.som, t.aantal) : null };
     });
     g.vragen = agg.perVraag.map((s) => ({ vraag_id: s.q.id, n: s.n, gemiddelde: deel(s.som, s.n) }));
+    // Cijfervragen: één getal per cel (gemiddelde, en bij 0–10 de eNPS), los van de thema's.
+    const cijferAgg = aggregeer(cijferVragen, g.inz, cijferschalen);
+    g.cijfers = cijferAgg.perVraag.map((s) => ({
+      vraag_id: s.q.id,
+      n: s.n,
+      gemiddelde: deel(s.som, s.n),
+      enps: s.q.schaal_soort === 'nps' ? enpsUit(s.tellingen, s.n)?.score ?? null : null,
+    }));
   }
   if (uit.length) onderdrukAlles(uit, themaIds, schaalVragen, DREMPEL);
+  // Elke cijferkolom apart: kleine cellen weg, en zo nodig de kleinste andere erbij (niet terug te rekenen).
+  if (uit.length) cijferVragen.forEach((_, i) => onderdrukKolom(uit.map((g) => g.cijfers[i]), DREMPEL));
   for (const g of uit) {
     delete g.inz;
-    for (const c of [...g.themas, ...g.vragen]) {
+    for (const c of [...g.themas, ...g.vragen, ...g.cijfers]) {
       if (c.verborgen) {
         c.gemiddelde = null;
         c.n = null;
+        if ('enps' in c) c.enps = null;
       } else {
         c.gemiddelde = eenDecimaal(c.gemiddelde);
+        if ('enps' in c && c.enps !== null) c.enps = Math.round(c.enps);
       }
     }
   }
@@ -271,6 +341,7 @@ function uitsplitsing(vraag, lijstVragen, inzendingen, themaNamen) {
     vraag_id: vraag.id,
     tekst: vraag.tekst,
     drempel: DREMPEL,
+    cijfervragen: cijferVragen.map((q) => ({ vraag_id: q.id, tekst: q.tekst, schaal_soort: q.schaal_soort })),
     groepen: uit,
     uitleg_cel: `Een streepje met "<${DREMPEL}" betekent: te weinig respondenten in deze groep beantwoordden dit, dus niet getoond.`,
   };
@@ -279,7 +350,7 @@ function uitsplitsing(vraag, lijstVragen, inzendingen, themaNamen) {
 /**
  * Berekent alle dashboardgegevens van een onderzoek: precies wat GET /dashboard teruggeeft.
  * Ook gebruikt voor de alleen-lezen deellink (src/routes/delen.js), die er daarna nog onderdelen uit weglaat.
- * @param rijen { onderzoek, schalen (labels van de schalen 1–5), themas, meetpunten, meetmomenten, vragenlijsten,
+ * @param rijen { onderzoek, schalen (labels van de schalen 1–5), cijferschalen (bereik van de cijfervragen), themas, meetpunten, meetmomenten, vragenlijsten,
  *               vragen, inzendingen: { vragenlijst_id, datum, a: object }[], eigen_invoer } in de volgorde van de
  *               database (zie src/routes/dashboard.js; rijenUitExport zet de export in die volgorde).
  * @param keuze { vragenlijst, uitsplitsen }: id's (ook als tekst), of null.
@@ -288,6 +359,7 @@ function uitsplitsing(vraag, lijstVragen, inzendingen, themaNamen) {
 export function dashboardUitRijen(rijen, keuze = { vragenlijst: null, uitsplitsen: null }) {
   const onderzoek = rijen.onderzoek;
   const SCHALEN = rijen.schalen || {};
+  const CIJFERSCHALEN = rijen.cijferschalen || {};
 
   const themas = rijen.themas;
   const themaNamen = new Map(themas.map((t) => [t.id, t.naam]));
@@ -305,7 +377,7 @@ export function dashboardUitRijen(rijen, keuze = { vragenlijst: null, uitsplitse
   for (const q of vragen) vragenPerLijst.get(q.vragenlijst_id)?.push(q);
 
   // Eén doorloop per vragenlijst; alles hieronder rekent met deze tellingen.
-  const aggPerLijst = new Map(lijsten.map((l) => [l.id, aggregeer(vragenPerLijst.get(l.id), inzPerLijst.get(l.id))]));
+  const aggPerLijst = new Map(lijsten.map((l) => [l.id, aggregeer(vragenPerLijst.get(l.id), inzPerLijst.get(l.id), CIJFERSCHALEN)]));
   const vraagAgg = new Map();
   for (const agg of aggPerLijst.values()) for (const s of agg.perVraag) vraagAgg.set(s.q.id, s);
 
@@ -358,17 +430,20 @@ export function dashboardUitRijen(rijen, keuze = { vragenlijst: null, uitsplitse
       const beschermd = isBeschermd(s.q);
       r.beschermd = beschermd;
       if (beschermd) beschermVerdeling(r, inz.length);
-      if (s.q.type === 'schaal' || s.q.type === 'janee') {
+      if (s.q.type === 'schaal' || s.q.type === 'janee' || s.q.type === 'cijfer') {
         const perMm = new Map();
         for (const ander of vragenPerStam.get(stam(s.q)) || []) {
           const info = lijstInfo.get(ander.vragenlijst_id);
           const mmId = info?.meetmoment_id;
           if (!mmId) continue;
+          // Een cijfervraag alleen samentellen met dezelfde cijferschaal (0–10 en 1–10 lezen anders).
+          if (s.q.type === 'cijfer' && (ander.type !== 'cijfer' || ander.schaal_soort !== s.q.schaal_soort)) continue;
           const a = vraagAgg.get(ander.id);
-          const p = perMm.get(mmId) || { som: 0, n: 0, ja: 0, janee: 0, klein: false, open: false, lijstN: 0, deelVerborgen: false };
+          const p = perMm.get(mmId) || { som: 0, n: 0, ja: 0, janee: 0, klein: false, open: false, lijstN: 0, deelVerborgen: false, tellingen: Array(11).fill(0) };
           const lijstN = inzPerLijst.get(ander.vragenlijst_id).length;
           p.som += a.som;
           p.n += a.n;
+          if (s.q.type === 'cijfer') a.tellingen.forEach((x, w) => { p.tellingen[w] += x; });
           p.ja += a.ja;
           p.janee += a.ja + a.nee;
           p.lijstN += lijstN;
@@ -380,7 +455,7 @@ export function dashboardUitRijen(rijen, keuze = { vragenlijst: null, uitsplitse
           }
           // Per meetmoment kunnen meer vragenlijsten meetellen. Voor kijkers is van belang hoe klein de kleinste
           // bijdrage is (anders is die terug te rekenen) en of er een vragenlijst bij is die nog openstaat.
-          const bijdrage = s.q.type === 'schaal' ? a.n : a.ja + a.nee;
+          const bijdrage = s.q.type === 'schaal' || s.q.type === 'cijfer' ? a.n : a.ja + a.nee;
           if (bijdrage > 0) {
             if (bijdrage < DREMPEL) p.klein = true;
             if (info.status === 'open') p.open = true;
@@ -391,6 +466,11 @@ export function dashboardUitRijen(rijen, keuze = { vragenlijst: null, uitsplitse
           r.verloop = meetmomenten.filter((mm) => perMm.has(mm.id)).map((mm) => {
             const p = perMm.get(mm.id);
             if (s.q.type === 'schaal') return { meetmoment_id: mm.id, naam: mm.naam, gemiddelde: deel(p.som, p.n), n: p.n, klein: p.klein, open: p.open };
+            if (s.q.type === 'cijfer') {
+              const punt = { meetmoment_id: mm.id, naam: mm.naam, gemiddelde: deel(p.som, p.n), n: p.n, klein: p.klein, open: p.open };
+              if (s.q.schaal_soort === 'nps') punt.enps_score = enpsUit(p.tellingen, p.n)?.score ?? null;
+              return punt;
+            }
             // Achtergrondvraag (ja/nee): het percentage ja per meetmoment is ook een verdeling. Alleen tonen als
             // ja, nee en "Niet ingevuld" daar elk 0 of minstens DREMPEL zijn (dezelfde regel als de verdeling),
             // samen en in elke bijdragende vragenlijst apart.
@@ -449,7 +529,7 @@ export function dashboardUitRijen(rijen, keuze = { vragenlijst: null, uitsplitse
           antwoorden: schudden(inz.map((i) => i.a[q.id]).filter((a) => typeof a === 'string' && a)),
         })),
       uitsplitsvragen: uitsplitsvragen.map((q) => ({ id: q.id, tekst: q.tekst })),
-      uitsplitsing: uitsplitsVraag ? uitsplitsing(uitsplitsVraag, lv, inz, themaNamen) : null,
+      uitsplitsing: uitsplitsVraag ? uitsplitsing(uitsplitsVraag, lv, inz, themaNamen, CIJFERSCHALEN) : null,
     };
   }
 
@@ -538,6 +618,26 @@ export function dashboardUitRijen(rijen, keuze = { vragenlijst: null, uitsplitse
   };
 }
 
+/** Boven zoveel antwoordcellen rekent "Alle resultaten" in de browser (zelfde grens als KIJK_MAX_CELLEN in delen.js). */
+export const LOKAAL_BOVEN_CELLEN = 60_000;
+
+/**
+ * Rekent "Alle resultaten" beter in de browser dan op de server? De rekentijd van de server groeit met het aantal
+ * antwoordcellen: per vragenlijst het aantal inzendingen × het aantal vragen, opgeteld over alle vragenlijsten
+ * (het dashboard telt ze allemaal). Ja als er meer dan maxInzendingen inzendingen zijn, of meer dan maxCellen cellen.
+ * @param vragenlijsten [{ aantal_inzendingen, aantal_vragen }] (zoals GET /onderzoeken/:id/vragenlijsten)
+ */
+export function rekenInBrowser(vragenlijsten, { maxInzendingen = 1500, maxCellen = LOKAAL_BOVEN_CELLEN } = {}) {
+  let inzendingen = 0;
+  let cellen = 0;
+  for (const l of vragenlijsten || []) {
+    const n = Number(l.aantal_inzendingen) || 0;
+    inzendingen += n;
+    cellen += n * (Number(l.aantal_vragen) || 0);
+  }
+  return inzendingen > maxInzendingen || cellen > maxCellen;
+}
+
 /**
  * Zet de export (GET .../export/data) om in de rijen voor dashboardUitRijen, in dezelfde volgorde als de
  * database ze aan het dashboard geeft. De antwoorden worden niet opnieuw ingelezen: het object gaat zo mee.
@@ -547,6 +647,7 @@ export function rijenUitExport(data) {
   return {
     onderzoek: data.onderzoek,
     schalen: data.lijsten?.schalen || {},
+    cijferschalen: data.lijsten?.cijferschalen || {},
     themas: data.themas || [],
     // Het dashboard ordent meetpunten op de volgorde van hun thema, de export op hun eigen volgorde.
     meetpunten: [...(data.meetpunten || [])].sort((a, b) => (themaVolgorde.get(a.thema_id) ?? 0) - (themaVolgorde.get(b.thema_id) ?? 0)
