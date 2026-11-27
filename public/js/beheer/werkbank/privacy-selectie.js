@@ -152,7 +152,7 @@ export function telTabel(basis, masker, rij, kolom, nr, nk) {
 }
 
 /**
- * Regel D voor tabellen: de verschiltabellen (buur − selectie) voor maskeer(), en de cellen die vooraf
+ * Regel D voor tabellen: de verschiltabellen |buur − selectie| voor maskeer(), en de cellen die vooraf
  * verborgen moeten worden (verschil 1 tot 4). Zonder selectie: geen verschiltabellen en niets vooraf.
  */
 export function buurTabellen(selectie, basis, rij, kolom, nr, nk, d = DREMPEL) {
@@ -162,7 +162,9 @@ export function buurTabellen(selectie, basis, rij, kolom, nr, nk, d = DREMPEL) {
   const vooraf = tF.map((r) => r.map(() => false));
   for (const b of selectie.buren) {
     const tN = telTabel(basis, b.masker, rij, kolom, nr, nk);
-    const v = tN.map((r, i) => r.map((x, j) => x - tF[i][j]));
+    // Een buur is ruimer (zonder een voorwaarde) of krapper (zonder een gekozen groep): het verschil is per cel
+    // steeds van één teken, dus de absolute waarde is het aantal mensen dat tussen de twee verschilt.
+    const v = tN.map((r, i) => r.map((x, j) => Math.abs(x - tF[i][j])));
     v.forEach((r, i) => r.forEach((x, j) => { if (x > 0 && x < d) vooraf[i][j] = true; }));
     verschillen.push(v);
   }

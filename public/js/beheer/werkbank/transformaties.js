@@ -10,6 +10,9 @@ import { REDEN, werkTellingBij, pasEigenschappenToe, isGetal } from './dataset.j
 import { eigenRefs, refsVan, EIGENSCHAPPEN_NAAM } from './definities.js';
 import { burenVan, controleerOverlap, telIn, verschilVeilig } from './privacy-selectie.js';
 import { nlGetal } from '../opmaak.js';
+import { P_FILTER_REST, pFilterBuur, pOverlap } from './uitvoer-tekst.js';
+
+export { P_FILTER_REST, pFilterBuur, pOverlap };
 
 export const FOUT_KRING = 'Deze variabelen verwijzen naar elkaar. Pas een van beide aan.';
 export const foutOntbreekt = (naam) => `Deze variabele gebruikt een variabele die niet meer bestaat: “${naam}”. Pas hem aan of verwijder hem.`;
@@ -237,6 +240,38 @@ function hercoderen(ds, def, bron) {
 }
 
 /**
+ * Rekent één definitie (bereken, omscoren of hercoderen) uit, zonder hem aan ds toe te voegen.
+ * @returns {{ v } | { tekst }} de variabele, of de reden waarom het niet kan.
+ */
+export function maakVariabele(ds, def) {
+  const refs = refsVan(def.soort, def.definitie);
+  const ontbreekt = refs.find((r) => !ds.perId.has(r));
+  if (ontbreekt) return { tekst: foutOntbreekt(ontbreekt) };
+  let v = null;
+  if (def.soort === 'bereken') {
+    const items = def.definitie.variabelen.map((x) => (typeof x === 'string' ? { v: ds.perId.get(x), omscoren: false } : { v: ds.perId.get(x.id), omscoren: !!x.omscoren }));
+    const geenGetal = items.find((i) => !isGetal(i.v));
+    const geenBereik = items.find((i) => i.omscoren && !i.v.bereik);
+    if (geenGetal) return { tekst: `“${geenGetal.v.label}” is geen getal; die kun je niet in een score gebruiken.` };
+    if (geenBereik) return { tekst: `“${geenBereik.v.label}” heeft geen vaste schaal; omscoren kan dan niet.` };
+    v = bereken(ds, def, items);
+  } else if (def.soort === 'omscoren') {
+    const bron = ds.perId.get(def.definitie.variabele);
+    if (!bron.bereik && def.definitie.laag === undefined) return { tekst: `“${bron.label}” heeft geen vaste schaal (zoals 1 tot 5); omscoren kan dan niet.` };
+    v = omscoren(ds, def, bron);
+  } else if (def.soort === 'hercoderen') {
+    const bron = ds.perId.get(def.definitie.variabele);
+    if (def.definitie.manier === 'grenzen' && !isGetal(bron)) return { tekst: `“${bron.label}” is geen getal; deel hem in op antwoorden in plaats van met grenzen.` };
+    if (def.definitie.manier === 'categorieen' && !bron.labels.length) return { tekst: `“${bron.label}” heeft geen vaste antwoorden; deel hem in met grenzen.` };
+    v = hercoderen(ds, def, bron);
+  } else {
+    return { tekst: 'Deze soort definitie maakt geen variabele.' };
+  }
+  if (def.definitie.uitleg) v.uitleg = def.definitie.uitleg;
+  return { v };
+}
+
+/**
  * Rekent alle definities van deze bron uit en voegt de eigen variabelen (w:<id>) en selecties toe aan ds.
  * definities: [{ id, dataset_id, soort, naam, label, definitie, verwijderd }] (leesDefinities).
  * Zet ds.filters (Map id → selectie-definitie) en ds.fouten ([{ id, naam, tekst }]).
@@ -258,37 +293,12 @@ export function pasDefinitiesToe(ds, definities, { eigenschappen = null } = {}) 
       if (ontbreekt) ds.filters.get(def.id).fout = foutOntbreekt(ontbreekt.startsWith('w:') ? `eigen variabele ${ontbreekt.slice(2)}` : ontbreekt);
       continue;
     }
-    const refs = refsVan(def.soort, def.definitie);
-    const ontbreekt = refs.find((r) => !ds.perId.has(r));
-    if (ontbreekt) {
-      ds.fouten.push({ id: def.id, naam: def.naam, tekst: foutOntbreekt(ontbreekt), verwijderd: def.verwijderd });
-      continue;
-    }
-    let v = null;
-    let tekst = null;
-    if (def.soort === 'bereken') {
-      const items = def.definitie.variabelen.map((x) => (typeof x === 'string' ? { v: ds.perId.get(x), omscoren: false } : { v: ds.perId.get(x.id), omscoren: !!x.omscoren }));
-      const geenGetal = items.find((i) => !isGetal(i.v));
-      const geenBereik = items.find((i) => i.omscoren && !i.v.bereik);
-      if (geenGetal) tekst = `“${geenGetal.v.label}” is geen getal; die kun je niet in een score gebruiken.`;
-      else if (geenBereik) tekst = `“${geenBereik.v.label}” heeft geen vaste schaal; omscoren kan dan niet.`;
-      else v = bereken(ds, def, items);
-    } else if (def.soort === 'omscoren') {
-      const bron = ds.perId.get(def.definitie.variabele);
-      if (!bron.bereik && def.definitie.laag === undefined) tekst = `“${bron.label}” heeft geen vaste schaal (zoals 1 tot 5); omscoren kan dan niet.`;
-      else v = omscoren(ds, def, bron);
-    } else if (def.soort === 'hercoderen') {
-      const bron = ds.perId.get(def.definitie.variabele);
-      if (def.definitie.manier === 'grenzen' && !isGetal(bron)) tekst = `“${bron.label}” is geen getal; deel hem in op antwoorden in plaats van met grenzen.`;
-      else if (def.definitie.manier === 'categorieen' && !bron.labels.length) tekst = `“${bron.label}” heeft geen vaste antwoorden; deel hem in met grenzen.`;
-      else v = hercoderen(ds, def, bron);
-    }
+    const { v, tekst } = maakVariabele(ds, def);
     if (tekst) {
       ds.fouten.push({ id: def.id, naam: def.naam, tekst, verwijderd: def.verwijderd });
       continue;
     }
     if (!v) continue;
-    if (def.definitie.uitleg) v.uitleg = def.definitie.uitleg;
     ds.variabelen.push(v);
     ds.perId.set(v.id, v);
     nieuweIds.add(v.id);
@@ -416,8 +426,6 @@ export function controleerSelectie(ds, selectie, d = DREMPEL) {
   return { n: inF, totaal: ds.n, ok: !meldingen.length, meldingen };
 }
 
-export const P_FILTER_REST = 'Buiten deze selectie vallen minder dan 5 mensen. Hun antwoorden zouden dan terug te rekenen zijn uit het verschil met de uitkomst zonder selectie. Kies een andere selectie.';
-export const pFilterBuur = (voorwaarde) => `Deze selectie verschilt maar een paar mensen (minder dan 5) van dezelfde selectie zonder ${voorwaarde}. Dan zijn hun antwoorden terug te rekenen. Laat die voorwaarde weg of maak hem ruimer.`;
 
 // ---------- Regel E: indelingen van dezelfde wortelvariabele ----------
 
@@ -505,7 +513,6 @@ function verschilTekst(w, a, b) {
   return null;
 }
 
-export const pOverlap = (andere, waar) => `Deze indeling lijkt te veel op “${andere}”: ${waar} zitten minder dan 5 mensen. Uit het verschil tussen de twee zouden hun antwoorden terug te rekenen zijn. Kies een andere grens of gebruik de bestaande indeling.`;
 
 /** Zet een overtreding van controleerOverlap om in een melding voor de gebruiker (P_OVERLAP). */
 export function overlapMelding(w, o, ikNaam = null) {

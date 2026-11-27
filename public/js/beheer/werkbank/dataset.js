@@ -236,7 +236,11 @@ export function pasEigenschappenToe(ds, eigenschappen, alleen = null) {
     if (alleen && !alleen.has(id)) continue;
     const v = ds.perId.get(id);
     if (!v) continue;
-    if (e.meetniveau && v.soort !== 'tekst' && v.soort !== 'set') v.meetniveau = e.meetniveau;
+    if (e.meetniveau && v.soort !== 'tekst' && v.soort !== 'set') {
+      v.meetniveau = e.meetniveau;
+      // Een kolom met codes die je zelf als getal aanmerkt, is geen indeling meer (B26 geldt voor indelingen).
+      if (v.bron === 'dataset' && e.meetniveau === 'interval') v.groepering = false;
+    }
     if (e.label) v.label = e.label;
   }
 }
