@@ -1,13 +1,13 @@
 // Privacytests van de werkbank (BOUWPLAN P4 criterium 2 en 6, D2 §13.3): regels A–E en G met concrete scenario's,
 // plus B6 (twee waarden), B7 (weggevallen respondenten), B26 (frequenties zonder selectie) en "nooit de datum".
-// Scenario 7 en 8 (regressie en logistische regressie) horen bij fase 5. Uitvoeren: node --test test/werkbank-privacy.test.mjs
+// Uitvoeren: node --test test/werkbank-privacy.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { lcg, maakExport } from './werkbank-fixture.mjs';
 import { beschermIndeling, verbergMet, maskeerMetBuren, controleerOverlap, ordeStatistieken } from '../public/js/beheer/werkbank/privacy-selectie.js';
 import { maakRekenkern } from '../public/js/beheer/werkbank/rekenkern.js';
-import { uitvoerNaarBlokken, P_FILTER_REST, P_WEGGEVALLEN, P_GEEN_TOETS, P_CEL } from '../public/js/beheer/werkbank/uitvoer-tekst.js';
+import { uitvoerNaarBlokken, P_FILTER_REST, P_WEGGEVALLEN, P_GEEN_TOETS, P_CEL, P_LOGIT_CEL, P_SAMENGEVOEGD, P_SCHEIDING } from '../public/js/beheer/werkbank/uitvoer-tekst.js';
 import { pOverlap } from '../public/js/beheer/werkbank/transformaties.js';
 import { analysesVoorRapport, TE_GROOT } from '../public/js/beheer/werkbank/rapport.js';
 import { DREMPEL, LABEL_OVERIG, VERBORGEN, VERBORGEN_UITLEG, verdeelInGroepen, verbergReeks, maskeerKruistabel } from '../public/js/beheer/privacy.js';
@@ -151,6 +151,85 @@ test('scenario 6: indeling [<41, ≥41] naast [<40, ≥40] met 2 mensen van 40 w
   void rijen;
 });
 
+test('scenario 7: regressie met een voorspellergroep van 3 in de steekproef → samen met de kleinste andere groep; de kolommen kloppen', async () => {
+  // Afdeling A 20, B 15, C 7 (van wie 4 zonder score: in de steekproef 3), D 9. Over de hele bron is C groot genoeg.
+  const rijen = [];
+  const r = lcg(77);
+  const voeg = (afd, n, zonderScore = 0) => {
+    for (let i = 0; i < n; i++) rijen.push([afd, Math.round(r.getal() * 500) / 100 + 0.01, i < zonderScore ? null : Math.round((2 + r.getal() * 3) * 100) / 100 + 0.001]);
+  };
+  voeg('A', 20);
+  voeg('B', 15);
+  voeg('C', 7, 4);
+  voeg('D', 9);
+  const b = bron(['Afdeling', 'X', 'Score'], rijen);
+  const ds = b.kern.dataset({ soort: 'dataset', id: 1 });
+  assert.deepEqual(ds.perId.get('d:0').beschermd.groepen.map((g) => g.labels), [['A'], ['B'], ['C'], ['D']], 'over de hele bron niets samengevoegd');
+  const u = await b.run('regressie', { afhankelijk: 'd:2', voorspellers: ['d:1', 'd:0'] });
+  assert.ok(!u.geweigerd, meldingen(u).join(' '));
+  assert.equal(u.gegevens.n, 47);
+  const coef = tabellen(u).find((t) => t.id === 'coef-1');
+  assert.deepEqual(coef.rijen.map((x) => x[0].t), ['(Constante)', 'X', 'Afdeling: B', `Afdeling: ${LABEL_OVERIG}`], 'kolommen: X, B en de samengevoegde groep; A is de referentie');
+  const groepen = tabellen(u).find((t) => t.id === 'groepen');
+  assert.deepEqual(groepen.rijen.map((x) => [x[1].t, x[2].w, x[3].t]), [['A', 20, 'referentiegroep'], ['B', 15, 'apart in het model'], [LABEL_OVERIG, 12, 'apart in het model']]);
+  assert.deepEqual(groepen.samenstelling.map((x) => x.labels), [['A'], ['B'], ['C', 'D']]);
+  assert.ok(meldingen(u).includes(`Afdeling: ${P_SAMENGEVOEGD(['C', 'D'])}`), meldingen(u).join(' | '));
+  assert.ok(u.kleinste_n >= DREMPEL);
+  assert.deepEqual(u.methoden, ['regressie']);
+  // Met de laatste groep als referentie.
+  const laatste = await b.run('regressie', { afhankelijk: 'd:2', voorspellers: ['d:0'] }, { opties: { referentie: 'laatste' } });
+  assert.deepEqual(tabellen(laatste).find((t) => t.id === 'coef-1').rijen.map((x) => x[0].t), ['(Constante)', 'Afdeling: A', 'Afdeling: B']);
+});
+
+test('scenario 8: logistische regressie met een cel voorspeller × uitkomst van 2 → geweigerd (P_LOGIT_CEL); met 5 of meer mag het', async () => {
+  const maak = (jaB) => {
+    const rijen = [];
+    const r = lcg(8);
+    const voeg = (afd, ja, nee) => {
+      for (let i = 0; i < ja; i++) rijen.push([afd, 'ja', Math.round(r.getal() * 400) / 100 + 0.01]);
+      for (let i = 0; i < nee; i++) rijen.push([afd, 'nee', Math.round(r.getal() * 400) / 100 + 0.01]);
+    };
+    voeg('A', 8, 12);
+    voeg('B', jaB, 25 - jaB);
+    return bron(['Afdeling', 'Vertrek', 'Werkdruk'], rijen);
+  };
+  const fout = await maak(2).run('logistisch', { uitkomst: 'd:1', voorspellers: ['d:2', 'd:0'] }, { opties: { gebeurtenis: 'ja' } });
+  assert.equal(fout.geweigerd, true);
+  assert.deepEqual(meldingen(fout), [P_LOGIT_CEL('Afdeling', 'ja')]);
+  const goed = await maak(7).run('logistisch', { uitkomst: 'd:1', voorspellers: ['d:2', 'd:0'] }, { opties: { gebeurtenis: 'ja' } });
+  assert.ok(!goed.geweigerd, meldingen(goed).join(' '));
+  assert.deepEqual(goed.methoden, ['logistisch']);
+  assert.ok(goed.kleinste_n >= DREMPEL);
+  // De classificatietabel is gemaskeerd zoals een kruistabel: geen zichtbare aantallen van 0 tot 4.
+  const klas = tabellen(goed).find((t) => t.id === 'classificatie');
+  for (const rij of klas.rijen.slice(0, 2)) for (const c of rij.slice(1, 3)) assert.ok(c.verborgen || c.w >= DREMPEL);
+  // Een getal met twee waarden als voorspeller telt als indeling: elke waarde × uitkomst minstens 5 (anders geweigerd),
+  // en een waarde die bij minder dan 5 mensen voorkomt, laat die voorspeller weg (met een melding).
+  const metThuis = (grens) => {
+    const k = maakRekenkern();
+    k.stel({ data: null, datasets: [{ id: 1, naam: 'T', kolommen: ['Afdeling', 'Vertrek', 'Werkdruk', 'Thuis'], rijen: Array.from({ length: 45 }, (_, i) => [i < 20 ? 'A' : 'B', i < 8 || (i >= 20 && i < 27) ? 'ja' : 'nee', 1 + (i % 7) * 0.37, i < grens ? 1.5 : 2.5]) }], definities: [] });
+    return k.voerUit({ versie: 1, bron: { soort: 'dataset', id: 1 }, filter: null, procedure: 'logistisch', variabelen: { uitkomst: 'd:1', voorspellers: ['d:2', 'd:3'] }, opties: {} });
+  };
+  const zesJa = await metThuis(6); // de 6 mensen met 1,5 hebben allemaal "ja": cel (1,5; nee) = 0
+  assert.equal(zesJa.geweigerd, true);
+  assert.deepEqual(meldingen(zesJa), [P_LOGIT_CEL('Thuis', 'ja')]);
+  const drie = await metThuis(3);
+  assert.ok(!drie.geweigerd, meldingen(drie).join(' '));
+  assert.ok(meldingen(drie).some((m) => /^“Thuis” heeft maar twee waarden/.test(m)));
+  assert.ok(!tabellen(drie).find((t) => t.id === 'coef').rijen.some((r) => r[0].t === 'Thuis'), 'Thuis doet niet mee');
+});
+
+test('logistische regressie: (bijna) volledige scheiding wordt geweigerd; de uitkomst moet precies twee groepen hebben', async () => {
+  const rijen = Array.from({ length: 40 }, (_, i) => [i < 20 ? 'nee' : 'ja', i + 0.25, ['p', 'q', 'r'][i % 3]]);
+  const b = bron(['Vertrek', 'Score', 'Groep'], rijen);
+  const u = await b.run('logistisch', { uitkomst: 'd:0', voorspellers: ['d:1'] });
+  assert.equal(u.geweigerd, true);
+  assert.deepEqual(meldingen(u), [P_SCHEIDING]);
+  const drie = await b.run('logistisch', { uitkomst: 'd:2', voorspellers: ['d:1'] });
+  assert.equal(drie.geweigerd, true);
+  assert.match(meldingen(drie)[0], /precies twee groepen/);
+});
+
 test('scenario 9: correlatie met ja/nee waar "ja" 4 keer voorkomt → ×', async () => {
   const rijen = Array.from({ length: 40 }, (_, i) => [i < 4 ? 'ja' : 'nee', 1 + (i % 9) * 0.5, 2 + (i % 7) * 0.3]);
   const b = bron(['Vertrek', 'Score', 'Andere'], rijen);
@@ -223,6 +302,13 @@ test('B6: een ja/nee-uitkomst als interval in pergroep, t-toets en ANOVA krijgt 
   assert.deepEqual(tabellen(await b2.run('pergroep', { afhankelijk: ['d:1'], groep: 'd:0' }))[0].rijen.map((r) => r[0].t), ['A', 'B', 'C', 'D', 'Totaal']);
   const tt = await b.run('ttoets', { afhankelijk: ['d:1'], groep: 'd:0' }, { opties: { groepen: ['a', 'c'] } });
   assert.equal(tt.geweigerd, true, 't-toets met C kan niet');
+  // Regressie: een B per groep is dan een verschil in percentages; ook daar geldt de kruistabelregel.
+  const rg = await b.run('regressie', { afhankelijk: 'd:1', voorspellers: ['d:0'] });
+  assert.equal(rg.geweigerd, true, 'regressie met C kan niet');
+  assert.match(meldingen(rg)[0], /^Bij “Afdeling” heeft niet elke groep minstens 5 mensen met en 5 mensen zonder/);
+  const rg2 = await b2.run('regressie', { afhankelijk: 'd:1', voorspellers: ['d:0'] });
+  assert.ok(!rg2.geweigerd, meldingen(rg2).join(' '));
+  assert.ok(meldingen(rg2).some((m) => /logistische regressie past meestal beter/.test(m)));
 });
 
 test('B7: een themascore met 1 tot 4 weggevallen respondenten is niet te gebruiken', async () => {
@@ -302,6 +388,35 @@ test('criterium 6: uitvoerNaarBlokken geeft alleen kop/alinea/lijst/tabel/feiten
   assert.ok(getoetst >= 14, `${getoetst} uitvoeren getoetst`);
 });
 
+test('criterium 6 voor regressie, logistisch, gepaard en factoranalyse: blokken, kleinste_n ≥ 5 en methoden', async () => {
+  const data = maakExport({ nA: 160, nB: 90 });
+  const kern = maakRekenkern();
+  kern.stel({ data });
+  const specs = [
+    ['regressie', { afhankelijk: 't:11', voorspellers: ['v:1002', 'v:1003', 'v:1000'], blok2: ['v:1001'] }, {}, ['regressie']],
+    ['logistisch', { uitkomst: 'v:1005', voorspellers: ['v:1002', 'v:1004'] }, { gebeurtenis: 'ja' }, ['logistisch']],
+    ['gepaard', { x: ['v:1002', 'v:1004'], y: ['v:1003', 'v:1013'] }, {}, ['gepaard-t', 'wilcoxon']],
+    ['factoranalyse', { items: ['v:1002', 'v:1003', 'v:1012', 'v:1004', 'v:1013'] }, { methode: 'paf', aantal: '2' }, ['paf', 'varimax']],
+    ['factoranalyse', { items: ['v:1002', 'v:1003', 'v:1012', 'v:1004', 'v:1013'] }, { methode: 'pca', rotatie: 'geen' }, ['pca']],
+  ];
+  for (const b of [{ soort: 'lijst', id: 100 }, { soort: 'gestapeld', lijsten: 'alle' }]) {
+    for (const [procedure, variabelen, opties, methoden] of specs) {
+      if (b.soort === 'gestapeld' && procedure === 'factoranalyse') continue; // 1012 en 1013 staan alleen in lijst 100
+      const u = await kern.voerUit({ versie: 1, bron: b, filter: null, procedure, variabelen, opties }, { streng: true });
+      assert.ok(!u.geweigerd, `${procedure}: ${meldingen(u).join(' ')}`);
+      assert.deepEqual(u.methoden, methoden, procedure);
+      const r = uitvoerNaarBlokken(u);
+      assert.ok(r.blokken.every((x) => ['kop', 'alinea', 'lijst', 'tabel', 'feiten'].includes(x.soort)), procedure);
+      assert.ok(r.kleinste_n >= DREMPEL, `${procedure}: kleinste_n ${r.kleinste_n}`);
+      assert.ok(r.methoden.every((m) => METHODEN.has(m)), `${procedure}: ${r.methoden}`);
+      assert.ok(r.toetsen >= 1, procedure);
+      for (const t of r.blokken.filter((x) => x.soort === 'tabel')) assert.ok(t.kop.length <= 20 && t.rijen.length <= 200);
+      // Niets per persoon: geen residuen, kansen of factorscores in de uitvoer.
+      assert.ok(!/"kans"|"residu"|factorscore/i.test(JSON.stringify(u.onderdelen)), procedure);
+    }
+  }
+});
+
 test('criterium 7: een bewaarde analyse draait op nieuwe gegevens; een verwijderde variabele geeft een duidelijke melding', async () => {
   const data = maakExport();
   data.werkbank_definities = [{ id: 5, dataset_id: null, soort: 'bereken', naam: 'leiding', label: 'Leiding (eigen)', definitie: '{"functie":"gemiddelde","variabelen":["v:1004","v:1013"]}', verwijderd_op: null }];
@@ -340,6 +455,9 @@ function zichtbareAantallen(u, soort, wat) {
         const sleutel = r[0].t === 'Totaal' ? `totaal|${groepen.join('+')}` : r[0].t;
         if (Number.isFinite(r[1].w)) uit.set(`${wat}|${sleutel}`, r[1].w);
       }
+    }
+    if (soort === 'regressie' && t.id === 'groepen') {
+      t.rijen.forEach((r, i) => { if (Number.isFinite(r[2].w)) uit.set(`${wat}|${t.samenstelling[i].labels.join('+')}`, r[2].w); });
     }
     if (soort === 'kruis' && t.id === 'kruistabel') {
       const { rijen, kolommen, procentrijen } = t.samenstelling;
@@ -385,6 +503,8 @@ test('scenario 12: "aanvaller" – geneste selecties geven nooit een verschil va
       if (!u2.geweigerd) for (const [k, v] of zichtbareAantallen(u2, 'pergroep', 'pg')) alle.set(k, v);
       const u3 = await b.run('kruistabel', { rij: 'd:0', kolom: 'd:1' }, { filter: f, opties: { procenten: 'geen' } });
       if (!u3.geweigerd) for (const [k, v] of zichtbareAantallen(u3, 'kruis', 'kt')) alle.set(k, v);
+      const u4 = await b.run('regressie', { afhankelijk: 'd:3', voorspellers: ['d:0'] }, { filter: f });
+      if (!u4.geweigerd) for (const [k, v] of zichtbareAantallen(u4, 'regressie', 'rg')) alle.set(k, v);
       uitvoeren.set(f, alle);
     }
     // Geneste paren: (iedereen, S) en (S met groepen V, S met V zonder één groep).

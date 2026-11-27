@@ -1,6 +1,6 @@
 // Prestaties van de werkbank in Node (BOUWPLAN P4 criterium 4, D2 §13.6). De grenzen zijn ruim (1,5 tot 2 keer
 // de doelen in de browser), zodat een trage testmachine niet vals alarm geeft.
-// Fase 5 en 6 voegen hier regressie (20 voorspellers < 0,3 s), logistisch (< 0,5 s) en PAF (40 vragen < 1,5 s) toe.
+// Ook: regressie met 20 voorspellers < 0,3 s, logistische regressie < 0,5 s en principale assen met 40 vragen < 1,5 s.
 // Uitvoeren: node --test test/werkbank-prestaties.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -82,4 +82,48 @@ test('"Stoppen": een lopende ANOVA stopt met een AbortError en het scherm krijgt
   );
   clearInterval(klok);
   assert.ok(beurten > 0, 'de klok liep tussendoor');
+});
+
+const tijd = async (spec) => {
+  const t0 = performance.now();
+  const u = await kern.voerUit({ versie: 1, bron, filter: null, ...spec });
+  return { u, ms: performance.now() - t0 };
+};
+const vragen = (van, aantal) => Array.from({ length: aantal }, (_, i) => `v:${van + i}`);
+
+test('lineaire regressie met 20 voorspellers in minder dan 0,3 seconde', async () => {
+  const { u, ms } = await tijd({ procedure: 'regressie', variabelen: { afhankelijk: 't:105', voorspellers: vragen(10, 20) }, opties: {} });
+  assert.ok(!u.geweigerd, u.onderdelen.map((o) => o.tekst).join(' '));
+  assert.equal(u.onderdelen.find((o) => o.id === 'coef-1').rijen.length, 21);
+  assert.ok(ms < 300, `${Math.round(ms)} ms`);
+});
+
+test('logistische regressie met 20 voorspellers in minder dan 0,5 seconde', async () => {
+  const { u, ms } = await tijd({ procedure: 'logistisch', variabelen: { uitkomst: 'v:501', voorspellers: vragen(10, 20) }, opties: { gebeurtenis: 'ja' } });
+  assert.ok(!u.geweigerd, u.onderdelen.map((o) => o.tekst).join(' '));
+  assert.equal(u.onderdelen.find((o) => o.id === 'coef').rijen.length, 21);
+  assert.ok(ms < 500, `${Math.round(ms)} ms`);
+});
+
+test('factoranalyse (principale assen, varimax) met 40 vragen in minder dan 1,5 seconde', async () => {
+  for (const aantal of ['kaiser', '5']) {
+    const { u, ms } = await tijd({ procedure: 'factoranalyse', variabelen: { items: vragen(10, 40) }, opties: { methode: 'paf', aantal, rotatie: 'varimax' } });
+    assert.ok(!u.geweigerd, u.onderdelen.map((o) => o.tekst).join(' '));
+    assert.equal(u.onderdelen.find((o) => o.id === 'ladingen').rijen.length, 40);
+    assert.ok(ms < 1500, `${aantal}: ${Math.round(ms)} ms`);
+  }
+});
+
+test('"Stoppen" werkt ook bij regressie, logistische regressie, gepaard en factoranalyse', async () => {
+  for (const spec of [
+    { procedure: 'regressie', variabelen: { afhankelijk: 't:105', voorspellers: vragen(10, 20) }, opties: {} },
+    { procedure: 'logistisch', variabelen: { uitkomst: 'v:501', voorspellers: vragen(10, 5) }, opties: {} },
+    { procedure: 'gepaard', variabelen: { x: vragen(10, 3), y: vragen(20, 3) }, opties: {} },
+    { procedure: 'factoranalyse', variabelen: { items: vragen(10, 10) }, opties: {} },
+  ]) {
+    const stop = new AbortController();
+    const bezig = kern.voerUit({ versie: 1, bron, filter: null, ...spec }, { signaal: stop.signal });
+    stop.abort();
+    await assert.rejects(bezig, (e) => e.name === 'AbortError', spec.procedure);
+  }
 });
