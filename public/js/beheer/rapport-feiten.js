@@ -578,8 +578,9 @@ function feitenResultaten(f, inhoud, sectie, { verbergOpen = false } = {}) {
   } else {
     uit.push(alinea('Deze vragenlijst heeft geen schaalvragen (1 tot 5), dus er zijn geen gemiddelde scores per thema.'));
   }
-  uit.push(...cijferTabel(f, l));
+  // Beknopt (tussenrapport): alleen de thema's. Anders eerst de cijfervragen (eNPS, rapportcijfer), dan per thema de vragen.
   if (sectie.beknopt) return uit;
+  uit.push(...cijferTabel(f, l));
 
   // Per thema de vragen (de cijfervragen staan al in hun eigen tabel)
   const groepen = [];
