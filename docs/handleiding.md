@@ -230,8 +230,37 @@ Verwijder je een indeling of selectie, dan verdwijnt die uit je lijst, maar telt
 | Wijkt de verdeling af van wat je verwacht? | Chi-kwadraat aanpassingstoets | je wilt controleren of de respons lijkt op de organisatie |
 | Welke scores hangen samen? | Correlatiematrix (Pearson, Spearman, Holm) | je wilt zien welke scores samen hoger of lager zijn |
 | Meten deze vragen samen één ding? | Betrouwbaarheid (Cronbachs alfa) | je van een aantal vragen één schaalscore wilt maken |
+| Welke vragen horen bij elkaar? | Factoranalyse (hoofdcomponenten of principale assen, varimax, KMO, Bartlett) | je wilt ontdekken welke vragen samen één onderwerp meten |
+| Verschillen twee vragen bij dezelfde mensen? | Gepaarde t-toets en Wilcoxon | dezelfde mensen twee vragen beantwoordden en je die wilt vergelijken |
+| Wat voorspelt een score? | Lineaire regressie (met een tweede blok, β, tolerantie en VIF) | je wilt weten welke dingen samen een score voorspellen |
+| Wat voorspelt een ja/nee-uitkomst, zoals vertrekwens? | Logistische regressie (odds ratio's, Nagelkerke R², classificatietabel) | de uitkomst twee groepen heeft, zoals wel of niet willen vertrekken |
 
-Regressie, logistische regressie, de gepaarde vergelijking en factoranalyse komen later.
+Onder *Meer opties* vind je per analyse de extra keuzes, zoals de post-hoctoets, de referentiegroep of het aantal factoren.
+
+**Lineaire regressie lezen.** Kies bij *Score* wat je wilt verklaren (bijvoorbeeld een themascore) en bij *Voorspellers* waarmee. Een getal (een vraag of score) doet mee als getal; een indeling (zoals afdeling) doet mee als groepen, die elk worden vergeleken met een *referentiegroep* (standaard de grootste groep; dat zie je in de tabel *Voorspellers met groepen*). In SPSS moet je daarvoor zelf dummy's maken; hier gebeurt dat vanzelf.
+- *Modeloverzicht*: R² is het deel van de verschillen in de score dat de voorspellers samen verklaren (0,24 = 24%). Met een *tweede blok* zie je hoeveel de extra voorspellers daar nog aan toevoegen (R²-verandering), net als *Block 2* in SPSS.
+- *Variantieanalyse*: de toets of het model als geheel iets verklaart.
+- *Coëfficiënten*: B is hoeveel de score gemiddeld verandert als de voorspeller 1 punt hoger is (en de rest gelijk blijft); bij een groep is B het verschil met de referentiegroep. β maakt de voorspellers onderling vergelijkbaar. *Tolerantie* en *VIF* laten zien of voorspellers te veel op elkaar lijken; bij een VIF boven 5 krijg je een waarschuwing.
+- Bij een voorspeller met meer dan twee groepen staat er een toets van die voorspeller *als geheel*.
+- *Gestandaardiseerde residuen*: hoe goed het model past (gemiddeld 0, SD ongeveer 1). Residuen per persoon zie je niet.
+- Heb je weinig respondenten voor zoveel voorspellers (minder dan 50 + 8 per voorspeller), dan waarschuwt de werkbank. Kan een voorspeller volledig uit de andere worden voorspeld (bijvoorbeeld twee keer dezelfde vraag), dan laat de werkbank hem weg en zegt dat.
+
+**Logistische regressie lezen.** Kies bij *Uitkomst* een indeling met precies twee groepen, zoals een ja/nee-vraag (of maak die eerst met *Indelen in groepen*), en bij *Waar kijk je naar?* de groep waarvan je de kans wilt voorspellen, bijvoorbeeld *Ja*.
+- *Toets van het model* en *Nagelkerke R²*: zeggen de voorspellers samen iets over de uitkomst, en hoeveel (Nagelkerke is een soort R² tussen 0 en 1).
+- *Classificatietabel*: hoeveel mensen het model goed indeelt (afkappunt 0,5).
+- *Variabelen in de vergelijking*: Exp(B) is de odds ratio. Boven 1 betekent: bij een hogere score (of in deze groep, vergeleken met de referentiegroep) meer kans op de uitkomst; onder 1 minder kans. Het 95%-BI laat zien hoe zeker dat is: ligt 1 erbinnen, dan is het verband niet significant.
+- Voorspelt een voorspeller de uitkomst (bijna) perfect, dan zijn de odds ratio's niet te schatten. De werkbank zegt dat dan (*volledige scheiding*) en rekent niet verder.
+
+**Gepaard vergelijken.** Hiermee vergelijk je twee vragen die dezelfde mensen beantwoordden, bijvoorbeeld *"Ik heb genoeg tijd"* en *"Ik heb genoeg energie"*. Vink de eerste en de tweede vragen in dezelfde volgorde aan; onder de vakjes zie je welke paren je hebt gemaakt. Je krijgt de gemiddelden, de gepaarde t-toets (verschil = eerste min tweede, met dz als effectgrootte) en de toets van Wilcoxon (met rangnummers; handig bij losse vragen van 1 tot 5). Een nulmeting en een vervolgmeting kun je zo **niet** vergelijken: de antwoorden zijn anoniem en dus niet per persoon te koppelen. Gebruik daarvoor *Alle vragenlijsten samen* en een t-toets of ANOVA met *meetmoment* als groep.
+
+**Factoranalyse lezen.** Kies minstens drie vragen (en minstens 50 respondenten die alles beantwoordden).
+- *KMO en de toets van Bartlett*: KMO boven 0,6 en een significante toets van Bartlett betekenen dat de vragen genoeg samenhangen. Bij een KMO onder 0,5 krijg je een waarschuwing.
+- *Verklaarde variantie* en de *screeplot*: hoeveel factoren er zijn. Standaard kiest de werkbank alle factoren met een eigenwaarde groter dan 1 (zoals SPSS); je kunt ook zelf een aantal kiezen.
+- *Ladingen na rotatie (varimax)*: hoe sterk elke vraag bij een factor hoort. De vragen staan op volgorde van hun factor; ladingen kleiner dan 0,30 staan er niet bij (dat kun je uitzetten). Vanaf 0,40 telt een vraag duidelijk mee.
+- Met **Maak van factor 1 een schaalscore** maak je meteen een schaalscore van de vragen die het sterkst bij die factor horen (vragen met een negatieve lading worden omgescoord). Controleer die schaal daarna met *Betrouwbaarheid*.
+- *Principale assen* (standaard) zoekt wat de vragen gemeen hebben; *Hoofdcomponenten* vat alle verschillen samen. Geeft de berekening een communaliteit van 1 of meer (een *Heywood-geval*), dan krijg je een waarschuwing: kies dan minder factoren.
+
+**Stoppen.** Een grote analyse (bijvoorbeeld een ANOVA met veel groepen) kan even duren. Je ziet dan *Bezig met rekenen…* met de knop **Stoppen**; het scherm blijft ondertussen gewoon bruikbaar.
 
 **Uitvoer.** De nieuwste uitkomst staat bovenaan, met tabellen, *Wat betekent dit?* en een zin in APA-stijl met **Kopieer zin**. Per uitkomst: **Bewaren als analyse**, **Neem op in stuk**, **Naar Excel**, **Naar Word** en **Weghalen**; daarnaast **Hele uitvoer naar Excel** en **Hele uitvoer naar Word** (*geschikt om te delen*). De uitvoer blijft staan zolang je de pagina niet ververst. Op een telefoon wordt een correlatiematrix een lijst met paren.
 
@@ -246,8 +275,16 @@ Regressie, logistische regressie, de gepaarde vergelijking en factoranalyse kome
 - Minimum en maximum zijn de 5e laagste en de 5e hoogste waarde; de mediaan staat er pas bij vanaf 9 mensen.
 - Bij *Frequenties* zonder selectie zie je bij gewone vragen de hele verdeling, net als op het dashboard; bij achtergrondkenmerken en indelingen worden aantallen van 1 tot 4 verborgen. In een rapport worden ze altijd verborgen.
 - De datum van invullen en open antwoorden komen nooit in de werkbank; codes bij open antwoorden wel (als 0/1).
+- Bij regressie en logistische regressie heeft elke groep van een voorspeller minstens 5 mensen; kleinere groepen worden samengevoegd. Bij een logistische regressie (en bij een regressie op een ja/nee-score) moet elke groep van een voorspeller minstens 5 mensen *met* en 5 mensen *zonder* de uitkomst hebben; anders weigert de werkbank, omdat de uitkomst dan iets over een kleine groep verraadt. Voeg dan groepen samen of laat die voorspeller weg.
+- Er komen nooit residuen, voorspelde kansen of factorscores per persoon in beeld.
 
-**Verschillen met SPSS.** De werkbank gebruikt dezelfde formules en is gecontroleerd met SciPy en statsmodels. Kleine verschillen: Mann-Whitney geeft z met continuïteitscorrectie (SPSS zonder; verschil in de 2e of 3e decimaal), de post-hoctoets is standaard Games-Howell (Tukey kan ook), en minimum en maximum zijn de 5e laagste en hoogste waarde.
+**Verschillen met SPSS.** De werkbank gebruikt dezelfde formules en is gecontroleerd met SciPy en statsmodels. Kleine verschillen:
+- Mann-Whitney geeft z met continuïteitscorrectie (SPSS zonder; verschil in de 2e of 3e decimaal).
+- De post-hoctoets is standaard Games-Howell (Tukey kan ook).
+- Minimum en maximum zijn de 5e laagste en hoogste waarde.
+- Bij een voorspeller met groepen is de referentiegroep standaard de grootste groep (in SPSS meestal de laatste); je kunt ook de eerste of de laatste kiezen.
+- Principale assen rekent door tot de communaliteiten minder dan 0,000001 veranderen (hooguit 250 stappen); SPSS stopt standaard na 25 stappen of bij 0,001. Ladingen kunnen daardoor in de 3e decimaal verschillen. Het teken van een factor (alle ladingen positief of negatief) kan ook verschillen; dat betekent niets.
+- Wilcoxon geeft z zonder continuïteitscorrectie, zoals SPSS; r = z / √N, met N het aantal paren met een verschil.
 
 ## 6. Eigen invoer
 
