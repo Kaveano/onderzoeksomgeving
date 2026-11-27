@@ -15,6 +15,8 @@ import {
 } from '../rapport-feiten.js';
 import { toonBlokken } from '../rapport-weergave.js';
 import { slug } from '../export.js';
+import { haalGegevens, voortgangTekst } from '../gegevens.js';
+import { dashboardUitRijen, rijenUitExport } from '../dashboard-rekenen.js';
 
 const WACHTTIJD = 1200; // ms stilte na typen voordat we opslaan
 const OPNIEUW_NA = 10000;
@@ -168,15 +170,15 @@ export async function toon(container, ctx) {
 
   // ---------- Feiten (cijfers uit het onderzoek) ----------
 
-  async function werkFeitenBij({ stil = false } = {}) {
-    const data = await api.get(`/onderzoeken/${onderzoekId}/export/data`);
+  // De gegevens komen uit de gedeelde kopie in de browser (gegevens.js); de dashboards per vragenlijst rekent de
+  // browser zelf uit met dezelfde code als de server (dashboard-rekenen.js). Zo is er geen verzoek per vragenlijst.
+  async function werkFeitenBij({ stil = false, voortgang = null } = {}) {
+    const data = await haalGegevens(onderzoekId, { voortgang });
     const lijsten = data.vragenlijsten || [];
-    const dashboards = [];
-    if (lijsten.length) {
-      for (const l of lijsten) dashboards.push(await api.get(`/onderzoeken/${onderzoekId}/dashboard?vragenlijst=${l.id}`));
-    } else {
-      dashboards.push(await api.get(`/onderzoeken/${onderzoekId}/dashboard`));
-    }
+    const rijen = rijenUitExport(data);
+    const dashboards = lijsten.length
+      ? lijsten.map((l) => dashboardUitRijen(rijen, { vragenlijst: String(l.id), uitsplitsen: null }))
+      : [dashboardUitRijen(rijen, { vragenlijst: null, uitsplitsen: null })];
     const nieuw = verzamelFeiten({ data, dashboards, peildatum: vandaag() });
     await api.put(`/rapporten/${rapportId}/feiten`, { feiten: nieuw });
     feiten = nieuw;
@@ -236,7 +238,7 @@ export async function toon(container, ctx) {
         b.disabled = true;
         b.textContent = 'Bezig met ophalen…';
         try {
-          await werkFeitenBij();
+          await werkFeitenBij({ voortgang: (geladen, totaal) => { b.textContent = voortgangTekst(geladen, totaal); } });
           tekenSchrijven();
         } catch (fout) {
           meldFout(fout);
@@ -479,6 +481,8 @@ export async function toon(container, ctx) {
       h('div', { class: 'rp-balk' },
         h('div', { class: 'rp-balk-links' },
           h('span', { class: `label ${rapport.soort === 'eind' ? 'label-primair' : ''}` }, RAPPORTSOORTEN[rapport.soort] || 'Rapport'),
+          // Een rapport toont geen uitkomsten van minder dan 5 respondenten (BOUWPLAN B30), anders dan de ruwe exports.
+          h('span', { class: 'label label-succes', title: 'Een rapport bevat geen uitkomsten van minder dan 5 respondenten.' }, 'geschikt om te delen'),
           statusEl),
         h('div', { class: 'knoppen rp-balk-knoppen' },
           h('div', { class: 'rp-wissel', role: 'group', 'aria-label': 'Weergave' }, wissel('schrijven', ctx.alleenLezen ? 'Hoofdstukken' : 'Schrijven'), wissel('voorbeeld', 'Voorbeeld')),
@@ -518,9 +522,10 @@ export async function toon(container, ctx) {
 
   // Nieuw rapport: de cijfers meteen ophalen, zodat de hoofdstukken gevuld zijn.
   if (!feiten && !ctx.alleenLezen) {
-    vervang(container, laden('De cijfers uit je onderzoek worden opgehaald…'));
+    const ladenEl = laden('De cijfers uit je onderzoek worden opgehaald…');
+    vervang(container, ladenEl);
     try {
-      await werkFeitenBij({ stil: true });
+      await werkFeitenBij({ stil: true, voortgang: (geladen, totaal) => { ladenEl.textContent = voortgangTekst(geladen, totaal); } });
     } catch (e) {
       meldFout(e);
     }

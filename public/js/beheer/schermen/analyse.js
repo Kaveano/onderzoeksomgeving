@@ -4,8 +4,9 @@
 //   2. verschil tussen groepen           5. verband tussen twee keuzevragen (chi-kwadraat)
 //   3. samenhang tussen scores
 //
-// Alle berekeningen gebeuren in de browser, op de gegevens van GET .../export/data, met de
-// rekenfuncties uit ../statistiek.js. De server hoeft er niets extra's voor te doen.
+// Alle berekeningen gebeuren in de browser, op de gegevens van het onderzoek (gegevens.js: dezelfde inhoud als
+// GET .../export/data, één keer per sessie opgehaald), met de rekenfuncties uit ../statistiek.js. De server hoeft
+// er niets extra's voor te doen.
 //
 // Scores per respondent:
 // - thema- of meetpuntscore: het gemiddelde van de geldige antwoorden (1 tot 5) op de schaalvragen van
@@ -17,8 +18,8 @@
 // ook de kleinste andere groep of cel weg, zodat een kleine groep niet uit het totaal is terug te
 // rekenen (dezelfde regel als in de uitsplitsing op het dashboard).
 
-import { api } from '../api.js';
 import { h, vervang, leeg, laden, melding, getal, aantal, tabSubnav } from '../ui.js';
+import { haalGegevens, voortgangTekst } from '../gegevens.js';
 import * as S from '../statistiek.js';
 import { neemOpInStuk } from '../stukdialoog.js';
 import { bouwModel, schaalWaarde, isKeuzevraag, vragenVan, waardenVan } from '../analyse-model.js';
@@ -297,8 +298,9 @@ export async function toon(container, ctx) {
   ctx.zetTitel(`Analyse – ${ctx.onderzoek.onderzoek.titel}`);
 
   const subnavEl = tabSubnav('analyse', onderzoekId, '');
-  vervang(container, subnavEl, h('div', { class: 'analyse' }, laden('De antwoorden worden geladen…')));
-  const data = await api.get(`/onderzoeken/${onderzoekId}/export/data`);
+  const ladenEl = laden('De antwoorden worden geladen…');
+  vervang(container, subnavEl, h('div', { class: 'analyse' }, ladenEl));
+  const data = await haalGegevens(onderzoekId, { voortgang: (geladen, totaal) => { ladenEl.textContent = voortgangTekst(geladen, totaal); } });
   if (!container.isConnected) return;
   const model = bouwModel(data);
 

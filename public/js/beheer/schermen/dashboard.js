@@ -11,6 +11,8 @@ import {
   h, vervang, leeg, laden, melding, meld, meldFout, getal, procent, datum, aantal, kopieer, statusLabel, bevestig, tabSubnav,
 } from '../ui.js';
 import { VERBORGEN, VERBORGEN_UITLEG } from '../privacy.js';
+import { haalGegevens, voortgangTekst, bekendAantal, GROOT_ONDERZOEK } from '../gegevens.js';
+import { dashboardUitRijen, rijenUitExport } from '../dashboard-rekenen.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const OPEN_EERST = 10; // zoveel open antwoorden direct tonen, de rest via "Toon alle"
@@ -191,12 +193,30 @@ export async function toon(container, ctx) {
   });
 
   const filterEl = h('div', { class: 'db-filter' });
-  const inhoud = h('div', { class: 'db-inhoud' }, laden('De resultaten worden geladen…'));
+  const ladenEl = laden('De resultaten worden geladen…');
+  const inhoud = h('div', { class: 'db-inhoud' }, ladenEl);
   let uitsplitsInhoud = null;
   // Een kijker (deellink) gebruikt dit scherm ook, maar krijgt geen sub-navigatie: het Overzicht is alleen voor de beheerder.
   vervang(container, ctx.kijker ? null : tabSubnav('dashboard', onderzoekId, 'resultaten'), h('div', { class: 'dashboard' }, filterEl, inhoud));
 
   // ---------- Gegevens ophalen ----------
+
+  // Een groot onderzoek (meer dan GROOT_ONDERZOEK inzendingen) rekent de browser zelf uit, met dezelfde code als de
+  // server (dashboard-rekenen.js) en de gedeelde kopie van de gegevens (gegevens.js). Zo blijft de server binnen
+  // de gratis rekentijd. Bij een gewoon onderzoek rekent de server, zoals altijd.
+  let groot = null; // per bezoek aan dit scherm één keer bepaald
+  let lokaleRijen = null; // de rijen van een groot onderzoek, één keer per bezoek opgehaald
+
+  async function isGroot() {
+    if (groot !== null) return groot;
+    let n = bekendAantal(onderzoekId);
+    if (n === null) {
+      const { vragenlijsten } = await api.get(`/onderzoeken/${onderzoekId}/vragenlijsten`);
+      n = vragenlijsten.reduce((som, l) => som + (Number(l.aantal_inzendingen) || 0), 0);
+    }
+    groot = n > GROOT_ONDERZOEK;
+    return groot;
+  }
 
   async function haal() {
     const q = new URLSearchParams();
@@ -205,6 +225,16 @@ export async function toon(container, ctx) {
     const qs = q.toString();
     // Een kijker (deellink) haalt de gegevens via een eigen, beperkt adres.
     if (ctx.haalDashboard) return ctx.haalDashboard(qs);
+    if (await isGroot()) {
+      if (!lokaleRijen) {
+        const export_ = await haalGegevens(onderzoekId, {
+          voortgang: (geladen, totaal) => { ladenEl.textContent = voortgangTekst(geladen, totaal); },
+        });
+        lokaleRijen = rijenUitExport(export_);
+      }
+      // Precies zoals de server de keuze leest (de adresbalk geeft tekst of niets).
+      return dashboardUitRijen(lokaleRijen, { vragenlijst: q.get('vragenlijst'), uitsplitsen: q.get('uitsplitsen') });
+    }
     return api.get(`/onderzoeken/${onderzoekId}/dashboard${qs ? `?${qs}` : ''}`);
   }
 
@@ -231,7 +261,7 @@ export async function toon(container, ctx) {
       } else {
         vervang(inhoud, melding([
           h('p', {}, h('strong', {}, 'Het dashboard kon niet worden geladen. '), e.message || ''),
-          h('button', { type: 'button', class: 'knop knop-klein', onclick: () => { vervang(inhoud, laden()); laad(); } }, 'Opnieuw proberen'),
+          h('button', { type: 'button', class: 'knop knop-klein', onclick: () => { ladenEl.textContent = 'De resultaten worden geladen…'; vervang(inhoud, ladenEl); laad(); } }, 'Opnieuw proberen'),
         ], 'gevaar'));
       }
       return false;
