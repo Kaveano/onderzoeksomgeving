@@ -92,6 +92,49 @@ Je kunt alles toevoegen, wijzigen, verwijderen en in een andere volgorde zetten.
 - Een thema dat nog vragen of eigen invoer heeft, kun je pas verwijderen als je die eerst hebt verplaatst of verwijderd.
 - Met **Opslaan als sjabloon** (onderaan het tabblad Opzet) bewaar je de opzet van dit onderzoek als nieuw sjabloon voor het volgende bedrijf. De bedrijfsnaam wordt dan automatisch vervangen door `{bedrijf}`.
 
+## Bibliotheek: bronnen voor je onderzoek
+
+<!-- [P5] Bibliotheek. Bewust zonder nummer, zodat de nummers van de andere hoofdstukken gelijk blijven; P6 nummert bij de eindcontrole. -->
+
+Bovenin staat naast **Onderzoeken** en **Sjablonen** de **Bibliotheek**: één verzameling bronnen voor al je onderzoeken. Hier zoek je onderzoek, rapporten, boeken, wetten en websites om je onderzoek op te baseren, en bewaar je je eigen bronnen.
+
+**Twee soorten bronnen**
+- **Startcollectie**: openbare bronnen over HR-onderzoek, gecontroleerd door een onderzoeksteam. Deze bronnen kun je niet aanpassen, zodat ze kloppen zoals ze zijn gecontroleerd. Wel kun je er **eigen notities** bij zetten, ze aan een onderzoek koppelen en ze **verbergen** als je ze niet wilt zien. Wil je iets veranderen, kies dan **Eigen kopie maken**; die kopie kun je wel aanpassen. Verborgen bronnen haal je terug met **Startcollectie terugzetten** bovenaan de bibliotheek, of met **Weer tonen** bij de bron zelf. Staat er nog niets in de startcollectie, dan zie je: "De startcollectie wordt nog toegevoegd. Je kunt nu al eigen bronnen toevoegen."
+- **Eigen bronnen**: wat je zelf toevoegt, plakt of inleest. Die kun je aanpassen en verwijderen.
+
+**Zoeken**
+- Typ een paar woorden, bijvoorbeeld *verzuim jongeren* of *werkdruk zorg*. Je hoeft niet precies te typen: *medewerkers* vindt ook *medewerker*, *verzuim* vindt ook *ziekteverzuim*, en *verloop* vindt ook bronnen over *turnover* of *uitstroom*.
+- Zet woorden tussen aanhalingstekens om ze precies zo samen te vinden: *"nieuwe medewerkers"*.
+- Eerst zie je bronnen met al je woorden. Zijn die er niet, dan zie je bronnen met een deel van de woorden (dat staat er dan bij).
+- Met de **filters** kies je onderwerp, soort bron, jaar, taal, collectie, betrouwbaarheid en bronnen met eigen notities. Op een telefoon klap je de filters open met **Filters**.
+- **Sorteren op**: Best passend, Nieuwste eerst, Oudste eerst, Titel, Auteur of Laatst toegevoegd.
+
+**Een bron toevoegen**
+1. Klik op **+ Bron toevoegen**.
+2. Het snelst: open **Plak een verwijzing** en plak een verwijzing, bijvoorbeeld uit Google Scholar (knop *Citeer*, kies *APA*). Klik op **Velden invullen**. De app vult soort, auteurs, jaar, titel, tijdschrift, jaargang, nummer, pagina's en DOI of link in. Wat hij niet herkent, staat eronder ("Deze velden zijn niet herkend: …"). **Controleer daarna alle velden**; de app zoekt niets op internet op.
+3. Is een organisatie de auteur, zoals CBS of TNO? Laat de auteurs leeg en vul de organisatie in, met een afkorting voor in de tekst (bijvoorbeeld CBS).
+4. Geen jaartal? Laat het jaar leeg; in de verwijzing staat dan *z.d.* (zonder datum).
+5. Een DOI heeft de voorkeur boven een link.
+6. Kies onderwerpen, de betrouwbaarheid en eventueel kernpunten (één per regel).
+7. Klik op **Opslaan**. De bron krijgt een vaste code voor rapporten, bijvoorbeeld `[@bakker2017]`. Staat de bron er al in (zelfde DOI, of zelfde titel en jaar), dan vraagt de app eerst of je hem toch apart wilt toevoegen.
+
+**Citeer**: bij elke bron laat **Citeer** zien hoe je ernaar verwijst, met een knop **Kopieer** per vorm:
+- in de literatuurlijst (APA, 7e editie, Nederlandse schrijfwijze), bijvoorbeeld *Bakker, A. B., & Demerouti, E. (2017). …*;
+- in je tekst tussen haakjes: *(Bakker & Demerouti, 2017)*;
+- in je tekst in de zin: *Bakker en Demerouti (2017)*;
+- de code voor een rapport: `[@bakker2017]`.
+Een organisatie met een afkorting noem je de eerste keer voluit: *(Centraal Bureau voor de Statistiek [CBS], 2024)*, daarna *(CBS, 2024)*.
+
+**Koppelen aan een onderzoek**: met **Koppel aan onderzoek** zet je een bron bij een onderzoek, eventueel met waarvoor je hem gebruikt. Je ziet de bronnen van een onderzoek in het tabblad **Rapport**, onderdeel **Bronnen**. Daar vind je ook **Passende bronnen zoeken** (op grond van de thema's en de onderzoeksvraag), **Bron uit de bibliotheek koppelen** en de literatuurlijst (Word) of RIS van die bronnen.
+
+**Eigen notities** zijn alleen voor jou. Ze komen nooit in een rapport, een deellink of een RIS-bestand (tenzij je bij exporteren zelf **Eigen notities meenemen** aanzet).
+
+**Importeren en exporteren**
+- **Importeren**: kies een RIS-bestand (.ris) uit Zotero, Mendeley of EndNote. Je ziet eerst hoeveel bronnen erin staan en welke al in je bibliotheek staan; die worden overgeslagen.
+- **Exporteren**: de gevonden bronnen of de hele bibliotheek, als **Literatuurlijst (Word)**, **Excel** (je eigen overzicht) of **RIS** (om in Zotero, Mendeley of EndNote in te lezen).
+
+**Betrouwbaarheid**: *Hoog* (wetenschappelijk getoetst, officiële statistiek of wet- en regelgeving), *Redelijk* (rapport van een bekend instituut, overheid of vakliteratuur), *Beperkt* (mening, blog, commerciële bron of klein onderzoek zonder verantwoording) of *Nog niet beoordeeld*. Gebruik in een rapport bij voorkeur bronnen met een hoge betrouwbaarheid, en controleer altijd de originele bron.
+
 ## 3. Een vragenlijst maken en uitzetten
 
 1. Ga naar het tabblad **Vragenlijsten** en open een vragenlijst met **Bewerken**, of maak een nieuwe.
@@ -382,3 +425,4 @@ Goed om te weten:
 - Van **meelezers** met een deellink wordt niets bewaard, behalve de datum waarop de link het laatst is bekeken. Van de toegangscode wordt alleen een onleesbare versie (hash) bewaard.
 - **E-mailadressen** worden nergens bewaard. Uitnodigingen verstuur je vanuit je eigen e-mailprogramma.
 - Bestanden die je **inleest** worden in je eigen browser gelezen; alleen de gegevens die je kiest, worden opgeslagen.
+- **Bibliotheek** (P5): alleen jij kunt de bibliotheek zien. Een meelezer krijgt van een bron hooguit de verwijzing (auteur, jaar, titel, vindplaats) als die in een gedeeld rapport wordt genoemd. Je eigen notities bij een bron en bij een koppeling komen nooit in een rapport, een deellink of een RIS-bestand (tenzij je dat bij exporteren zelf aanzet).

@@ -26,6 +26,7 @@ import * as inlezen from './routes/inlezen.js';
 // [P3] HR-analytics (instellingen, personeelscijfers)
 // [P4] Werkbank (definities, analyses)
 // [P5] Bibliotheek, bronnen bij een onderzoek en coderen
+import * as bibliotheek from './routes/bibliotheek.js';
 // [P6] Rapporten v2
 
 const B = '/api/beheer';
@@ -129,6 +130,19 @@ const BEHEER_ROUTES = [
   // [P3] HR-analytics: instellingen en personeelscijfers
   // [P4] Werkbank: definities en analyses
   // [P5] Bibliotheek, bronnen bij een onderzoek en coderen
+  // (vaste paden voor :id, zoals bij de sjablonen)
+  ['GET', `${B}/bibliotheek`, bibliotheek.lijst],
+  ['POST', `${B}/bibliotheek`, bibliotheek.nieuw],
+  ['POST', `${B}/bibliotheek/reeks`, bibliotheek.reeks],
+  ['POST', `${B}/bibliotheek/herstellen`, bibliotheek.herstellen],
+  ['GET', `${B}/bibliotheek/:id`, bibliotheek.detail],
+  ['PUT', `${B}/bibliotheek/:id`, bibliotheek.wijzig],
+  ['DELETE', `${B}/bibliotheek/:id`, bibliotheek.verwijder],
+  ['POST', `${B}/bibliotheek/:id/kopie`, bibliotheek.kopie],
+  ['PUT', `${B}/bibliotheek/:id/verbergen`, bibliotheek.verbergen],
+  ['GET', `${B}/onderzoeken/:id/bronnen`, bibliotheek.onderzoekBronnen],
+  ['PUT', `${B}/onderzoeken/:id/bronnen/:bron`, bibliotheek.koppel],
+  ['DELETE', `${B}/onderzoeken/:id/bronnen/:bron`, bibliotheek.ontkoppel],
   // [P6] Rapporten v2
 ];
 
