@@ -395,3 +395,57 @@ test('meelezer: boven KIJK_MAX_INZENDINGEN geen live dashboard, met een duidelij
   await assert.rejects(vraag({ ...env, KIJK_MAX_INZENDINGEN: '29' }), (e) => e.status === 413 && e.message === 'Deze resultaten zijn te groot om hier live te tonen. Vraag de onderzoeker om een rapport.');
   assert.equal((await vraag({ ...env, KIJK_MAX_INZENDINGEN: '30' })).status, 200, 'precies op de grens mag nog');
 });
+
+// ---------- Verloop van een ja/nee-achtergrondvraag: elke bijdragende vragenlijst moet op zich veilig zijn ----------
+
+/** Rijen voor dashboardUitRijen zonder database: dezelfde stamvraag (leidinggevend) in drie vragenlijsten. */
+function rijenLeidinggevend(lijsten, aantallen) {
+  const q = (id, lijst, bron) => ({ id, vragenlijst_id: lijst, thema_id: 9, meetpunt_id: null, type: 'janee', tekst: 'Geef je zelf leiding aan een of meer medewerkers?', toelichting: '', opties: '[]', schaal_soort: 'eens', meerdere_antwoorden: 0, verplicht: 0, weet_niet: 0, uitsplitsen: 1, bron_vraag_id: bron, volgorde: 1, kenmerk: 'leidinggevend' });
+  const vragen = lijsten.map((l, i) => q(11 + i, l.id, i ? 11 : null));
+  const inz = [];
+  lijsten.forEach((l, i) => {
+    const [ja, nee, leeg = 0] = aantallen[i];
+    for (let k = 0; k < ja; k++) inz.push({ vragenlijst_id: l.id, datum: '2026-01-01', a: { [11 + i]: 'ja' } });
+    for (let k = 0; k < nee; k++) inz.push({ vragenlijst_id: l.id, datum: '2026-01-01', a: { [11 + i]: 'nee' } });
+    for (let k = 0; k < leeg; k++) inz.push({ vragenlijst_id: l.id, datum: '2026-01-01', a: {} });
+  });
+  return {
+    onderzoek: { id: 1, bedrijfsnaam: 'X', titel: 'Y', status: 'actief' },
+    schalen: {},
+    themas: [{ id: 9, naam: 'Achtergrond' }],
+    meetpunten: [],
+    meetmomenten: [{ id: 1, naam: '2025', datum: '2025-01-01' }, { id: 2, naam: '2026', datum: '2026-01-01' }],
+    vragenlijsten: lijsten,
+    vragen,
+    inzendingen: inz,
+    eigen_invoer: [],
+  };
+}
+const LIJSTEN_VERLOOP = [
+  { id: 1, titel: 'Noord 2025', status: 'gesloten', code: 'a', meetmoment_id: 1, aantal_uitgenodigd: null },
+  { id: 2, titel: 'Zuid 2025', status: 'gesloten', code: 'b', meetmoment_id: 1, aantal_uitgenodigd: null },
+  { id: 3, titel: 'Alles 2026', status: 'gesloten', code: 'c', meetmoment_id: 2, aantal_uitgenodigd: null },
+];
+const MAG_ALLES = { dashboard: true, open_antwoorden: false, tussenstand: false, stukken: [], rapporten: [] };
+
+test('verloop ja/nee-achtergrondvraag: een verborgen aantal in één vragenlijst is niet terug te rekenen uit het meetmoment', () => {
+  // Noord ja 10 / nee 10 (zichtbaar), Zuid ja 3 / nee 10 (gemaskeerd); samen 2025 = 13 / 20 zou ja(Zuid) = 3 verraden.
+  const rijen = rijenLeidinggevend(LIJSTEN_VERLOOP, [[10, 10], [3, 10], [10, 10]]);
+  const kijk = (lijst) => kijkerDashboard(structuredClone(dashboardUitRijen(rijen, { vragenlijst: lijst, uitsplitsen: null })), MAG_ALLES).selectie.vragen[0];
+  assert.deepEqual(kijk(1).verdeling.map((v) => v.aantal), [10, 10, 0]);
+  assert.deepEqual(kijk(2).verdeling.map((v) => v.aantal), [null, null, null]);
+  const beheer = dashboardUitRijen(rijen, { vragenlijst: 3, uitsplitsen: null }).selectie.vragen[0].verloop;
+  assert.deepEqual(beheer.find((p) => p.meetmoment_id === 1), { meetmoment_id: 1, naam: '2025', percentage_ja: null, n: null, klein: true, open: false });
+  const punt = kijk(3).verloop.find((p) => p.meetmoment_id === 1);
+  assert.equal(punt.percentage_ja, null);
+  assert.equal(punt.n, null);
+  assert.equal(kijk(3).verloop.find((p) => p.meetmoment_id === 2).percentage_ja, 50, 'het eigen meetmoment blijft zichtbaar');
+  // Ook een kleine "Niet ingevuld" in één vragenlijst (Zuid: 2 lieten de vraag open) verbergt het punt.
+  const leeg = rijenLeidinggevend(LIJSTEN_VERLOOP, [[10, 10], [6, 10, 2], [10, 10]]);
+  assert.equal(dashboardUitRijen(leeg, { vragenlijst: 3, uitsplitsen: null }).selectie.vragen[0].verloop.find((p) => p.meetmoment_id === 1).percentage_ja, null);
+  // Zijn alle vragenlijsten op zich veilig, dan blijft het punt staan.
+  const veilig = rijenLeidinggevend(LIJSTEN_VERLOOP, [[10, 10], [5, 10], [10, 10]]);
+  const p = kijkerDashboard(structuredClone(dashboardUitRijen(veilig, { vragenlijst: 3, uitsplitsen: null })), MAG_ALLES).selectie.vragen[0].verloop.find((x) => x.meetmoment_id === 1);
+  assert.equal(p.n, 35);
+  assert.equal(p.percentage_ja, Math.round((15 / 35) * 10000) / 100);
+});
