@@ -71,10 +71,12 @@ Grenzen die de app zelf stelt, zodat één verzoek altijd binnen de gratis reken
 
 **Deellinks (meelezers)**
 - Een meelezer heeft de link (`/d/<code>`, niet te raden) én een toegangscode van 10 tekens nodig. Van de toegangscode staat alleen een hash met zout in de database.
-- Na 5 verkeerde codes per link volgt 15 minuten wachttijd (ondeelbaar geteld).
+- Na 5 verkeerde codes per afzender per link volgt 15 minuten wachttijd; voor alle afzenders samen geldt maximaal 50 per link (beide ondeelbaar geteld). Voor dat tellen wordt dezelfde niet terug te rekenen afzendercode bewaard als bij het inloggen; die wordt na een dag gewist.
 - Een meelezer krijgt een eigen sessiecookie per link (`__Host-kijk-…`, HttpOnly, Secure, SameSite=Strict, 8 uur). Intrekken, een nieuwe code, verlopen of verwijderen beëindigt lopende sessies direct.
-- De server geeft een meelezer alleen wat is aangevinkt. Uitkomsten van een vragenlijst, vraag, thema of meetmoment met minder dan 5 respondenten worden aan de serverkant weggelaten, net als open antwoorden (tenzij aangevinkt) en links naar vragenlijsten.
-- Van meelezers wordt alleen de datum van het laatste bezoek per link bewaard.
+- De server geeft een meelezer alleen wat is aangevinkt. Uitkomsten van een vragenlijst, vraag, thema of meetmoment met minder dan 5 respondenten worden aan de serverkant weggelaten, net als open antwoorden (tenzij aangevinkt) en links naar vragenlijsten. Een thema of meetmoment met een vraag van minder dan 5 respondenten valt ook weg, net als punten in het verloop die op een kleine of nog open vragenlijst berusten.
+- Vragenlijsten die nog openstaan, krijgt een meelezer alleen als "tussenstand" is aangevinkt (anders is het antwoord van een nieuwe respondent af te leiden door twee keer te kijken).
+- Een rapport wordt voor een meelezer aan de serverkant opgebouwd uit de vastgelegde feiten, alleen met de hoofdstukken die aanstaan.
+- Van meelezers wordt alleen de datum van het laatste bezoek per link bewaard, plus bij verkeerde toegangscodes de afzendercode (een dag).
 
 **Rapporten**
 - De feiten in een rapport worden in de browser met vaste regels uit de gegevens samengesteld (geen AI) en met een peildatum in de database vastgelegd. Uitkomsten van minder dan 5 respondenten worden niet opgenomen.
@@ -86,7 +88,7 @@ Grenzen die de app zelf stelt, zodat één verzoek altijd binnen de gratis reken
 **Beheerder**
 - **Wachtwoord:** wordt in constante tijd vergeleken.
 - **Sessie:** een willekeurige sleutel in een cookie (`__Host-`, HttpOnly, Secure, SameSite=Strict) die 12 uur geldig is. In de database staat alleen een hash van die sleutel.
-- **Raadpogingen:** maximaal 10 mislukte pogingen per afzender per 15 minuten. Voor dat tellen wordt een niet terug te rekenen code bewaard die na een dag wordt gewist. Voor alle afzenders samen geldt maximaal 100.
+- **Raadpogingen:** maximaal 10 mislukte pogingen per afzender per 15 minuten. Voor dat tellen wordt een niet terug te rekenen code bewaard die na een dag wordt gewist. Voor alle afzenders samen geldt maximaal 200.
 - **Andere websites:** verzoeken vanaf een andere website worden geweigerd.
 
 **Overig**

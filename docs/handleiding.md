@@ -77,6 +77,8 @@ Typ in een tekst `{bedrijf}` op de plek waar de bedrijfsnaam moet komen. Die wor
 - **Sociale veiligheid:** zet in de uitleg voor respondenten de naam en contactgegevens van de vertrouwenspersoon voordat je de vragenlijst openzet.
 - **Vertrekonderzoek en onboarding:** het aantal respondenten is meestal klein. Houd de vragenlijst langere tijd open en rapporteer pas bij minimaal 5 respondenten. Overweeg de achtergrondvragen (afdeling, diensttijd) weg te laten.
 
+**Verbeteringen in de meegeleverde sjablonen.** Als de meegeleverde sjablonen worden verbeterd, krijg je die verbetering alleen in sjablonen die je zelf nog niet hebt aangepast. Heb je een sjabloon wel bewerkt, dan blijft jouw versie staan; met **Herstel origineel** haal je de nieuwe versie op. Lopende onderzoeken veranderen nooit mee.
+
 De vragen in de sjablonen zijn zelf geformuleerd als praktisch vertrekpunt. Het zijn geen wetenschappelijk gevalideerde meetinstrumenten.
 
 ### Opzet: thema's, meetpunten en meetmomenten
@@ -166,7 +168,8 @@ Met **Neem op in stuk** zet je een uitkomst, met de uitleg erbij, in een van je 
 ### Goed om te weten
 
 - **Minimale aantallen.** Een vergelijking vraagt minstens 5 respondenten per groep of meetmoment. Samenhang en betrouwbaarheid vragen minstens 10.
-- **Kleine groepen.** Groepen met minder dan 5 respondenten doen niet mee en worden alleen bij naam genoemd, zonder getallen. Soms valt daarnaast ook de kleinste andere groep weg, zodat een kleine groep niet uit het totaal is terug te rekenen. In de tabel bij onderdeel 5 staat om dezelfde reden een **×** in cellen die niet getoond worden.
+- **Kleine groepen.** Groepen met minder dan 5 respondenten doen niet mee en worden alleen bij naam genoemd, zonder getallen. Soms valt daarnaast ook de kleinste andere groep weg, zodat een kleine groep niet uit het totaal is terug te rekenen.
+- **Kruistabel en samenhang met ja/nee.** Heeft een combinatie van antwoorden in een kruistabel minder dan 5 respondenten, dan worden de kruistabel en de toets helemaal niet getoond. Bij een samenhang met een ja/nee-vraag gebeurt hetzelfde als minder dan 5 mensen ja (of nee) hebben geantwoord. Anders zou je iets over die kleine groep kunnen afleiden.
 - **Gemiddelden kunnen iets afwijken van het dashboard.** Analyse berekent eerst per respondent een score per thema; daarvoor moet iemand minstens de helft van de vragen van dat thema hebben beantwoord. Het dashboard middelt alle losse antwoorden.
 - **Meetmomenten worden vergeleken als twee losse groepen.** De antwoorden zijn anoniem, dus dezelfde persoon is niet te volgen van de ene naar de andere meting.
 - **Veel toetsen tegelijk.** Hoe meer je toetst, hoe groter de kans dat er door toeval iets "significant" uitkomt. Het scherm waarschuwt daarvoor.
@@ -180,7 +183,8 @@ Hiermee onderzoek je gegevens die niet uit een vragenlijst komen, zoals een over
 1. Klik bij onderdeel 6 op **Dataset toevoegen** en kies een Excel-bestand (.xlsx) of CSV-bestand.
    - De eerste rij moet de namen van de kolommen bevatten. Elke rij daaronder is één waarneming, bijvoorbeeld één medewerker of één maand.
 2. Je ziet de kolommen met hun soort: **getallen**, **indeling in groepen** (bijvoorbeeld afdeling) of **tekst**. Vink uit wat je niet nodig hebt.
-   - Kolommen die op persoonsgegevens lijken (naam, personeelsnummer, e-mail, geboortedatum) staan al uit. Laat ze uit.
+   - Kolommen die op persoonsgegevens lijken (naam, personeelsnummer, e-mail, geboortedatum, telefoonnummer) staan al uit. Dat wordt herkend aan de kolomnaam en aan de inhoud. Laat ze uit.
+   - Staan groepen als code in een kolom (bijvoorbeeld 1, 2, 3 voor drie afdelingen), dan kun je die kolom ook als indeling gebruiken. Hij staat dan in de keuzelijst met "(als groepen)" erachter.
 3. Klik op **Dataset opslaan**. Kies daarna bij **Wat wil je weten?** een van de vier vragen:
    - **Hoe ziet één kolom eruit?** Gemiddelde, middelste waarde, spreiding, of de verdeling over de groepen.
    - **Verschillen groepen van elkaar?** Bijvoorbeeld verzuimdagen per afdeling.
@@ -219,7 +223,11 @@ Goed om te weten:
 - Het bestand wordt in je eigen browser gelezen. Alleen de gegevens die je hebt gekozen, gaan naar de onderzoeksomgeving.
 - Bij **antwoorden** worden alleen de kolommen bewaard die je aan een vraag koppelt. Een kolom met namen of e-mailadressen wordt niet bewaard. Haal zulke kolommen liever al uit het bestand.
 - Lees hetzelfde bestand met antwoorden niet twee keer in: de antwoorden tellen dan dubbel.
-- Datums mogen als 26-11-2026, 2026-11-26 of 26 november 2026. Getallen mogen met een komma (7,4) of een punt (7.4).
+- Datums mogen als 26-11-2026, 2026-11-26 of 26 november 2026.
+- Getallen mogen met een komma (7,4) of een punt (7.4). Per kolom wordt gekeken welke notatie het bestand gebruikt, ook bij duizendtallen (1.234,5 of 1,234.5). Is een getal als 1.234 niet eenduidig, dan lees je in de **Controle** hoe het is gelezen. Klopt dat niet, pas het dan in het bestand aan.
+- Een percentage uit Excel wordt gelezen zoals je het ziet: 25 % wordt 25.
+- Een regel onderaan zoals **Totaal** of **Gemiddelde** wordt overgeslagen als dat woord in de eerste kolom staat. De **Controle** meldt welke regel dat was.
+- Lijkt een kolom op persoonsgegevens (namen, e-mailadressen, telefoonnummers), dan krijg je een waarschuwing.
 - Een oud Excel-bestand (.xls) eerst in Excel opslaan als .xlsx.
 
 ## 7. Stukken
@@ -292,7 +300,7 @@ Wil je de opdrachtgever, de directie of de ondernemingsraad de resultaten laten 
 
 1. Klik op **+ Deellink maken**.
 2. Vul in voor wie de link is en vink aan wat diegene mag zien:
-   - **Resultaten** (het dashboard), met of zonder de **open antwoorden**;
+   - **Resultaten** (het dashboard), met of zonder de **open antwoorden**, en desgewenst ook de **tussenstand van vragenlijsten die nog openstaan**;
    - losse **rapporten** en **stukken**.
 3. Kies tot wanneer de link werkt (standaard 30 dagen).
 4. Je krijgt **de link** en **een toegangscode** te zien. Stuur ze apart van elkaar, bijvoorbeeld de link per e-mail (**Open e-mail met de link**) en de code per sms of telefoon.
@@ -300,8 +308,10 @@ Wil je de opdrachtgever, de directie of de ondernemingsraad de resultaten laten 
 
 Wat de meelezer ziet en kan:
 - Alleen lezen: niets wijzigen, niets downloaden behalve afdrukken.
-- Alleen wat jij hebt aangevinkt. Uitkomsten van minder dan 5 respondenten blijven altijd verborgen.
-- Na 5 verkeerde toegangscodes moet diegene 15 minuten wachten.
+- Alleen wat jij hebt aangevinkt. Uitkomsten van minder dan 5 respondenten blijven altijd verborgen. Staat in een thema of meetmoment een vraag van minder dan 5 respondenten, dan blijft ook dat thema of meetmoment verborgen, zodat die vraag niet terug te rekenen is.
+- Een vragenlijst die nog openstaat, ziet de meelezer pas als je hem sluit. Zo kan niemand door later nog eens te kijken afleiden wat één nieuwe respondent heeft geantwoord. Wil je toch tussentijds laten meekijken, vink dan de tussenstand aan.
+- Rapporten zien er voor de meelezer hetzelfde uit als bij jou, maar alleen met de hoofdstukken die je hebt aangezet.
+- Na 5 verkeerde toegangscodes moet diegene 15 minuten wachten. Dat geldt per apparaat of netwerk: iemand anders die de link heeft, kan de echte meelezer zo niet buitensluiten.
 
 Je kunt een link op elk moment **Intrekken** (en later weer laten werken), een **Nieuwe code** maken of de link **Verwijderen**. Dat werkt direct, ook voor iemand die op dat moment meekijkt. Bij de link zie je wanneer hij het laatst is bekeken (alleen de datum; van meelezers wordt verder niets bewaard).
 
