@@ -79,7 +79,7 @@ function klaar(uit) {
  * Aantal, gemiddelde en kwadratensom (som van de gekwadrateerde afwijkingen van het gemiddelde).
  * Zijn alle waarden gelijk, dan is de kwadratensom precies 0 (zonder afrondingsruis).
  */
-function momenten(v) {
+export function momenten(v) {
   const n = v.length;
   if (n === 0) return { n: 0, m: null, ss: 0, min: null, max: null };
   let som = 0;
@@ -106,7 +106,7 @@ function momenten(v) {
  * Rangnummers (1 = laagste); gelijke waarden krijgen het gemiddelde van hun rangnummers.
  * knopen = som van (t³ − t) over alle groepjes van t gelijke waarden (voor de correctie voor gelijken).
  */
-function rangnummers(v) {
+export function rangnummers(v) {
   const n = v.length;
   const volgorde = Array.from({ length: n }, (_, i) => i).sort((p, q) => v[p] - v[q]);
   const rangen = new Array(n);
@@ -645,9 +645,66 @@ export function chiKwadraat(tabel) {
   return klaar({ chi2, df, p: chi2Sf(chi2, df), cramersV });
 }
 
+/**
+ * Chi-kwadraattoets op aanpassing: wijkt een verdeling af van een verwachte verdeling?
+ * Bijvoorbeeld de respons per afdeling tegen het aantal medewerkers per afdeling.
+ * waargenomen = aantallen per groep (respondenten); populatie = per groep het aantal in de populatie
+ * (of een andere verwachte verhouding), in dezelfde volgorde. Verwacht per groep: n · P / ΣP.
+ * Groepen met 0 respondenten én 0 in de populatie tellen niet mee (verwacht 0, niet in chi² en df).
+ * verwacht staat in dezelfde volgorde als de invoer.
+ * Gebruik alleen de getoonde (al samengevoegde) groepen: nooit verborgen cellen, anders zijn die
+ * uit de uitkomst terug te rekenen.
+ * Uitkomst: { chi2, df, p, n, verwacht, kleinste_verwacht }, of { reden } als toetsen niet verantwoord is:
+ * - 'te_weinig_groepen': minder dan 2 groepen;
+ * - 'klein': een verwacht aantal is kleiner dan 5 (vuistregel van Cochran).
+ * null bij ongeldige invoer (geen lijsten van gelijke lengte met aantallen van 0 of meer).
+ */
+export function aanpassingsToets(waargenomen, populatie) {
+  if (!Array.isArray(waargenomen) || !Array.isArray(populatie) || waargenomen.length !== populatie.length) return null;
+  for (let i = 0; i < waargenomen.length; i++) {
+    if (!eindig(waargenomen[i]) || waargenomen[i] < 0 || !eindig(populatie[i]) || populatie[i] < 0) return null;
+  }
+  const mee = waargenomen.map((o, i) => o > 0 || populatie[i] > 0);
+  const k = mee.filter(Boolean).length;
+  if (k < 2) return { reden: 'te_weinig_groepen' };
+  let n = 0;
+  let totaal = 0;
+  for (let i = 0; i < waargenomen.length; i++) {
+    n += waargenomen[i];
+    totaal += populatie[i];
+  }
+  if (!(n > 0) || !(totaal > 0)) return { reden: 'klein' };
+  const verwacht = populatie.map((p) => (n * p) / totaal);
+  let kleinsteVerwacht = Infinity;
+  let chi2 = 0;
+  for (let i = 0; i < verwacht.length; i++) {
+    if (!mee[i]) continue;
+    if (verwacht[i] < kleinsteVerwacht) kleinsteVerwacht = verwacht[i];
+    const afwijking = waargenomen[i] - verwacht[i];
+    chi2 += verwacht[i] > 0 ? (afwijking * afwijking) / verwacht[i] : Infinity;
+  }
+  if (!(kleinsteVerwacht >= 5)) return { reden: 'klein' };
+  const df = k - 1;
+  const p = chi2Sf(chi2, df);
+  if (!eindig(chi2) || p === null) return null;
+  return { chi2, df, p, n, verwacht, kleinste_verwacht: kleinsteVerwacht };
+}
+
+/**
+ * Foutmarge (95%) van een percentage in procentpunten, voor n respondenten uit een populatie van N,
+ * in het ongunstigste geval (een percentage van 50%) en met correctie voor een eindige populatie:
+ * 1,96 · √(0,25 / n) · √((N − n) / (N − 1)) · 100.
+ * null als N onbekend is, of als n niet tussen 1 en N − 1 ligt (bij n = N is er geen steekproef).
+ */
+export function foutmarge(n, N) {
+  if (!Number.isInteger(n) || !Number.isInteger(N) || n < 1 || N < 2 || n >= N) return null;
+  const marge = Z975 * Math.sqrt(0.25 / n) * Math.sqrt((N - n) / (N - 1)) * 100;
+  return Number.isFinite(marge) ? marge : null;
+}
+
 // ---------- Effectgrootte in woorden ----------
 
-const EFFECT_GRENZEN = new Map([
+export const EFFECT_GRENZEN = new Map([
   ['d', [0.2, 0.5, 0.8]],
   ['g', [0.2, 0.5, 0.8]],
   ['r', [0.1, 0.3, 0.5]],

@@ -83,6 +83,24 @@ export function schaalScore(vragen, antwoorden) {
   return n > 0 && n * 2 >= vragen.length ? som / n : null;
 }
 
+/**
+ * Scores per respondent (zoals schaalScore) plus het aantal weggevallen respondenten: wie minstens één van
+ * deze vragen geldig beantwoordde, maar minder dan de helft, en dus geen score krijgt. Het dashboard telt die
+ * antwoorden wel mee. Een getal op basis van deze scores mag alleen naast het dashboard staan als er 0 of
+ * minstens 5 respondenten zijn weggevallen; anders zijn hun antwoorden terug te rekenen (BOUWPLAN B7).
+ * @returns {{ scores: (number|null)[], weggevallen: number }}
+ */
+export function schaalScoreTelling(vragen, inz) {
+  const scores = [];
+  let weggevallen = 0;
+  for (const antwoorden of inz) {
+    const score = schaalScore(vragen, antwoorden);
+    scores.push(score);
+    if (score === null && vragen.some((q) => schaalWaarde(antwoorden[q.id]) !== null)) weggevallen++;
+  }
+  return { scores, weggevallen };
+}
+
 /** Eén waarde per respondent van de vragenlijst (null = geen geldige score). null als de variabele hier niet bestaat. */
 export function waardenVan(lijst, sleutel) {
   const vragen = vragenVan(lijst, sleutel);

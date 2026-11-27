@@ -15,52 +15,22 @@
 
 import * as S from './statistiek.js';
 import { bouwModel, waardenVan, vragenVan } from './analyse-model.js';
+import { nlGetal, nlProcent, metTeken, pTekst, nlDatum } from './opmaak.js';
+
+// De opmaak van getallen en datums staat in opmaak.js; hier doorgegeven voor bestaande gebruikers.
+export { nlGetal, nlProcent, metTeken, pTekst, nlDatum };
 
 export const RAPPORTSOORTEN = { tussen: 'Tussenrapport', eind: 'Eindrapport' };
 const ALFA = 0.05;
 const MIN = '−';
 
-// ---------- Opmaak van getallen (Nederlands) ----------
-
 const eindig = (x) => typeof x === 'number' && Number.isFinite(x);
-
-export function nlGetal(x, decimalen = 1) {
-  if (!eindig(x)) return '–';
-  const t = x.toLocaleString('nl-NL', { minimumFractionDigits: decimalen, maximumFractionDigits: decimalen });
-  // Een echt minteken (−) in plaats van een streepje; en geen "−0,0".
-  return /^-0(,0+)?$/.test(t) ? t.slice(1) : t.replace(/^-/, MIN);
-}
 
 /** Getal met maximaal twee decimalen en de eenheid, zoals op het dashboard: 6,4% · 12 dagen · 0,04 */
 function waardeMetEenheid(w, eenheid) {
   const g = eindig(w) ? w.toLocaleString('nl-NL', { maximumFractionDigits: 2 }).replace(/^-/, MIN) : '–';
   if (!eenheid) return g;
   return eenheid === '%' ? `${g}%` : `${g} ${eenheid}`;
-}
-
-function nlProcent(x) {
-  return eindig(x) ? `${Math.round(x)}%` : '–';
-}
-
-function metTeken(x, decimalen = 1) {
-  if (!eindig(x)) return '–';
-  const afgerond = Number(x.toFixed(decimalen));
-  if (afgerond === 0) return nlGetal(0, decimalen);
-  return `${afgerond > 0 ? '+' : MIN}${nlGetal(Math.abs(afgerond), decimalen)}`;
-}
-
-function pTekst(p) {
-  if (!eindig(p)) return 'p onbekend';
-  return p < 0.001 ? 'p < 0,001' : `p = ${nlGetal(p, 3)}`;
-}
-
-const MAANDEN = ['januari', 'februari', 'maart', 'april', 'mei', 'juni', 'juli', 'augustus', 'september', 'oktober', 'november', 'december'];
-
-/** '2026-11-26' wordt '26 november 2026'. */
-export function nlDatum(iso) {
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ''));
-  if (!m) return '';
-  return `${Number(m[3])} ${MAANDEN[Number(m[2]) - 1] || ''} ${m[1]}`;
 }
 
 const aantalTekst = (n, enkel, meer) => `${n.toLocaleString('nl-NL')} ${n === 1 ? enkel : meer}`;

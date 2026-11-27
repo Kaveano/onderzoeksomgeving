@@ -1041,3 +1041,65 @@ test('de module biedt alle afgesproken functies', () => {
   ];
   for (const naam of afgesproken) assert.equal(typeof S[naam], 'function', naam);
 });
+
+// ---------- Uitbreiding (BOUWPLAN P1): aanpassingstoets, foutmarge en gedeelde hulpjes ----------
+// Verwachte waarden berekend met SciPy 1.18.1:
+//   aanpassingsToets  scipy.stats.chisquare(waargenomen, f_exp = n · P / ΣP)
+//   foutmarge         100 · norm.ppf(0.975) · √(0,25 / n) · √((N − n) / (N − 1))
+
+test('aanpassingsToets komt overeen met scipy.stats.chisquare (respons per afdeling tegen het personeel)', () => {
+  const uit = S.aanpassingsToets([18, 9, 6, 7], [60, 20, 25, 15]);
+  assert.deepEqual(Object.keys(uit), ['chi2', 'df', 'p', 'n', 'verwacht', 'kleinste_verwacht']);
+  bijna(uit.chi2, 2.47, 'chi2');
+  assert.equal(uit.df, 3);
+  bijnaP(uit.p, 0.4807371601075049, 'p');
+  assert.ok(Math.abs(uit.p - 0.480737) <= 1e-6);
+  assert.equal(uit.n, 40);
+  [20, 6.666666666666667, 8.333333333333334, 5].forEach((e, i) => bijna(uit.verwacht[i], e, `verwacht ${i}`));
+  bijna(uit.kleinste_verwacht, 5, 'kleinste verwacht');
+  // Na samenvoegen van kleine groepen (zoals het Overzicht doet): [18, 9, 3+1+9] tegen [60, 20, 10+5+25].
+  const samen = S.aanpassingsToets([18, 9, 13], [60, 20, 40]);
+  bijna(samen.chi2, 1.0249999999999997, 'chi2 samengevoegd');
+  assert.equal(samen.df, 2);
+  bijnaP(samen.p, 0.5989962148511054, 'p samengevoegd');
+});
+
+test('aanpassingsToets: alleen toetsen als het verantwoord is', () => {
+  // Een verwacht aantal onder de 5 (Cochran): niet toetsen.
+  assert.deepEqual(S.aanpassingsToets([10, 3], [80, 20]), { reden: 'klein' });
+  assert.deepEqual(S.aanpassingsToets([12, 2], [5, 0]), { reden: 'klein' }); // groep zonder populatie maar met respondenten
+  assert.deepEqual(S.aanpassingsToets([0, 0], [50, 50]), { reden: 'klein' });
+  assert.deepEqual(S.aanpassingsToets([20], [50]), { reden: 'te_weinig_groepen' });
+  assert.deepEqual(S.aanpassingsToets([20, 0], [50, 0]), { reden: 'te_weinig_groepen' });
+  // Een groep met 0 respondenten en 0 in de populatie telt niet mee, de rest blijft in dezelfde volgorde.
+  const uit = S.aanpassingsToets([18, 0, 9, 13], [60, 0, 20, 40]);
+  assert.equal(uit.df, 2);
+  bijna(uit.chi2, 1.0249999999999997, 'chi2');
+  assert.deepEqual(uit.verwacht.map((x) => Math.round(x * 1000) / 1000), [20, 0, 6.667, 13.333]);
+  // Ongeldige invoer.
+  assert.equal(S.aanpassingsToets([1, 2], [3]), null);
+  assert.equal(S.aanpassingsToets([1, -2], [3, 4]), null);
+  assert.equal(S.aanpassingsToets([1, Number.NaN], [3, 4]), null);
+  assert.equal(S.aanpassingsToets(null, [3, 4]), null);
+});
+
+test('foutmarge: 95% in procentpunten met correctie voor de grootte van de organisatie', () => {
+  const m = S.foutmarge(62, 130);
+  assert.ok(Math.abs(m - 9.0361) <= 1e-3, `${m}`);
+  bijna(m, 9.036117130324751, 'foutmarge 62 van 130');
+  bijna(S.foutmarge(100, 1000), 9.3015774365656, 'foutmarge 100 van 1000');
+  assert.equal(S.foutmarge(130, 130), null); // iedereen deed mee: geen steekproef
+  assert.equal(S.foutmarge(140, 130), null);
+  assert.equal(S.foutmarge(62, null), null); // populatie onbekend
+  assert.equal(S.foutmarge(62, undefined), null);
+  assert.equal(S.foutmarge(0, 130), null);
+  assert.equal(S.foutmarge(6.5, 130), null);
+});
+
+test('gedeelde hulpjes zijn beschikbaar voor de werkbank en het rapport', () => {
+  assert.deepEqual(S.momenten([2, 4, 6]), { n: 3, m: 4, ss: 8, min: 2, max: 6 });
+  assert.deepEqual(S.rangnummers([10, 20, 20, 5]), { rangen: [2, 3.5, 3.5, 1], knopen: 6 });
+  assert.ok(S.EFFECT_GRENZEN instanceof Map);
+  assert.deepEqual(S.EFFECT_GRENZEN.get('d'), [0.2, 0.5, 0.8]);
+  for (const naam of ['aanpassingsToets', 'foutmarge', 'momenten', 'rangnummers']) assert.equal(typeof S[naam], 'function', naam);
+});

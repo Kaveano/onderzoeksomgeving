@@ -5,7 +5,10 @@
 import { Fout, json, foutAntwoord, metKoppen, leesJson, controleerHerkomst } from './lib/http.js';
 import { inloggen, uitloggen, isIngelogd, vereisInlog } from './lib/auth.js';
 import { serveer } from './lib/statisch.js';
-import { SCHALEN, SCHAAL_NAMEN, VRAAGTYPEN, INVOERSOORTEN, STUKSOORTEN, ACTIESTATUSSEN, DREMPEL } from './lib/schalen.js';
+import {
+  SCHALEN, SCHAAL_NAMEN, VRAAGTYPEN, INVOERSOORTEN, STUKSOORTEN, ACTIESTATUSSEN, DREMPEL, CIJFERSCHALEN,
+} from './lib/schalen.js';
+import { KENMERKEN, KENMERKVRAGEN } from '../public/js/beheer/kenmerken.js';
 import * as onderzoeken from './routes/onderzoeken.js';
 import * as opzet from './routes/opzet.js';
 import * as vragenlijsten from './routes/vragenlijsten.js';
@@ -18,6 +21,12 @@ import * as exporteren from './routes/export.js';
 import * as delen from './routes/delen.js';
 import * as rapporten from './routes/rapporten.js';
 import * as inlezen from './routes/inlezen.js';
+// Uitbreidingen: elk pakket voegt zijn imports alleen direct onder zijn eigen regel toe.
+// [P2] Vraagmodel (cijfervraag, achtergrondkenmerken)
+// [P3] HR-analytics (instellingen, personeelscijfers)
+// [P4] Werkbank (definities, analyses)
+// [P5] Bibliotheek, bronnen bij een onderzoek en coderen
+// [P6] Rapporten v2
 
 const B = '/api/beheer';
 
@@ -112,6 +121,13 @@ const BEHEER_ROUTES = [
   ['PUT', `${B}/deellinks/:id`, delen.wijzig],
   ['DELETE', `${B}/deellinks/:id`, delen.verwijder],
   ['POST', `${B}/deellinks/:id/nieuwe-toegangscode`, delen.nieuweCode],
+
+  // Uitbreidingen: elk pakket voegt zijn routes alleen direct onder zijn eigen regel toe.
+  // [P2] Vraagmodel: kenmerkvragen en kenmerk per vraag
+  // [P3] HR-analytics: instellingen en personeelscijfers
+  // [P4] Werkbank: definities en analyses
+  // [P5] Bibliotheek, bronnen bij een onderzoek en coderen
+  // [P6] Rapporten v2
 ];
 
 const PUBLIEKE_ROUTES = [
@@ -139,6 +155,9 @@ function instellingen() {
     stuksoorten: STUKSOORTEN,
     actiestatussen: ACTIESTATUSSEN,
     drempel: DREMPEL,
+    cijferschalen: CIJFERSCHALEN,
+    kenmerken: KENMERKEN,
+    kenmerkvragen: KENMERKVRAGEN,
   });
 }
 

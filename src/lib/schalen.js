@@ -43,7 +43,20 @@ export const ACTIESTATUSSEN = {
   klaar: 'Klaar',
 };
 
-/** Minimaal aantal respondenten per groep voordat een uitsplitsing zichtbaar is. */
-export const DREMPEL = 5;
+/**
+ * Cijfervragen (vraagtype 'cijfer'; de soort staat in schaal_soort).
+ * nps = 0 tot en met 10 (aanbevelen, eNPS); rapport = 1 tot en met 10 (rapportcijfer).
+ * Een cijfervraag telt nooit mee in de gemiddelden van thema's of meetpunten.
+ */
+export const CIJFERSCHALEN = {
+  nps: { min: 0, max: 10, laag: 'Zeer onwaarschijnlijk', hoog: 'Zeer waarschijnlijk', naam: 'Aanbevelen (0 tot 10)' },
+  rapport: { min: 1, max: 10, laag: 'Zeer slecht', hoog: 'Uitstekend', naam: 'Rapportcijfer (1 tot 10)' },
+};
+
+/** eNPS: 9–10 promotor, 7–8 passief, 0–6 criticaster. */
+export const ENPS = { promotorVanaf: 9, criticasterTot: 6 };
+
+/** Minimaal aantal respondenten per groep voordat een uitsplitsing zichtbaar is (vastgelegd in privacy.js). */
+export { DREMPEL } from '../../public/js/beheer/privacy.js';
 
 export const WEET_NIET = 'weet_niet';
