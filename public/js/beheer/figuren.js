@@ -428,6 +428,12 @@ export function figuurNaarSvg(fig, { breedte = 640 } = {}) {
 
 // ---------- Voor Word: PNG ----------
 
+/**
+ * Breedte (in plan-eenheden) waarop een figuur voor Word wordt opgezet. Op 16 cm breed is de tekst dan ongeveer 9 punt,
+ * goed leesbaar op papier (bij 800 zou het 7 punt zijn).
+ */
+export const WORD_BREEDTE = 640;
+
 /** Kleuren voor de PNG (de lichte Atelier-kleuren uit app.css; Word kent geen CSS). */
 export const PNG_KLEUREN = {
   'reeks-1': '#5b2a53', 'reeks-2': '#b3741b', 'reeks-3': '#1c6e68', 'reeks-4': '#b5452f', 'reeks-5': '#5a7fb8', 'reeks-6': '#8e8a5a',
@@ -487,10 +493,10 @@ export function tekenOpCanvas(c, plan, schaal = 1) {
 
 /**
  * De figuur als PNG (Uint8Array) voor Word, getekend op een canvas uit hetzelfde plan als de SVG.
- * breedte in pixels (de figuur wordt op 800 opgezet en geschaald); hoogte volgt uit de inhoud.
+ * breedte in pixels (de figuur wordt op WORD_BREEDTE opgezet en geschaald); hoogte volgt uit de inhoud.
  */
 export async function figuurNaarPng(fig, { breedte = 1600, hoogte = null } = {}) {
-  const plan = figuurPlan(fig, { breedte: 800 });
+  const plan = figuurPlan(fig, { breedte: WORD_BREEDTE });
   const schaal = breedte / plan.breedte;
   const h = Math.round(hoogte ?? plan.hoogte * schaal);
   const doek = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(breedte, h) : Object.assign(document.createElement('canvas'), { width: breedte, height: h });
@@ -508,7 +514,7 @@ export async function figuurNaarPng(fig, { breedte = 1600, hoogte = null } = {})
 
 /** De maten van een figuur in Word (cm) bij een breedte van breedte_cm; de hoogte volgt uit het plan. */
 export function figuurMaten(fig, { breedte_cm = 16 } = {}) {
-  const plan = figuurPlan(fig, { breedte: 800 });
+  const plan = figuurPlan(fig, { breedte: WORD_BREEDTE });
   return { breedte_cm, hoogte_cm: Math.round((breedte_cm * plan.hoogte * 100) / plan.breedte) / 100 };
 }
 

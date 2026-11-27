@@ -219,7 +219,7 @@ test('figuurNaarPng: tekent hetzelfde plan op een canvas en geeft de bytes van d
     const png = await F.figuurNaarPng(staaf(), { breedte: 1600 });
     assert.deepEqual([...png], [...PNG]);
     const teksten = opdrachten.filter((o) => o[0] === 'fillText').map((o) => o[1]);
-    const plan = F.figuurPlan(staaf(), { breedte: 800 });
+    const plan = F.figuurPlan(staaf(), { breedte: F.WORD_BREEDTE });
     assert.deepEqual(teksten, plan.elementen.filter((e) => e.soort === 'tekst').map((e) => e.tekst));
     assert.ok(teksten.includes('×'));
     // Een staaf in de reekskleur, het vakje met een stippellijn.
@@ -227,7 +227,7 @@ test('figuurNaarPng: tekent hetzelfde plan op een canvas en geeft de bytes van d
     assert.ok(opdrachten.some((o) => o[0] === 'setLineDash' && o[1].length === 2));
     const maten = F.figuurMaten(staaf());
     assert.equal(maten.breedte_cm, 16);
-    assert.ok(Math.abs(maten.hoogte_cm - (16 * plan.hoogte) / 800) < 0.01);
+    assert.ok(Math.abs(maten.hoogte_cm - (16 * plan.hoogte) / F.WORD_BREEDTE) < 0.01);
     const blok = await F.figuurVoorWord(staaf());
     assert.equal(blok.soort, 'afbeelding');
     assert.equal(blok.alt, staaf().alt);
