@@ -102,7 +102,7 @@ function inleesDialoog({ titel, uitleg, stappen, voorbeeld, bouw, knopTekst = (n
     }
 
     function toonBlad(blad) {
-      const { kop, rijen } = kopEnRijen(blad.rijen);
+      const { kop, rijen, nummers, totaalrijen } = kopEnRijen(blad.rijen);
       fout.textContent = '';
       if (!kop.length || !rijen.length) {
         huidig = null;
@@ -111,7 +111,7 @@ function inleesDialoog({ titel, uitleg, stappen, voorbeeld, bouw, knopTekst = (n
         inlezen.disabled = true;
         return;
       }
-      huidig = bouw({ kop, rijen, bestand: gelezen, ververs: controleer });
+      huidig = bouw({ kop, rijen, nummers, totaalrijen, bestand: gelezen, ververs: controleer });
       vervang(koppelEl,
         h('p', { class: 'klein zacht' }, `Gelezen: ${gelezen.naam}${gelezen.bladen.length > 1 ? `, blad "${blad.naam}"` : ''} – ${aantal(rijen.length, 'rij', 'rijen')} en ${aantal(kop.length, 'kolom', 'kolommen')}.`),
         voorbeeldTabel(kop, rijen),
@@ -234,7 +234,7 @@ export function cijfersInlezen(ctx) {
       ] }],
     },
     knopTekst: (n) => `${aantal(n, 'cijfer', 'cijfers')} inlezen`,
-    bouw: ({ kop, rijen, ververs }) => {
+    bouw: ({ kop, rijen, nummers, totaalrijen, ververs }) => {
       const bezet = new Set();
       const koppeling = {};
       for (const f of CIJFER_VELDEN) {
@@ -254,7 +254,7 @@ export function cijfersInlezen(ctx) {
         controleer: () => {
           const mist = CIJFER_VELDEN.filter((f) => f.verplicht && koppeling[f.sleutel] < 0).map((f) => f.label.toLowerCase());
           if (mist.length) return { items: [], problemen: [], regel: `Kies nog een kolom voor: ${mist.join(', ')}.` };
-          const r = verwerkCijfers(rijen, koppeling, { themas: o.themas, meetmomenten: o.meetmomenten, standaardThema });
+          const r = verwerkCijfers(rijen, koppeling, { themas: o.themas, meetmomenten: o.meetmomenten, standaardThema, nummers, totaalrijen });
           const namen = [...new Set(r.items.map((x) => x.titel))];
           return { ...r, regel: `${aantal(r.items.length, 'cijfer', 'cijfers')} van de ${aantal(rijen.length, 'rij', 'rijen')} ${r.items.length === 1 ? 'is' : 'zijn'} bruikbaar${namen.length ? ` (${namen.slice(0, 4).join(', ')}${namen.length > 4 ? ', …' : ''})` : ''}.` };
         },
@@ -315,7 +315,7 @@ export async function vragenInlezen(ctx) {
       ] }],
     },
     knopTekst: (n) => `${aantal(n, 'vraag', 'vragen')} inlezen`,
-    bouw: ({ kop, rijen, ververs }) => {
+    bouw: ({ kop, rijen, nummers, totaalrijen, ververs }) => {
       const bezet = new Set();
       const koppeling = {};
       for (const f of VRAAG_VELDEN) {
@@ -334,7 +334,7 @@ export async function vragenInlezen(ctx) {
         ],
         controleer: () => {
           if (koppeling.tekst < 0) return { items: [], problemen: [], regel: 'Kies nog de kolom met de vraag of stelling.' };
-          const r = verwerkVragen(rijen, koppeling, { themas: o.themas, standaardThema, bestaand: vl.aantal_vragen, max: 100 });
+          const r = verwerkVragen(rijen, koppeling, { themas: o.themas, standaardThema, bestaand: vl.aantal_vragen, max: 100, nummers, totaalrijen });
           nieuweThemas = r.nieuweThemas;
           const tel = (t) => r.items.filter((q) => q.type === t).length;
           const soorten = [[tel('schaal'), 'schaal'], [tel('janee'), 'ja/nee'], [tel('meerkeuze'), 'meerkeuze'], [tel('open'), 'open']].filter(([n]) => n).map(([n, s]) => `${n} × ${s}`);
@@ -392,7 +392,7 @@ export async function antwoordenInlezen(ctx) {
       bladen: [{ naam: 'Antwoorden', rijen: [['Datum', ...vragen.map((q, i) => `V${i + 1}. ${q.tekst}`)], [vandaag(), ...vragen.map(voorbeeldCel)]] }],
     },
     knopTekst: (n) => `${aantal(n, 'respondent', 'respondenten')} inlezen`,
-    bouw: ({ kop, rijen, ververs }) => {
+    bouw: ({ kop, rijen, nummers, totaalrijen, ververs }) => {
       const voorstel = koppelVragen(kop, vragen);
       const koppeling = voorstel.koppeling;
       let datumKolom = voorstel.datum;
@@ -415,7 +415,7 @@ export async function antwoordenInlezen(ctx) {
         ],
         controleer: () => {
           if (!gekoppeld()) return { items: [], problemen: [], regel: 'Koppel minstens één vraag aan een kolom.' };
-          const r = verwerkAntwoorden(rijen, koppeling, datumKolom, vragen, schalen, vandaag());
+          const r = verwerkAntwoorden(rijen, koppeling, datumKolom, vragen, schalen, vandaag(), { nummers, totaalrijen });
           return { items: r.items, problemen: r.problemen, regel: `${aantal(r.items.length, 'respondent', 'respondenten')} van de ${aantal(rijen.length, 'rij', 'rijen')} ${r.items.length === 1 ? 'heeft' : 'hebben'} bruikbare antwoorden. Na het inlezen tellen ze mee in alle resultaten.` };
         },
         // Per verzoek hooguit zo'n 3.000 antwoordcellen, zodat de server binnen de gratis rekentijd blijft.
@@ -437,7 +437,7 @@ export function datasetToevoegen(ctx) {
       'Laat namen, personeelsnummers en andere gegevens waarmee iemand te herkennen is uit het bestand, of vink die kolommen hieronder uit.',
     ],
     knopTekst: () => 'Dataset opslaan',
-    bouw: ({ kop, rijen, bestand, ververs }) => {
+    bouw: ({ kop, rijen, totaalrijen, bestand, ververs }) => {
       const verdacht = new Set(verdachteKolommen(kop, rijen));
       const soorten = kop.map((_, i) => kolomSoort(rijen.map((r) => r[i])));
       const gekozen = new Set(kop.map((k, i) => i).filter((i) => !verdacht.has(kop[i]) && soorten[i] !== 'leeg'));
@@ -462,7 +462,7 @@ export function datasetToevoegen(ctx) {
           if (!naam.value.trim()) return { items: [], problemen: [], regel: 'Geef de dataset een naam.' };
           if (!lijst.length) return { items: [], problemen: [], regel: 'Kies minstens één kolom.' };
           if (lijst.length > 40) return { items: [], problemen: [], regel: `Je hebt ${lijst.length} kolommen gekozen; een dataset kan er maximaal 40 hebben. Vink kolommen uit die je niet nodig hebt.` };
-          verwerkt = verwerkDataset(kop, rijen, lijst);
+          verwerkt = verwerkDataset(kop, rijen, lijst, { totaalrijen });
           return { items: verwerkt.rijen.length ? [verwerkt] : [], problemen: verwerkt.problemen, regel: `${aantal(verwerkt.rijen.length, 'rij', 'rijen')} en ${aantal(verwerkt.kolommen.length, 'kolom', 'kolommen')} worden bewaard.` };
         },
         opslaan: async () => {

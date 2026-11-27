@@ -488,10 +488,14 @@ function leesGedeeldeTeksten(xml) {
   return uit;
 }
 
-/** Bepaalt of een getalnotatie een datum en/of een tijd toont; null als het een gewoon getal is. */
+/**
+ * Bepaalt of een getalnotatie een datum en/of een tijd toont, of een percentage ({ procent: true });
+ * null als het een gewoon getal is.
+ */
 function notatieSoort(id, code) {
   if (code === undefined) {
     // Ingebouwde notaties van Excel.
+    if (id === 9 || id === 10) return { procent: true };
     if ((id >= 14 && id <= 17) || (id >= 27 && id <= 31) || id === 36 || (id >= 50 && id <= 58)) return { datum: true };
     if (id === 22) return { datum: true, tijd: true };
     if ((id >= 18 && id <= 21) || (id >= 32 && id <= 35) || (id >= 45 && id <= 47)) return { tijd: true, duur: id === 46 };
@@ -500,6 +504,8 @@ function notatieSoort(id, code) {
   // Eigen notatie: letters d, m, j/y, u/h en s buiten aanhalingstekens en blokhaken betekenen een datum of tijd.
   const duur = /\[h+\]/i.test(code);
   const kaal = code.replace(/"[^"]*"|\\.|_.|\*./g, '').replace(/\[[^\]]*\]/g, '');
+  // Een % buiten aanhalingstekens: Excel toont de waarde maal 100 (0,058 als 5,8%).
+  if (kaal.includes('%') && !/[dmyhs]/i.test(kaal)) return { procent: true };
   if (!duur && !/[dmyhs]/i.test(kaal)) return null;
   const tijd = duur || /[hs]/i.test(kaal);
   return { datum: /[dy]/i.test(kaal) || (/m/i.test(kaal) && !tijd), tijd, duur };
@@ -565,6 +571,8 @@ function leesBlad(xml, naam, teksten, stijlen, vanaf1904) {
     const getal = Number(v);
     if (!Number.isFinite(getal)) return null;
     const soort = stijlen[cel.stijl];
+    // Een percentage lezen we zoals Excel het toont: 5,8% wordt 5,8 (en niet 0,058).
+    if (soort && soort.procent) return Math.round(getal * 100 * 1e10) / 1e10;
     return soort ? datumTekst(getal, soort, vanaf1904) : getal;
   };
 
@@ -620,6 +628,7 @@ function leesBlad(xml, naam, teksten, stijlen, vanaf1904) {
 /**
  * Leest een Excel-bestand (.xlsx): { bladen: [{ naam, rijen }] } in de volgorde van de tabbladen.
  * Cellen worden tekst, getal, waar/onwaar of null; datums worden 'JJJJ-MM-DD' (met tijd: 'JJJJ-MM-DD uu:mm').
+ * Een cel met percentage-opmaak wordt het getal zoals Excel het toont (5,8% wordt 5,8).
  * Van een formule komt de laatst berekende uitkomst.
  */
 export async function leesXlsx(invoer) {

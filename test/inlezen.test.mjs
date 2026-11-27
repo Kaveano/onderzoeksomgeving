@@ -7,7 +7,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
-  kopEnRijen, herkenKolom, alsGetal, alsDatum, normaal, CIJFER_VELDEN, VRAAG_VELDEN,
+  kopEnRijen, herkenKolom, alsGetal, alsDatum, normaal, CIJFER_VELDEN, VRAAG_VELDEN, getalNotatie, isCodekolom,
   verwerkCijfers, verwerkVragen, koppelVragen, leesAntwoord, verwerkAntwoorden, kolomSoort, verdachteKolommen, verwerkDataset,
 } from '../public/js/beheer/inlees-regels.js';
 import { maakXlsx, leesXlsx, leesCsv } from '../public/js/beheer/bestanden.js';
@@ -75,11 +75,54 @@ test('getallen en datums uit cellen', () => {
   assert.equal(normaal('  Thema: Wérkdruk & balans! '), 'thema werkdruk balans');
 });
 
+test('getallen met een punt: per kolom de notatie bepalen, nooit stil een duizendtal als decimaal lezen', () => {
+  assert.equal(alsGetal('€ 12.500'), 12500);
+  assert.equal(alsGetal('2.000'), 2000);
+  assert.equal(alsGetal('12,500'), 12.5);
+  assert.equal(alsGetal('12,500', 'en'), 12500);
+  assert.equal(alsGetal('2.450', 'en'), 2.45);
+  assert.equal(alsGetal('1.5'), 1.5, 'niet drie cijfers achter de punt: altijd een decimaalteken');
+  assert.equal(getalNotatie(['€ 2.450', '€ 3.100,50']), 'nl');
+  assert.equal(getalNotatie(['2.450', '3.10', '1,234.5']), 'en');
+  assert.equal(getalNotatie(['2.450']), 'nl', 'zonder aanwijzing de Nederlandse notatie');
+  const salaris = verwerkDataset(['Salaris'], [['€ 2.450'], ['€ 2.800'], ['€ 3.100,50']], [0]);
+  assert.deepEqual(salaris.rijen.map((r) => r[0]), [2450, 2800, 3100.5]);
+  assert.deepEqual(salaris.problemen, [], 'de notatie is zeker door de cel met komma');
+  const twijfel = verwerkDataset(['Bedrag'], [['2.450'], ['2.800']], [0]);
+  assert.deepEqual(twijfel.rijen.map((r) => r[0]), [2450, 2800]);
+  assert.match(twijfel.problemen[0], /Kolom "Bedrag": getallen als "2\.450" zijn gelezen als 2450 \(met de punt tussen de duizendtallen\)/);
+  const engels = verwerkDataset(['Score'], [['2.450'], ['3.10'], ['4.5']], [0]);
+  assert.deepEqual(engels.rijen.map((r) => r[0]), [2.45, 3.1, 4.5]);
+});
+
+test('totaalrijen worden overgeslagen en regelnummers volgen Excel', () => {
+  const { kop, rijen, nummers, totaalrijen } = kopEnRijen([[], ['Naam', 'Datum', 'Waarde'], ['Verzuim', '2026-01-31', 5], [], ['Verzuim', '2026-02-28', 'abc'], ['Totaal', null, 5], ['Gemiddelde:', null, 5]]);
+  assert.deepEqual(kop, ['Naam', 'Datum', 'Waarde']);
+  assert.equal(rijen.length, 2);
+  assert.deepEqual(nummers, [3, 5]);
+  assert.deepEqual(totaalrijen, [{ nummer: 6, tekst: 'Totaal' }, { nummer: 7, tekst: 'Gemiddelde:' }]);
+  const koppeling = { titel: 0, datum: 1, waarde: 2, eenheid: -1, thema: -1, meetmoment: -1, tekst: -1 };
+  const r = verwerkCijfers(rijen, koppeling, { themas: [{ id: 1, naam: 'T' }], meetmomenten: [], standaardThema: 1, nummers, totaalrijen });
+  assert.equal(r.items.length, 1);
+  assert.match(r.problemen.join('\n'), /Regel 6 \("Totaal"\) lijkt een totaal- of gemiddelderij en is overgeslagen/);
+  assert.match(r.problemen.join('\n'), /Regel 5: waarde "abc" is geen getal/, 'het regelnummer zoals in Excel, ook na een lege rij');
+  // Een afdeling die "Totaal" in de tweede kolom heeft, is wel een gewone rij
+  assert.equal(kopEnRijen([['A', 'B'], ['x', 'Totaal']]).rijen.length, 1);
+});
+
+test('kolommen met codes (jaar, teamnummer) kunnen ook als groepen dienen', () => {
+  assert.equal(isCodekolom([2025, 2026, 2025, 2026]), true);
+  assert.equal(isCodekolom(['1', '2', '1', '2', '1']), true);
+  assert.equal(isCodekolom([1.5, 2, 3]), false);
+  assert.equal(isCodekolom(Array.from({ length: 30 }, (_, i) => i)), false, 'te veel verschillende waarden');
+  assert.equal(isCodekolom([7]), false);
+});
+
 test('kopregel: eerste niet-lege rij, lege rijen weg, naamloze en dubbele kolommen', () => {
   const { kop, rijen } = kopEnRijen([[null, null], ['Naam', '', 'Naam', 'Waarde'], [], ['a', null, 'b', 1], [null, ' ', null], ['c']]);
   assert.deepEqual(kop, ['Naam', 'Kolom B', 'Naam (2)', 'Waarde']);
   assert.deepEqual(rijen, [['a', null, 'b', 1], ['c', null, null, null]]);
-  assert.deepEqual(kopEnRijen([]), { kop: [], rijen: [] });
+  assert.deepEqual(kopEnRijen([]), { kop: [], rijen: [], nummers: [], totaalrijen: [] });
   assert.equal(herkenKolom(['Peildatum', 'Naam cijfer', 'Waarde (%)'], CIJFER_VELDEN[1].herken), 0);
   assert.equal(herkenKolom(['x', 'y'], CIJFER_VELDEN[0].herken), -1);
 });
@@ -238,6 +281,10 @@ test('dataset: soort per kolom, getallen met komma, waarschuwing voor persoonsge
   assert.equal(kolomSoort([null, '']), 'leeg');
   assert.deepEqual(verdachteKolommen(kop), ['E-mail']);
   assert.deepEqual(verdachteKolommen(['Naam', 'Personeelsnummer', 'Afdeling', 'Naamgeving']), ['Naam', 'Personeelsnummer']);
+  const persoon = ['E-mailadres', 'Emailadres', 'Mailadres', 'Telefoonnummer', 'Tel.', 'Medewerkersnummer', 'Personeelsnr.', 'Volledige naam', 'Roepnaam', 'Woonplaats', 'Geb. datum', 'Zakelijk e-mailadres'];
+  assert.deepEqual(verdachteKolommen(persoon), persoon);
+  assert.deepEqual(verdachteKolommen(['Afdeling', 'Verzuim %', 'Leeftijd', 'Functie', 'Aantal medewerkers', 'Teamnaam', 'Ordernummer', 'Datum in dienst', 'Kostenplaats']), []);
+  assert.deepEqual(verdachteKolommen(['Kolom A', 'Kolom B', 'Kolom C'], [['jan@x.nl', '06-12345678', 'Kantoor'], ['piet@y.com', '+31 6 1234 5678', 'Productie']]), ['Kolom A', 'Kolom B'], 'ook op de inhoud');
   // "Verzuim %" heeft 3 van de 4 als getal: geen 90%, dus geen getalkolom; met alleen getallen wel
   const d = verwerkDataset(kop, rijen, [0, 2]);
   assert.deepEqual(d, { kolommen: ['Afdeling', 'Leeftijd'], rijen: [['Kantoor', 34], ['Productie', 51], ['Kantoor', 29], ['Logistiek', 45]], soorten: ['categorie', 'getal'], problemen: [] });

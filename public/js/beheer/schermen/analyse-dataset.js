@@ -6,7 +6,7 @@
 import { api } from '../api.js';
 import { h, vervang, laden, melding, meld, meldFout, bevestig, aantal, getal } from '../ui.js';
 import * as S from '../statistiek.js';
-import { kolomSoort } from '../inlees-regels.js';
+import { kolomSoort, isCodekolom } from '../inlees-regels.js';
 
 const ALFA = 0.05;
 const MIN_GROEP = 3; // kleinere groepen doen niet mee aan een vergelijking
@@ -37,7 +37,7 @@ const getallen = (rijen, kolom) => rijen.map((r) => r[kolom]).filter((w) => type
  */
 export function maakDatasetKaart(ctx, bouw, keuze) {
   const onderzoekId = ctx.params.id;
-  const { g, metTeken, pTekst, dfTekst, nTekst, bereik, LET_OP_VERSCHIL, LET_OP_VERBAND } = bouw.taal;
+  const { g, ge, metTeken, pTekst, dfTekst, nTekst, bereik, LET_OP_VERSCHIL, LET_OP_VERBAND } = bouw.taal;
   const kaart = bouw.maakKaart('an-dataset', bouw.nummer, 'Eigen dataset onderzoeken',
     'Gebruik dit voor gegevens uit een eigen Excel- of CSV-bestand, bijvoorbeeld verzuim per afdeling. Je kunt kolommen beschrijven, groepen vergelijken en verbanden toetsen.');
   let datasets = [];
@@ -81,7 +81,12 @@ export function maakDatasetKaart(ctx, bouw, keuze) {
     vervang(kaart.inhoud, laden('De dataset wordt geladen…'));
     try {
       const { dataset: d } = await api.get(`/datasets/${keuze.dataset}`);
-      dataset = { ...d, soorten: d.kolommen.map((_, i) => kolomSoort(d.rijen.map((r) => r[i]))) };
+      dataset = {
+        ...d,
+        soorten: d.kolommen.map((_, i) => kolomSoort(d.rijen.map((r) => r[i]))),
+        // Getallen die codes zijn (jaar, teamnummer) kunnen ook als indeling in groepen dienen.
+        codes: d.kolommen.map((_, i) => isCodekolom(d.rijen.map((r) => r[i]))),
+      };
     } catch (e) {
       vervang(kaart.inhoud, melding([h('strong', {}, 'De dataset kon niet worden geladen. '), e.message || ''], 'gevaar'));
       return;
@@ -90,6 +95,9 @@ export function maakDatasetKaart(ctx, bouw, keuze) {
   }
 
   const kolommenVan = (soort) => dataset.kolommen.map((naam, i) => ({ naam, i })).filter((k) => dataset.soorten[k.i] === soort);
+  // Indelingen: kolommen met groepen, plus getallenkolommen die codes zijn.
+  const indelingen = () => dataset.kolommen.map((naam, i) => ({ naam: dataset.soorten[i] === 'getal' ? `${naam} (als groepen)` : naam, i }))
+    .filter((k) => dataset.soorten[k.i] === 'categorie' || (dataset.soorten[k.i] === 'getal' && dataset.codes[k.i]));
 
   function kolomOverzicht() {
     return h('details', { class: 'an-uitklap' },
@@ -152,10 +160,16 @@ export function maakDatasetKaart(ctx, bouw, keuze) {
 
   function groepen() {
     const getal_ = kolommenVan('getal');
-    const cat = kolommenVan('categorie');
+    const cat = indelingen();
     if (!getal_.length || !cat.length) return [melding('Hiervoor is een kolom met getallen nodig (wat je vergelijkt) en een kolom met een indeling in groepen (bijvoorbeeld afdeling).')];
     if (!getal_.some((k) => k.i === keuze.dsWat)) keuze.dsWat = getal_[0].i;
     if (!cat.some((k) => k.i === keuze.dsGroep)) keuze.dsGroep = cat[0].i;
+    // Een kolom niet met zichzelf vergelijken (een codekolom staat in beide lijsten).
+    if (keuze.dsWat === keuze.dsGroep) {
+      const ander = getal_.find((k) => k.i !== keuze.dsGroep) || null;
+      if (!ander) return [melding('Hiervoor is naast de indeling nog een kolom met getallen nodig.')];
+      keuze.dsWat = ander.i;
+    }
     const velden = h('div', { class: 'an-keuzes' },
       bouw.kiesVeld('an-ds-wat', 'Wat wil je vergelijken?', getal_.map((k) => ({ waarde: String(k.i), label: k.naam })), String(keuze.dsWat), (w) => { keuze.dsWat = Number(w); teken(); }),
       bouw.kiesVeld('an-ds-groep', 'Tussen welke groepen?', cat.map((k) => ({ waarde: String(k.i), label: k.naam })), String(keuze.dsGroep), (w) => { keuze.dsGroep = Number(w); teken(); }));
@@ -189,7 +203,7 @@ export function maakDatasetKaart(ctx, bouw, keuze) {
         ...gr.map((x) => `- ${x.naam}: gemiddeld ${g(x.b.gemiddelde)} (sd ${g(x.b.sd)}; ${nTekst(x.b.n)})`),
         `- Verschil: ${metTeken(r.welch.verschil)} (95%-interval ${bereik(r.welch.ciLaag, r.welch.ciHoog)})`,
         `- Welch t-toets: ${toets}`,
-        r.d ? `- Effectgrootte: Hedges' g = ${g(r.d.g)} (${S.effectGrootte(r.d.g, 'g')})` : null,
+        r.d ? `- Effectgrootte: Hedges' g = ${ge(r.d.g, 'g')} (${S.effectGrootte(r.d.g, 'g')})` : null,
         noot || null,
         `Conclusie: ${duiding.zinnen.join(' ')}`,
         'Kanttekening: significant betekent niet automatisch belangrijk.'].filter(Boolean).join('\n');
@@ -198,7 +212,7 @@ export function maakDatasetKaart(ctx, bouw, keuze) {
           ['Verschil', metTeken(r.welch.verschil), `“${B.naam}” min “${A.naam}”. Het echte verschil ligt waarschijnlijk tussen ${g(r.welch.ciLaag)} en ${g(r.welch.ciHoog)} (95%-interval).`],
           ['Toets op het verschil (Welch t-toets)', toets, null],
           r.mw ? ['Controle met rangnummers (Mann-Whitney)', `U = ${g(r.mw.u, Number.isInteger(r.mw.u) ? 0 : 1)}; z = ${g(r.mw.z)}; ${pTekst(r.mw.p)}`, 'Deze toets kijkt naar de volgorde van de waarden en is minder gevoelig voor uitschieters. Komt hij op hetzelfde uit, dan is de conclusie steviger.'] : null,
-          r.d ? ['Effectgrootte (Hedges’ g)', `${g(r.d.g)} – ${S.effectGrootte(r.d.g, 'g')}`, 'Vuistregel: vanaf 0,2 klein, vanaf 0,5 middelgroot, vanaf 0,8 groot.'] : null,
+          r.d ? ['Effectgrootte (Hedges’ g)', `${ge(r.d.g, 'g')} – ${S.effectGrootte(r.d.g, 'g')}`, 'Vuistregel: vanaf 0,2 klein, vanaf 0,5 middelgroot, vanaf 0,8 groot.'] : null,
         ]),
         bouw.conclusie(duiding, LET_OP_VERSCHIL)];
     }
@@ -216,7 +230,7 @@ export function maakDatasetKaart(ctx, bouw, keuze) {
       `- Variantieanalyse (ANOVA): ${anovaTekst}`,
       welchTekst ? `- Welch-ANOVA: ${welchTekst}` : null,
       kwTekst ? `- Kruskal-Wallis-toets: ${kwTekst}` : null,
-      `- Effectgrootte: eta² = ${g(r.anova.etaKwadraat)} (${eta})`,
+      `- Effectgrootte: eta² = ${ge(r.anova.etaKwadraat, 'eta2')} (${eta})`,
       noot || null,
       `Conclusie: ${duiding.zinnen.join(' ')}`,
       'Kanttekening: significant betekent niet automatisch belangrijk.'].filter(Boolean).join('\n');
@@ -225,7 +239,7 @@ export function maakDatasetKaart(ctx, bouw, keuze) {
         ['Toets op verschil (variantieanalyse, ANOVA)', anovaTekst, 'Toetst of de gemiddelden van de groepen meer van elkaar verschillen dan je door toeval verwacht.'],
         welchTekst ? ['Controle bij ongelijke groepen (Welch-ANOVA)', welchTekst, 'Houdt er rekening mee dat de groepen niet even groot zijn of niet dezelfde spreiding hebben.'] : null,
         kwTekst ? ['Controle met rangnummers (Kruskal-Wallis)', kwTekst, 'Kijkt naar de volgorde van de waarden en is minder gevoelig voor uitschieters.'] : null,
-        ['Effectgrootte (eta²)', `${g(r.anova.etaKwadraat)} – ${eta}`, `De groepsindeling hangt samen met ongeveer ${getal(r.anova.etaKwadraat * 100, 0)}% van de verschillen. Vuistregel: vanaf 0,01 klein, vanaf 0,06 middelgroot, vanaf 0,14 groot.`],
+        ['Effectgrootte (eta²)', `${ge(r.anova.etaKwadraat, 'eta2')} – ${eta}`, `De groepsindeling hangt samen met ongeveer ${getal(r.anova.etaKwadraat * 100, 0)}% van de verschillen. Vuistregel: vanaf 0,01 klein, vanaf 0,06 middelgroot, vanaf 0,14 groot.`],
       ]),
       bouw.conclusie(duiding, LET_OP_VERSCHIL)];
   }
@@ -253,26 +267,26 @@ export function maakDatasetKaart(ctx, bouw, keuze) {
     const effect = S.effectGrootte(pr.r, 'r');
     const significant = pr.p < ALFA;
     const zinnen = [effect === 'verwaarloosbaar'
-      ? `Er is nauwelijks samenhang tussen ${x} en ${y} (r = ${g(pr.r)}).`
-      : `Hoe hoger ${x}, hoe ${pr.r > 0 ? 'hoger' : 'lager'} meestal ${y} (verband: ${effect}, r = ${g(pr.r)}).`,
+      ? `Er is nauwelijks samenhang tussen ${x} en ${y} (r = ${ge(pr.r, 'r')}).`
+      : `Hoe hoger ${x}, hoe ${pr.r > 0 ? 'hoger' : 'lager'} meestal ${y} (verband: ${effect}, r = ${ge(pr.r, 'r')}).`,
     significant ? 'Dit verband is statistisch significant: het is onwaarschijnlijk dat het alleen door toeval komt.' : 'Niet significant: het verband kan goed door toeval komen.'];
     if (sp && (sp.p < ALFA) !== significant) zinnen.push(`De controle met rangnummers (Spearman, ${pTekst(sp.p)}) komt op een andere conclusie uit. Wees daarom extra voorzichtig.`);
     const tekst = () => [`${titel} – ${dataset.naam} (${nTekst(paren.length)})`,
-      `- Pearson-correlatie: r = ${g(pr.r)}; ${pTekst(pr.p)}`,
-      sp ? `- Spearman-rangcorrelatie: rho = ${g(sp.rho)}; ${pTekst(sp.p)}` : null,
+      `- Pearson-correlatie: r = ${ge(pr.r, 'r')}; ${pTekst(pr.p)}`,
+      sp ? `- Spearman-rangcorrelatie: rho = ${ge(sp.rho, 'rho')}; ${pTekst(sp.p)}` : null,
       `Conclusie: ${zinnen.join(' ')}`,
       'Kanttekening: samenhang is geen oorzaak, en significant betekent niet automatisch belangrijk.'].filter(Boolean).join('\n');
     return [velden, bouw.uitkomstKop(titel, bouw.stukKnop(tekst, `samenhang tussen ${x} en ${y}`)),
       bouw.uitkomsten([
         ['Aantal rijen', nTekst(paren.length), 'Alleen rijen met een waarde in beide kolommen tellen mee.'],
-        ['Samenhang (Pearson r)', `${g(pr.r)}; ${pTekst(pr.p)}`, `Loopt van −1 (tegengesteld) via 0 (geen verband) tot +1 (gaat precies samen).${pr.ciLaag !== undefined && pr.ciLaag !== null ? ` 95%-interval ${bereik(pr.ciLaag, pr.ciHoog)}.` : ''} Vuistregel: vanaf 0,1 klein, vanaf 0,3 middelgroot, vanaf 0,5 groot.`],
-        sp ? ['Controle met rangnummers (Spearman)', `${g(sp.rho)}; ${pTekst(sp.p)}`, 'Kijkt naar de volgorde van de waarden en is minder gevoelig voor uitschieters.'] : null,
+        ['Samenhang (Pearson r)', `${ge(pr.r, 'r')}; ${pTekst(pr.p)}`, `Loopt van −1 (tegengesteld) via 0 (geen verband) tot +1 (gaat precies samen).${pr.ciLaag !== undefined && pr.ciLaag !== null ? ` 95%-interval ${bereik(pr.ciLaag, pr.ciHoog)}.` : ''} Vuistregel: vanaf 0,1 klein, vanaf 0,3 middelgroot, vanaf 0,5 groot.`],
+        sp ? ['Controle met rangnummers (Spearman)', `${ge(sp.rho, 'rho')}; ${pTekst(sp.p)}`, 'Kijkt naar de volgorde van de waarden en is minder gevoelig voor uitschieters.'] : null,
       ]),
       bouw.conclusie({ zinnen, significant, effect }, LET_OP_VERBAND)];
   }
 
   function kruistabel() {
-    const kol = kolommenVan('categorie');
+    const kol = indelingen();
     if (kol.length < 2) return [melding('Hiervoor zijn twee kolommen met een indeling in groepen nodig (bijvoorbeeld afdeling en contractsoort).')];
     if (!kol.some((k) => k.i === keuze.dsRij)) keuze.dsRij = kol[0].i;
     if (!kol.some((k) => k.i === keuze.dsKol) || keuze.dsKol === keuze.dsRij) keuze.dsKol = kol.find((k) => k.i !== keuze.dsRij).i;
@@ -285,8 +299,13 @@ export function maakDatasetKaart(ctx, bouw, keuze) {
     const titel = `${naamR} en ${naamK}`;
     if (keuze.dsRij === keuze.dsKol) return [velden, bouw.uitkomstKop(titel), melding('Kies twee verschillende kolommen.')];
     const beide = dataset.rijen.filter((r) => !isLeeg(r[keuze.dsRij]) && !isLeeg(r[keuze.dsKol]));
-    const rijen = groepeer(beide, keuze.dsRij).slice(0, MAX_GROEPEN);
-    const kolommen = groepeer(beide, keuze.dsKol).slice(0, MAX_GROEPEN);
+    const alleRijen = groepeer(beide, keuze.dsRij);
+    const alleKolommen = groepeer(beide, keuze.dsKol);
+    const rijen = alleRijen.slice(0, MAX_GROEPEN);
+    const kolommen = alleKolommen.slice(0, MAX_GROEPEN);
+    const afgekapt = alleRijen.length > MAX_GROEPEN || alleKolommen.length > MAX_GROEPEN
+      ? h('p', { class: 'an-noot' }, `Alleen de ${MAX_GROEPEN} grootste groepen per kolom zijn meegenomen; de rest telt niet mee in de tabel en de toets.`)
+      : null;
     if (rijen.length < 2 || kolommen.length < 2) return [velden, bouw.uitkomstKop(titel), melding('In minstens één van de kolommen komt maar één groep voor. Dan valt er geen verband te toetsen.')];
     const tabel = rijen.map((r) => kolommen.map((k) => r.rijen.filter((x) => sleutel(x[keuze.dsKol]) === sleutel(k.naam)).length));
     const uit = S.chiKwadraat(tabel);
@@ -313,21 +332,21 @@ export function maakDatasetKaart(ctx, bouw, keuze) {
     const zinnen = [significant
       ? `Er is een statistisch significant verband tussen ${naamR} en ${naamK}: het is onwaarschijnlijk dat het alleen door toeval komt.`
       : `Niet significant: ${naamR} en ${naamK} hangen niet aantoonbaar samen. Verschillen die je ziet, kunnen goed door toeval komen.`,
-    `Het verband is ${effect === 'verwaarloosbaar' ? 'verwaarloosbaar klein' : effect} (Cramérs V = ${g(uit.cramersV)}).`];
+    `Het verband is ${effect === 'verwaarloosbaar' ? 'verwaarloosbaar klein' : effect} (Cramérs V = ${ge(uit.cramersV, 'v')}).`];
     if (onbetrouwbaar) zinnen.push('Omdat de aantallen klein zijn, is deze uitkomst niet betrouwbaar; trek er geen stevige conclusies uit.');
     const toets = `chi²(${dfTekst(uit.df)}) = ${g(uit.chi2)}; ${pTekst(uit.p)}`;
     const tekst = () => [`Verband tussen ${naamR} en ${naamK} – ${dataset.naam} (${nTekst(n)})`,
       ...rijen.map((r, i) => `- ${r.naam}: ${kolommen.map((k, j) => `${k.naam} ${tabel[i][j]}`).join('; ')}`),
       `- Chi-kwadraattoets: ${toets}`,
-      `- Sterkte van het verband: Cramérs V = ${g(uit.cramersV)} (${effect})`,
+      `- Sterkte van het verband: Cramérs V = ${ge(uit.cramersV, 'v')} (${effect})`,
       onbetrouwbaar ? 'Waarschuwing: door kleine aantallen is de toets niet betrouwbaar.' : null,
       `Conclusie: ${zinnen.join(' ')}`,
       'Kanttekening: samenhang is geen oorzaak, en significant betekent niet automatisch belangrijk.'].filter(Boolean).join('\n');
-    return [velden, bouw.uitkomstKop(titel, bouw.stukKnop(tekst, `verband tussen ${naamR} en ${naamK}`)), telTabel,
+    return [velden, bouw.uitkomstKop(titel, bouw.stukKnop(tekst, `verband tussen ${naamR} en ${naamK}`)), telTabel, afgekapt,
       bouw.uitkomsten([
         ['Aantal rijen', nTekst(n), 'Alleen rijen met een waarde in beide kolommen tellen mee.'],
         ['Toets op verband (chi-kwadraat)', toets, 'Toetst of de verdeling over de kolommen verschilt per rij.'],
-        ['Sterkte van het verband (Cramérs V)', `${g(uit.cramersV)} – ${effect}`, 'Loopt van 0 (geen verband) tot 1 (volmaakt verband). Vuistregel: vanaf 0,1 klein, vanaf 0,3 middelgroot, vanaf 0,5 groot.'],
+        ['Sterkte van het verband (Cramérs V)', `${ge(uit.cramersV, 'v')} – ${effect}`, 'Loopt van 0 (geen verband) tot 1 (volmaakt verband). Vuistregel: vanaf 0,1 klein, vanaf 0,3 middelgroot, vanaf 0,5 groot.'],
       ]),
       kleinVerwacht ? melding([h('strong', {}, onbetrouwbaar ? 'Toets niet betrouwbaar. ' : 'Kleine aantallen. '), `In ${kleinVerwacht} van de ${cellen} cellen is het aantal dat je zonder verband zou verwachten kleiner dan 5.`], 'waarschuwing') : null,
       bouw.conclusie({ zinnen, significant, effect }, LET_OP_VERBAND)];

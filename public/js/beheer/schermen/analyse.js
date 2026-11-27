@@ -53,9 +53,19 @@ function metTeken(x, dec = 2) {
 function pTekst(p) {
   if (!eindig(p)) return 'p onbekend';
   if (p < 0.001) return 'p < 0,001';
-  // Vlak bij de grens een decimaal extra, zodat "p = 0,050" niet naast "significant" komt te staan.
-  if (p >= 0.0495 && p < 0.0505) return `p = ${getal(p, 4)}`;
-  return `p = ${getal(p, 3)}`;
+  // Vlak bij de grens zoveel decimalen dat het getoonde getal niet "0,050" is: dat zou naast
+  // "significant" of "niet significant" tegenstrijdig lijken.
+  let dec = 3;
+  while (dec < 7 && Number(p.toFixed(dec)) === 0.05) dec++;
+  return `p = ${getal(p, dec)}`;
+}
+
+/** Effectgrootte met twee decimalen, of meer als het afgeronde getal anders in een andere klasse zou vallen. */
+function ge(x, soort) {
+  if (!eindig(x)) return '–';
+  let dec = 2;
+  while (dec < 4 && S.effectGrootte(Number(x.toFixed(dec)), soort) !== S.effectGrootte(x, soort)) dec++;
+  return g(x, dec);
 }
 
 /** Vrijheidsgraden: heel getal zonder decimalen, anders één decimaal. */
@@ -234,7 +244,7 @@ function duidTweeGroepen(r, zinRichting) {
   zinnen.push(significant ? ZIN_SIG_VERSCHIL : ZIN_GEEN_SIG_VERSCHIL);
   const effect = r.d ? S.effectGrootte(r.d.g, 'g') : null;
   if (effect) {
-    zinnen.push(`Het verschil is ${effectWoord(effect)} (Hedges' g = ${g(r.d.g)}).`);
+    zinnen.push(`Het verschil is ${effectWoord(effect)} (Hedges' g = ${ge(r.d.g, 'g')}).`);
     if (!significant && (effect === 'middelgroot' || effect === 'groot')) {
       zinnen.push('Met meer respondenten is zo’n verschil mogelijk wel aan te tonen.');
     }
@@ -258,7 +268,7 @@ function duidMeerGroepen(r, groepen) {
   zinnen.push(`Het hoogst scoort “${hoogste.naam}” (gemiddeld ${g(hoogste.b.gemiddelde)}), het laagst “${laagste.naam}” (gemiddeld ${g(laagste.b.gemiddelde)}).`);
   const effect = S.effectGrootte(r.anova.etaKwadraat, 'eta2');
   if (effect) {
-    zinnen.push(`De verschillen tussen de groepen zijn ${effectWoord(effect)} (eta² = ${g(r.anova.etaKwadraat)}).`);
+    zinnen.push(`De verschillen tussen de groepen zijn ${effectWoord(effect)} (eta² = ${ge(r.anova.etaKwadraat, 'eta2')}).`);
     if (!significant && (effect === 'middelgroot' || effect === 'groot')) {
       zinnen.push('Met meer respondenten zijn zulke verschillen mogelijk wel aan te tonen.');
     }
@@ -278,9 +288,9 @@ function duidSamenhang(pr, sp, x, y) {
   const effect = S.effectGrootte(pr.r, 'r');
   const zinnen = [];
   if (effect === 'verwaarloosbaar') {
-    zinnen.push(`Er is nauwelijks samenhang tussen ${voluit(x)} en ${voluit(y)} (r = ${g(pr.r)}).`);
+    zinnen.push(`Er is nauwelijks samenhang tussen ${voluit(x)} en ${voluit(y)} (r = ${ge(pr.r, 'r')}).`);
   } else {
-    zinnen.push(`Hoe hoger de score op ${voluit(x)}, hoe ${pr.r > 0 ? 'hoger' : 'lager'} meestal de score op ${voluit(y)} (verband: ${effect}, r = ${g(pr.r)}).`);
+    zinnen.push(`Hoe hoger de score op ${voluit(x)}, hoe ${pr.r > 0 ? 'hoger' : 'lager'} meestal de score op ${voluit(y)} (verband: ${effect}, r = ${ge(pr.r, 'r')}).`);
   }
   const significant = pr.p < ALFA;
   zinnen.push(significant ? ZIN_SIG_VERBAND : ZIN_GEEN_SIG_VERBAND);
@@ -290,7 +300,9 @@ function duidSamenhang(pr, sp, x, y) {
   return { zinnen, significant, effect };
 }
 
-function alfaOordeel(alpha) {
+function alfaOordeel(ruw) {
+  // Het oordeel hoort bij het getal zoals het getoond wordt (twee decimalen).
+  const alpha = Math.round(ruw * 100) / 100;
   if (alpha < 0.6) return 'onvoldoende';
   if (alpha < 0.7) return 'matig';
   if (alpha < 0.8) return 'voldoende';
@@ -462,7 +474,7 @@ export async function toon(container, ctx) {
       ['Toets op het verschil (Welch t-toets)', `t(${dfTekst(r.welch.df)}) = ${g(r.welch.t)}; ${pTekst(r.welch.p)}`, null],
       r.mw ? ['Controle met rangnummers (Mann-Whitney)', `U = ${g(r.mw.u, Number.isInteger(r.mw.u) ? 0 : 1)}; z = ${g(r.mw.z)}; ${pTekst(r.mw.p)}`,
         'Deze toets past bij antwoorden op een schaal van 1 tot 5. Komt hij op hetzelfde uit, dan is de conclusie steviger.'] : null,
-      r.d ? ['Effectgrootte (Hedges’ g)', `${g(r.d.g)} – ${S.effectGrootte(r.d.g, 'g')}`, `95%-interval ${bereik(r.d.ciLaag, r.d.ciHoog)}. Vuistregel: vanaf 0,2 klein, vanaf 0,5 middelgroot, vanaf 0,8 groot.`] : null,
+      r.d ? ['Effectgrootte (Hedges’ g)', `${ge(r.d.g, 'g')} – ${S.effectGrootte(r.d.g, 'g')}`, `95%-interval ${bereik(r.d.ciLaag, r.d.ciHoog)}. Vuistregel: vanaf 0,2 klein, vanaf 0,5 middelgroot, vanaf 0,8 groot.`] : null,
     ]);
   }
 
@@ -473,7 +485,7 @@ export async function toon(container, ctx) {
       `- Verschil: ${metTeken(r.welch.verschil)} (95%-betrouwbaarheidsinterval ${bereik(r.welch.ciLaag, r.welch.ciHoog)})`,
       `- Welch t-toets: t(${dfTekst(r.welch.df)}) = ${g(r.welch.t)}; ${pTekst(r.welch.p)}`,
       r.mw ? `- Mann-Whitney-toets: z = ${g(r.mw.z)}; ${pTekst(r.mw.p)}` : null,
-      r.d ? `- Effectgrootte: Hedges' g = ${g(r.d.g)} (${S.effectGrootte(r.d.g, 'g')})` : null,
+      r.d ? `- Effectgrootte: Hedges' g = ${ge(r.d.g, 'g')} (${S.effectGrootte(r.d.g, 'g')})` : null,
     ].filter(Boolean);
   }
 
@@ -595,7 +607,7 @@ export async function toon(container, ctx) {
     const getoetst = rijen.filter((x) => x.r);
     const significant = getoetst.filter((x) => x.r.welch.p < ALFA);
     const kansToeval = getoetst.length > 1 ? Math.round((1 - (1 - ALFA) ** getoetst.length) * 100) : null;
-    const effectTekst = (r) => (r.d ? `${g(r.d.g)} (${S.effectGrootte(r.d.g, 'g')})` : '–');
+    const effectTekst = (r) => (r.d ? `${ge(r.d.g, 'g')} (${S.effectGrootte(r.d.g, 'g')})` : '–');
     const tekst = () => [
       `Verschil tussen meetmomenten per thema – ${naamA} vergeleken met ${naamB}`,
       'Gemiddelde score per thema (1 = laagst, 5 = hoogst); verschil getoetst met de Welch t-toets',
@@ -751,7 +763,7 @@ export async function toon(container, ctx) {
       `- Variantieanalyse (ANOVA): ${anovaTekst}`,
       welchTekst ? `- Welch-ANOVA: ${welchTekst}` : null,
       kwTekst ? `- Kruskal-Wallis-toets: ${kwTekst}` : null,
-      `- Effectgrootte: eta² = ${g(r.anova.etaKwadraat)} (${etaLabel})${r.kw ? `; epsilon² = ${g(r.kw.epsilonKwadraat)} (${S.effectGrootte(r.kw.epsilonKwadraat, 'epsilon2')})` : ''}`,
+      `- Effectgrootte: eta² = ${ge(r.anova.etaKwadraat, 'eta2')} (${etaLabel})${r.kw ? `; epsilon² = ${ge(r.kw.epsilonKwadraat, 'epsilon2')} (${S.effectGrootte(r.kw.epsilonKwadraat, 'epsilon2')})` : ''}`,
       ...voetRegels,
       `Conclusie: ${duiding.zinnen.join(' ')}`,
       'Kanttekening: significant betekent niet automatisch belangrijk.',
@@ -764,9 +776,9 @@ export async function toon(container, ctx) {
         ['Toets op verschil (variantieanalyse, ANOVA)', anovaTekst, 'Toetst of de gemiddelden van de groepen meer van elkaar verschillen dan je door toeval verwacht.'],
         welchTekst ? ['Controle bij ongelijke groepen (Welch-ANOVA)', welchTekst, 'Houdt er rekening mee dat de groepen niet even groot zijn of niet dezelfde spreiding hebben.'] : null,
         kwTekst ? ['Controle met rangnummers (Kruskal-Wallis)', kwTekst, 'Deze toets past bij antwoorden op een schaal van 1 tot 5.'] : null,
-        ['Effectgrootte (eta²)', `${g(r.anova.etaKwadraat)} – ${etaLabel}`,
+        ['Effectgrootte (eta²)', `${ge(r.anova.etaKwadraat, 'eta2')} – ${etaLabel}`,
           `De groepsindeling hangt samen met ongeveer ${getal(r.anova.etaKwadraat * 100, 0)}% van de verschillen in score. Vuistregel: vanaf 0,01 klein, vanaf 0,06 middelgroot, vanaf 0,14 groot.`],
-        r.kw ? ['Effectgrootte bij rangnummers (epsilon²)', `${g(r.kw.epsilonKwadraat)} – ${S.effectGrootte(r.kw.epsilonKwadraat, 'epsilon2')}`, null] : null,
+        r.kw ? ['Effectgrootte bij rangnummers (epsilon²)', `${ge(r.kw.epsilonKwadraat, 'epsilon2')} – ${S.effectGrootte(r.kw.epsilonKwadraat, 'epsilon2')}`, null] : null,
       ]),
       conclusie(duiding, LET_OP_VERSCHIL),
     ];
@@ -811,6 +823,16 @@ export async function toon(container, ctx) {
       return melding(`Te weinig antwoorden: minder dan ${MIN_PAREN} respondenten hebben op beide een score. Vanaf ${MIN_PAREN} kun je samenhang berekenen.`);
     }
     const titel = `Samenhang tussen ${voluit(x)} en ${voluit(y)}`;
+    // Bij een ja/nee-vraag is de samenhang in feite een vergelijking van de ja-groep met de nee-groep.
+    // Is een van die groepen kleiner dan de drempel, dan zou de uitkomst iets over die kleine groep verraden.
+    for (const [o, w, ander] of [[x, xs, ys], [y, ys, xs]]) {
+      if (!o.janee) continue;
+      const ja = w.filter((v, i) => v === 1 && ander[i] !== null).length;
+      const nee = w.filter((v, i) => v === 0 && ander[i] !== null).length;
+      if (ja < drempel || nee < drempel) {
+        return [uitkomstKop(titel), melding(`Bij ${voluit(o)} antwoordden minder dan ${drempel} respondenten ${ja < drempel ? 'ja' : 'nee'}. Een samenhang met een andere score zou iets verraden over die kleine groep. Daarom wordt hier niets berekend.`)];
+      }
+    }
     const pr = S.pearson(xs, ys);
     const sp = S.spearman(xs, ys);
     if (!pr) return [uitkomstKop(titel), melding('Bij minstens één van de twee scores gaf iedereen hetzelfde antwoord. Zonder verschillen in de antwoorden is er geen samenhang te berekenen.')];
@@ -822,8 +844,8 @@ export async function toon(container, ctx) {
     const tekst = () => [
       `Samenhang tussen ${voluit(x)} en ${voluit(y)}`,
       `${lijstNaam(lijst)}; ${nTekst(pr.n)} (respondenten met een score op beide)`,
-      `- Correlatie (Pearson): r = ${g(pr.r)}${eindig(pr.ciLaag) ? ` (95%-betrouwbaarheidsinterval ${bereik(pr.ciLaag, pr.ciHoog)})` : ''}; ${pTekst(pr.p)}`,
-      sp ? `- Rangcorrelatie (Spearman): rho = ${g(sp.rho)}; ${pTekst(sp.p)}` : null,
+      `- Correlatie (Pearson): r = ${ge(pr.r, 'r')}${eindig(pr.ciLaag) ? ` (95%-betrouwbaarheidsinterval ${bereik(pr.ciLaag, pr.ciHoog)})` : ''}; ${pTekst(pr.p)}`,
+      sp ? `- Rangcorrelatie (Spearman): rho = ${ge(sp.rho, 'rho')}; ${pTekst(sp.p)}` : null,
       `- Sterkte van het verband: ${duiding.effect}`,
       janee ? '- Bij een ja/nee-vraag telt ja als 1 en nee als 0.' : null,
       overlap ? '- De twee scores overlappen (de ene is onderdeel van de andere); een deel van de samenhang is daardoor vanzelfsprekend.' : null,
@@ -834,8 +856,8 @@ export async function toon(container, ctx) {
       uitkomstKop(titel, stukKnop(tekst, 'samenhang tussen de twee scores')),
       uitkomsten([
         ['Aantal respondenten', nTekst(pr.n), 'Alleen respondenten met een score op beide tellen mee.'],
-        ['Correlatie (Pearson r)', `r = ${g(pr.r)}; ${pTekst(pr.p)}`, `${ci}Een r van 0 betekent geen samenhang; 1 of ${MIN}1 een volmaakte samenhang.`],
-        sp ? ['Controle met rangnummers (Spearman)', `rho = ${g(sp.rho)}; ${pTekst(sp.p)}`, 'Deze maat past bij antwoorden op een schaal van 1 tot 5.'] : null,
+        ['Correlatie (Pearson r)', `r = ${ge(pr.r, 'r')}; ${pTekst(pr.p)}`, `${ci}Een r van 0 betekent geen samenhang; 1 of ${MIN}1 een volmaakte samenhang.`],
+        sp ? ['Controle met rangnummers (Spearman)', `rho = ${ge(sp.rho, 'rho')}; ${pTekst(sp.p)}`, 'Deze maat past bij antwoorden op een schaal van 1 tot 5.'] : null,
         ['Sterkte van het verband', duiding.effect, 'Vuistregel: vanaf 0,1 klein, vanaf 0,3 middelgroot, vanaf 0,5 groot.'],
       ]),
       janee ? h('p', { class: 'an-noot' }, 'Bij een ja/nee-vraag telt ja als 1 en nee als 0. Een “hogere score” betekent daar dus: vaker ja.') : null,
@@ -897,8 +919,8 @@ export async function toon(container, ctx) {
               }
               return h('td', {
                 class: `an-matrix-cel getal ${rKlasse(pr.r)}`,
-                title: `${a.naam} en ${b.naam}: r = ${g(pr.r)} (${S.effectGrootte(pr.r, 'r')}; ${nTekst(pr.n)}; ${pTekst(pr.p)})`,
-              }, g(pr.r));
+                title: `${a.naam} en ${b.naam}: r = ${ge(pr.r, 'r')} (${S.effectGrootte(pr.r, 'r')}; ${nTekst(pr.n)}; ${pTekst(pr.p)})`,
+              }, ge(pr.r, 'r'));
             })))))),
       h('ul', { class: 'an-legenda', 'aria-label': 'Legenda bij de kleuren' },
         [['an-r-n3', `${MIN}0,5 of lager`], ['an-r-n2', `vanaf ${MIN}0,3`], ['an-r-n1', `vanaf ${MIN}0,1`], ['an-r-0', 'rond 0'], ['an-r-p1', 'vanaf 0,1'], ['an-r-p2', 'vanaf 0,3'], ['an-r-p3', '0,5 of hoger']]
@@ -1030,6 +1052,15 @@ export async function toon(container, ctx) {
       return [uitkomstKop(titel), melding('Op minstens één van de twee vragen gaf iedereen hetzelfde antwoord. Dan is er geen verband te toetsen.')];
     }
     const tabel = rijen.map((r) => kolommen.map((k) => vol[r.i][k.j]));
+    // Heeft een combinatie van antwoorden minder dan `drempel` respondenten, dan tonen we de tabel en de toets
+    // niet: uit de totalen per vraag en de getoonde cellen, of uit de uitkomst van de toets, is zo'n kleine cel
+    // anders terug te rekenen.
+    if (tabel.some((rij) => rij.some((c) => c < drempel))) {
+      return [uitkomstKop(titel), melding([
+        h('p', {}, `Niet elke combinatie van antwoorden heeft minstens ${drempel} respondenten. Om te voorkomen dat iets over zo'n kleine groep is af te leiden, worden de kruistabel en de toets niet getoond.`),
+        h('p', { class: 'klein' }, 'Dit kan wel bij vragen met minder antwoordmogelijkheden, of als er meer respondenten zijn.'),
+      ])];
+    }
     const uit = S.chiKwadraat(tabel);
     if (!uit) return [uitkomstKop(titel), melding('Het verband is met deze antwoorden niet te berekenen.')];
 
@@ -1055,7 +1086,7 @@ export async function toon(container, ctx) {
     } else {
       zinnen.push('Niet significant: de antwoorden op de ene vraag hangen niet aantoonbaar samen met die op de andere. Verschillen die je ziet, kunnen goed door toeval komen.');
     }
-    zinnen.push(`Het verband is ${effectWoord(effect)} (Cramérs V = ${g(uit.cramersV)}).`);
+    zinnen.push(`Het verband is ${effectWoord(effect)} (Cramérs V = ${ge(uit.cramersV, 'v')}).`);
     if (onbetrouwbaar) zinnen.push('Omdat de aantallen klein zijn, is deze uitkomst niet betrouwbaar; trek er geen stevige conclusies uit.');
     const duiding = { zinnen, significant, effect };
 
@@ -1082,7 +1113,7 @@ export async function toon(container, ctx) {
         : ['De aantallen per combinatie zijn te klein om te tonen.']),
       ietsZichtbaar ? legenda : null,
       `- Chi-kwadraattoets: ${toetsTekst}`,
-      `- Sterkte van het verband: Cramérs V = ${g(uit.cramersV)} (${effect})`,
+      `- Sterkte van het verband: Cramérs V = ${ge(uit.cramersV, 'v')} (${effect})`,
       waarschuwing ? `Waarschuwing: ${waarschuwing}` : null,
       `Conclusie: ${zinnen.join(' ')}`,
       'Kanttekening: samenhang is geen oorzaak, en significant betekent niet automatisch belangrijk.',
@@ -1113,7 +1144,7 @@ export async function toon(container, ctx) {
       uitkomsten([
         ['Aantal respondenten', nTekst(n), 'Alleen respondenten die beide vragen beantwoordden, tellen mee. Antwoorden die niemand koos, zijn weggelaten.'],
         ['Toets op verband (chi-kwadraat)', toetsTekst, 'Toetst of de verdeling van de antwoorden op de ene vraag verschilt per antwoord op de andere vraag.'],
-        ['Sterkte van het verband (Cramérs V)', `${g(uit.cramersV)} – ${effect}`, 'Loopt van 0 (geen verband) tot 1 (volmaakt verband). Vuistregel: vanaf 0,1 klein, vanaf 0,3 middelgroot, vanaf 0,5 groot.'],
+        ['Sterkte van het verband (Cramérs V)', `${ge(uit.cramersV, 'v')} – ${effect}`, 'Loopt van 0 (geen verband) tot 1 (volmaakt verband). Vuistregel: vanaf 0,1 klein, vanaf 0,3 middelgroot, vanaf 0,5 groot.'],
       ]),
       waarschuwing ? melding([h('strong', {}, onbetrouwbaar ? 'Toets niet betrouwbaar. ' : 'Kleine aantallen. '), waarschuwing], 'waarschuwing') : null,
       conclusie(duiding, LET_OP_VERBAND),
@@ -1147,7 +1178,7 @@ export async function toon(container, ctx) {
     stukKnop,
     duidTweeGroepen,
     duidMeerGroepen,
-    taal: { g, metTeken, pTekst, dfTekst, nTekst, bereik, LET_OP_VERSCHIL, LET_OP_VERBAND },
+    taal: { g, ge, metTeken, pTekst, dfTekst, nTekst, bereik, LET_OP_VERSCHIL, LET_OP_VERBAND },
   }, keuze);
 
   function tekenLijstKaarten() {

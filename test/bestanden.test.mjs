@@ -304,8 +304,8 @@ const VERWACHT_VOORBEELD = [
     naam: 'Gegevens',
     rijen: [
       ['Naam', 'Leeftijd', 'Score', 'Actief', 'Geboortedatum', 'Ingevuld op', 'Tijd', 'Formule', 'Opmerking', 'Bedrag', 'Aandeel', null, null],
-      ['Jan de Vries', 34, 3.75, true, '1990-05-17', '2026-03-14 09:30', '08:15', 68, 'Prima 🙂', 1234.5, 0.25, null, null],
-      ['Zoë Çelik', 51, 4, false, '1975-12-01', '2026-03-15 16:45', null, 4.5, 'Zoë Çelik!', 99, 1, null, null],
+      ['Jan de Vries', 34, 3.75, true, '1990-05-17', '2026-03-14 09:30', '08:15', 68, 'Prima 🙂', 1234.5, 25, null, null],
+      ['Zoë Çelik', 51, 4, false, '1975-12-01', '2026-03-15 16:45', null, 4.5, 'Zoë Çelik!', 99, 100, null, null],
       LEEG13,
       ['Ömer', null, -2.5, null, null, null, null, null, 'regel 1\nregel 2', null, null, null, null],
       LEEG13,
@@ -389,7 +389,7 @@ test('xlsx lezen: datums en tijden volgens de notatie van de cel', async () => {
     45000.75, // "dagen" tussen aanhalingstekens is geen datum
     45000.75, // kleur tussen blokhaken is geen datum
     '2023-03-15', // yyyy\-mm\-dd
-    0.5, // percentage
+    50, // percentage: als getal zoals je het in Excel ziet (50 %)
   ]);
   assert.deepEqual(bladen[0].rijen[1].slice(0, 9), ['1900-01-01', '1900-02-28', '1900-03-01', '9999-12-31', -1, '2024-02-29 13:45', '2024-02-29', '2023-03-15 00:00', '2023-03-15 06:00']);
 
@@ -1151,4 +1151,19 @@ test('bewaarBestand: maakt een tijdelijke downloadkoppeling (met een nagebootste
   assert.equal(koppeling.download, 'proef.zip');
   assert.equal(blob.type, 'application/zip');
   assert.equal((await B.leesZip(await blob.arrayBuffer())).size, 1);
+});
+
+test('xlsx lezen: een cel met percentage-opmaak wordt het getal zoals Excel het toont', async () => {
+  const { maakZip } = B;
+  const xml = (t) => new TextEncoder().encode(t);
+  const bestanden = [
+    { naam: '[Content_Types].xml', inhoud: xml('<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>') },
+    { naam: '_rels/.rels', inhoud: xml('<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>') },
+    { naam: 'xl/workbook.xml', inhoud: xml('<?xml version="1.0"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Blad1" sheetId="1" r:id="rId1"/></sheets></workbook>') },
+    { naam: 'xl/_rels/workbook.xml.rels', inhoud: xml('<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>') },
+    { naam: 'xl/styles.xml', inhoud: xml('<?xml version="1.0"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="1"><numFmt numFmtId="164" formatCode="0.0&quot; pct&quot;%"/></numFmts><cellXfs count="4"><xf numFmtId="0"/><xf numFmtId="9"/><xf numFmtId="10"/><xf numFmtId="164"/></cellXfs></styleSheet>') },
+    { naam: 'xl/worksheets/sheet1.xml', inhoud: xml('<?xml version="1.0"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1"><v>0.058</v></c><c r="B1" s="1"><v>0.06</v></c><c r="C1" s="2"><v>0.0583</v></c><c r="D1" s="3"><v>0.071</v></c></row></sheetData></worksheet>') },
+  ];
+  const { bladen } = await B.leesXlsx(maakZip(bestanden));
+  assert.deepEqual(bladen[0].rijen[0], [0.058, 6, 5.83, 7.1]);
 });

@@ -12,14 +12,22 @@ export function normaal(tekst) {
   return tekstVan(tekst).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
+// Een rij waarvan de eerste cel alleen "Totaal", "Gemiddelde" en dergelijke is, is geen waarneming.
+const P_TOTAALRIJ = /^((sub|eind)?totaal( generaal)?|totalen|gemiddelde?|som|totals?|grand total|average|mean)\s*:?$/i;
+
 /**
  * Splitst een blad in de kopregel en de rijen eronder. De kop is de eerste rij die niet leeg is.
  * Lege rijen vervallen; kolommen zonder naam heten "Kolom C"; dubbele namen krijgen (2), (3).
+ * nummers: per rij het regelnummer zoals in Excel (voor meldingen).
+ * totaalrijen: rijen als "Totaal" of "Gemiddelde" onderaan een lijst; die worden overgeslagen: [{ nummer, tekst }].
  */
 export function kopEnRijen(ruw) {
-  const rijen = (ruw || []).filter((r) => Array.isArray(r) && r.some((c) => !leeg(c)));
-  if (!rijen.length) return { kop: [], rijen: [] };
-  const breedte = Math.max(...rijen.map((r) => r.length));
+  const gevuld = [];
+  (ruw || []).forEach((r, i) => {
+    if (Array.isArray(r) && r.some((c) => !leeg(c))) gevuld.push({ r, nummer: i + 1 });
+  });
+  if (!gevuld.length) return { kop: [], rijen: [], nummers: [], totaalrijen: [] };
+  const breedte = Math.max(...gevuld.map((x) => x.r.length));
   const letter = (i) => {
     let s = '';
     for (let n = i + 1; n > 0; n = Math.floor((n - 1) / 26)) s = String.fromCharCode(65 + ((n - 1) % 26)) + s;
@@ -27,14 +35,32 @@ export function kopEnRijen(ruw) {
   };
   const gezien = new Map();
   const kop = Array.from({ length: breedte }, (_, i) => {
-    let naam = tekstVan(rijen[0][i]) || `Kolom ${letter(i)}`;
+    let naam = tekstVan(gevuld[0].r[i]) || `Kolom ${letter(i)}`;
     naam = naam.replace(/\s+/g, ' ').slice(0, 100);
     const sleutel = naam.toLowerCase();
     const n = (gezien.get(sleutel) || 0) + 1;
     gezien.set(sleutel, n);
     return n > 1 ? `${naam.slice(0, 94)} (${n})` : naam;
   });
-  return { kop, rijen: rijen.slice(1).map((r) => Array.from({ length: breedte }, (_, i) => (leeg(r[i]) ? null : r[i]))) };
+  const rijen = [];
+  const nummers = [];
+  const totaalrijen = [];
+  for (const { r, nummer } of gevuld.slice(1)) {
+    // Alleen als de eerste kolom precies "Totaal", "Gemiddelde" en dergelijke bevat (zoals onder een lijst in Excel).
+    const eerste = r[0];
+    if (typeof eerste === 'string' && P_TOTAALRIJ.test(eerste.trim())) {
+      totaalrijen.push({ nummer, tekst: eerste.trim() });
+      continue;
+    }
+    rijen.push(Array.from({ length: breedte }, (_, i) => (leeg(r[i]) ? null : r[i])));
+    nummers.push(nummer);
+  }
+  return { kop, rijen, nummers, totaalrijen };
+}
+
+/** Meldingen voor overgeslagen totaalrijen. */
+function totaalMeldingen(totaalrijen = []) {
+  return totaalrijen.map((t) => `Regel ${t.nummer} ("${t.tekst}") lijkt een totaal- of gemiddelderij en is overgeslagen.`);
 }
 
 /** Zoekt de kolom waarvan de naam bij een van de patronen past; -1 als er geen is. */
@@ -46,8 +72,34 @@ export function herkenKolom(kop, patronen, bezet = new Set()) {
   return -1;
 }
 
-/** Getal uit een cel: 7,4 · 7.4 · 1.234,5 · 45% · € 12,50. Geeft null als het geen getal is. */
-export function alsGetal(w) {
+/**
+ * Welke notatie een kolom gebruikt: 'nl' (komma als decimaalteken, punt tussen duizendtallen: 1.234,5)
+ * of 'en' (punt als decimaalteken: 1,234.5). Gekeken wordt naar cellen die maar op één manier te lezen zijn;
+ * zonder aanwijzing geldt de Nederlandse notatie.
+ */
+export function getalNotatie(waarden) {
+  let nl = 0;
+  let en = 0;
+  for (const w of waarden || []) {
+    if (typeof w !== 'string') continue;
+    const t = w.replace(/[€%\s ]/g, '');
+    if (/\d,\d{1,2}$|\d,\d{4,}$|\.\d{3},\d/.test(t)) nl++;
+    if (/\d\.\d{1,2}$|\d\.\d{4,}$|,\d{3}\.\d/.test(t)) en++;
+  }
+  return en > 0 && nl === 0 ? 'en' : 'nl';
+}
+
+/** Een tekst als "2.450" of "12,500": met één scheidingsteken en precies drie cijfers erachter. */
+export function isDubbelzinnig(w) {
+  return typeof w === 'string' && /^[+-]?\d{1,3}[.,]\d{3}$/.test(w.replace(/[€%\s ]/g, ''));
+}
+
+/**
+ * Getal uit een cel: 7,4 · 7.4 · 1.234,5 · 45% · € 12,50. Geeft null als het geen getal is.
+ * notatie ('nl' of 'en', zie getalNotatie) beslist alleen bij "2.450" en "12,500": in de Nederlandse notatie
+ * is 2.450 tweeduizend vierhonderdvijftig en 12,500 twaalf en een half.
+ */
+export function alsGetal(w, notatie = 'nl') {
   if (typeof w === 'number') return Number.isFinite(w) ? w : null;
   let t = tekstVan(w).replace(/[€%\s ]/g, '');
   if (!t || !/^[+-]?[\d.,]+$/.test(t) || !/\d/.test(t)) return null;
@@ -57,12 +109,26 @@ export function alsGetal(w) {
     // Het laatste teken is het decimaalteken; het andere scheidt duizendtallen.
     t = komma > punt ? t.replace(/\./g, '').replace(',', '.') : t.replace(/,/g, '');
   } else if (komma !== -1) {
-    t = (t.match(/,/g).length > 1) ? t.replace(/,/g, '') : t.replace(',', '.');
-  } else if (punt !== -1 && t.match(/\./g).length > 1) {
-    t = t.replace(/\./g, '');
+    const enkel = t.match(/,/g).length === 1;
+    t = !enkel || (notatie === 'en' && /,\d{3}$/.test(t)) ? t.replace(/,/g, '') : t.replace(',', '.');
+  } else if (punt !== -1) {
+    const enkel = t.match(/\./g).length === 1;
+    if (!enkel || (notatie !== 'en' && /\.\d{3}$/.test(t))) t = t.replace(/\./g, '');
   }
   const n = Number(t);
   return Number.isFinite(n) ? n : null;
+}
+
+/** Melding als een kolom getallen als "2.450" bevat: zeg hoe die gelezen zijn. */
+function notatieMelding(naam, waarden, notatie) {
+  const lijst = waarden || [];
+  const voorbeeld = lijst.find(isDubbelzinnig);
+  if (!voorbeeld) return null;
+  // Gaven andere cellen al uitsluitsel over de notatie, dan is er niets te melden.
+  const zeker = lijst.some((w) => typeof w === 'string' && /\d,\d{1,2}$|\d,\d{4,}$|\.\d{3},\d|\d\.\d{1,2}$|\d\.\d{4,}$|,\d{3}\.\d/.test(w.replace(/[€%\s\u00a0]/g, '')));
+  if (zeker) return null;
+  const gelezen = alsGetal(voorbeeld, notatie).toLocaleString('nl-NL', { useGrouping: false, maximumFractionDigits: 3 });
+  return `${naam ? `Kolom "${naam}": ` : ''}getallen als "${voorbeeld.trim()}" zijn gelezen als ${gelezen} (${notatie === 'en' ? 'met de punt als decimaalteken' : 'met de punt tussen de duizendtallen'}). Klopt dat niet, pas dan het bestand aan.`;
 }
 
 const MAANDEN = { jan: 1, feb: 2, mrt: 3, maa: 3, mar: 3, apr: 4, mei: 5, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, okt: 10, oct: 10, nov: 11, dec: 12 };
@@ -119,11 +185,15 @@ export function verwerkCijfers(rijen, koppeling, context) {
   const items = [];
   const problemen = [];
   const cel = (rij, sleutel) => (koppeling[sleutel] >= 0 ? rij[koppeling[sleutel]] : null);
+  const notatie = getalNotatie(rijen.map((r) => cel(r, 'waarde')));
+  const nm = notatieMelding('', rijen.map((r) => cel(r, 'waarde')), notatie);
+  if (nm) problemen.push(nm.charAt(0).toUpperCase() + nm.slice(1));
+  problemen.push(...totaalMeldingen(context.totaalrijen));
   rijen.forEach((rij, i) => {
-    const regel = i + 2; // regel 1 is de kopregel
+    const regel = context.nummers ? context.nummers[i] : i + 2; // regel 1 is de kopregel
     const titel = tekstVan(cel(rij, 'titel')).slice(0, 200);
     const datum = alsDatum(cel(rij, 'datum'));
-    const waarde = alsGetal(cel(rij, 'waarde'));
+    const waarde = alsGetal(cel(rij, 'waarde'), notatie);
     const mis = [];
     if (!titel) mis.push('geen naam');
     if (!datum) mis.push(leeg(cel(rij, 'datum')) ? 'geen datum' : `datum "${tekstVan(cel(rij, 'datum'))}" niet herkend`);
@@ -175,8 +245,9 @@ export function verwerkVragen(rijen, koppeling, context) {
   const problemen = [];
   const nieuweThemas = [];
   const cel = (rij, sleutel) => (koppeling[sleutel] >= 0 ? rij[koppeling[sleutel]] : null);
+  problemen.push(...totaalMeldingen(context.totaalrijen));
   rijen.forEach((rij, i) => {
-    const regel = i + 2;
+    const regel = context.nummers ? context.nummers[i] : i + 2;
     const tekst = tekstVan(cel(rij, 'tekst')).replace(/\s+/g, ' ').slice(0, 1000);
     if (!tekst) {
       problemen.push(`Regel ${regel}: geen vraagtekst. Deze regel wordt overgeslagen.`);
@@ -317,13 +388,13 @@ export function leesAntwoord(q, cel, schalen) {
  * koppeling: { vraagId: kolomindex }; datumKolom: index of -1.
  * Geeft { items: [{ datum, antwoorden }], problemen, overgeslagen }. Een cel die niet te lezen is, blijft leeg.
  */
-export function verwerkAntwoorden(rijen, koppeling, datumKolom, vragen, schalen, vandaag) {
+export function verwerkAntwoorden(rijen, koppeling, datumKolom, vragen, schalen, vandaag, { nummers = null, totaalrijen = [] } = {}) {
   const items = [];
-  const problemen = [];
+  const problemen = [...totaalMeldingen(totaalrijen)];
   let legeRijen = 0;
   const perVraag = new Map();
   rijen.forEach((rij, i) => {
-    const regel = i + 2;
+    const regel = nummers ? nummers[i] : i + 2;
     const antwoorden = {};
     for (const q of vragen) {
       const k = koppeling[q.id];
@@ -369,7 +440,8 @@ export function verwerkAntwoorden(rijen, koppeling, datumKolom, vragen, schalen,
 export function kolomSoort(waarden) {
   const gevuld = waarden.filter((w) => !leeg(w));
   if (!gevuld.length) return 'leeg';
-  const getallen = gevuld.filter((w) => alsGetal(w) !== null).length;
+  const notatie = getalNotatie(gevuld);
+  const getallen = gevuld.filter((w) => alsGetal(w, notatie) !== null).length;
   if (getallen / gevuld.length >= 0.9) return 'getal';
   const verschillend = new Set(gevuld.map((w) => tekstVan(w).toLowerCase())).size;
   if (verschillend <= Math.max(12, Math.sqrt(gevuld.length) * 1.5) && verschillend < gevuld.length) return 'categorie';
@@ -419,19 +491,36 @@ export function verdachteKolommen(kop, rijen = []) {
  * Maakt een dataset van de gekozen kolommen. Getalkolommen worden echte getallen (7,4 wordt 7.4);
  * een cel in een getalkolom die geen getal is, blijft leeg. Geeft { kolommen, rijen, soorten, problemen }.
  */
-export function verwerkDataset(kop, rijen, gekozen, { maxRijen = 2000, maxCel = 300 } = {}) {
-  const problemen = [];
+/**
+ * Een kolom met getallen die eigenlijk codes zijn (jaar, teamnummer, 1 = man / 2 = vrouw): alleen hele
+ * getallen en hooguit 12 verschillende waarden. Zo'n kolom kan ook als indeling in groepen dienen.
+ */
+export function isCodekolom(waarden) {
+  const gevuld = waarden.filter((w) => !leeg(w));
+  if (gevuld.length < 2) return false;
+  const notatie = getalNotatie(gevuld);
+  const getallen = gevuld.map((w) => alsGetal(w, notatie));
+  if (getallen.some((x) => x === null || !Number.isInteger(x))) return false;
+  const verschillend = new Set(getallen).size;
+  return verschillend <= 12 && verschillend < gevuld.length;
+}
+
+export function verwerkDataset(kop, rijen, gekozen, { maxRijen = 2000, maxCel = 300, totaalrijen = [] } = {}) {
+  const problemen = [...totaalMeldingen(totaalrijen)];
   const indexen = gekozen.filter((i) => i >= 0 && i < kop.length);
   const soorten = indexen.map((i) => kolomSoort(rijen.map((r) => r[i])));
+  const notaties = indexen.map((i) => getalNotatie(rijen.map((r) => r[i])));
   let uit = rijen.map((r) => indexen.map((i, k) => {
     const w = r[i];
     if (leeg(w)) return null;
-    if (soorten[k] === 'getal') return alsGetal(w);
+    if (soorten[k] === 'getal') return alsGetal(w, notaties[k]);
     return typeof w === 'number' ? w : tekstVan(w).slice(0, maxCel);
   })).filter((r) => r.some((c) => c !== null));
   indexen.forEach((i, k) => {
     if (soorten[k] !== 'getal') return;
-    const mis = rijen.filter((r) => !leeg(r[i]) && alsGetal(r[i]) === null).length;
+    const nm = notatieMelding(kop[i], rijen.map((r) => r[i]), notaties[k]);
+    if (nm) problemen.push(nm);
+    const mis = rijen.filter((r) => !leeg(r[i]) && alsGetal(r[i], notaties[k]) === null).length;
     if (mis) problemen.push(`Kolom "${kop[i]}": ${mis === 1 ? 'één cel is' : `${mis} cellen zijn`} geen getal en ${mis === 1 ? 'blijft' : 'blijven'} leeg.`);
   });
   if (uit.length > maxRijen) {
