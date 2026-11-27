@@ -267,15 +267,19 @@ const relatiesXml = (lijst) =>
   lijst.map(([soort, doel], i) => `<Relationship Id="rId${i + 1}" Type="${NS_REL_DOC}/${soort}" Target="${doel}"/>`).join('') +
   '</Relationships>';
 
-/** Zip-bestand in de Office-indeling van [{ naam, type?, inhoud }]; het eerste onderdeel is het document zelf. */
-function officeZip(onderdelen) {
+/**
+ * Zip-bestand in de Office-indeling van [{ naam, type?, inhoud }]; het eerste onderdeel is het document zelf.
+ * standaard: extra soorten per extensie, bijv. [['png', 'image/png']] als er afbeeldingen in zitten.
+ */
+function officeZip(onderdelen, standaard = []) {
   const typen = onderdelen.filter((o) => o.type).map((o) => `<Override PartName="/${o.naam}" ContentType="${o.type}"/>`);
+  const extra = standaard.map(([ext, type]) => `<Default Extension="${ext}" ContentType="${type}"/>`).join('');
   return maakZip([
     {
       naam: '[Content_Types].xml',
       inhoud:
         `${XML_KOP}<Types xmlns="${NS_TYPEN}"><Default Extension="rels" ContentType="${TYPE_REL}"/>` +
-        `<Default Extension="xml" ContentType="application/xml"/>${typen.join('')}</Types>`,
+        `<Default Extension="xml" ContentType="application/xml"/>${extra}${typen.join('')}</Types>`,
     },
     { naam: '_rels/.rels', inhoud: relatiesXml([['officeDocument', onderdelen[0].naam]]) },
     ...onderdelen.map(({ naam, inhoud }) => ({ naam, inhoud })),
@@ -912,6 +916,7 @@ function rapportBlokken(blokken) {
       const start = Number.isInteger(blok.start) && blok.start > 0 ? blok.start : 1;
       if (punten.length) uit.push({ soort, genummerd: Boolean(blok.genummerd), start, punten });
     } else if (soort === 'tabel' || soort === 'paginaeinde') uit.push(blok);
+    else if (soort === 'afbeelding') uit.push(afbeeldingBlok(blok, i));
     else throw new TypeError(`Onbekend soort blok op plaats ${i + 1} van het document: "${soort}".`);
   });
   return uit;
@@ -997,15 +1002,78 @@ function wTabel(blok) {
   return `${uit}</w:tbl>${NA_TABEL}`;
 }
 
-/** Zet blokken om naar Word-alinea's. Elke genummerde lijst krijgt een eigen nummering (in lijsten). */
-function wBlokken(blokken, lijsten, diepte = 0) {
+// ---------- Afbeeldingen in Word (figuren) ----------
+
+const EMU_PER_CM = 360000;
+const MAX_AFBEELDING_CM = { breedte: TEKSTBREEDTE / 567, hoogte: 24 }; // de tekstbreedte (16 cm) en bijna een hele pagina
+const NS_WP = 'http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing';
+const NS_A = 'http://schemas.openxmlformats.org/drawingml/2006/main';
+const NS_PIC = 'http://schemas.openxmlformats.org/drawingml/2006/picture';
+const PNG_HANDTEKENING = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+
+/**
+ * Controleert een afbeelding-blok: { soort: 'afbeelding', png: Uint8Array, breedte_cm, hoogte_cm, alt, bijschrift? }.
+ * Te groot wordt naar verhouding kleiner gemaakt (hooguit de tekstbreedte en 24 cm hoog).
+ */
+function afbeeldingBlok(blok, i) {
+  const png = blok.png instanceof Uint8Array ? blok.png : null;
+  if (!png || png.length < 8 || PNG_HANDTEKENING.some((b, k) => png[k] !== b)) {
+    throw new TypeError(`De afbeelding op plaats ${i + 1} van het document is geen PNG.`);
+  }
+  let b = Number(blok.breedte_cm);
+  let h = Number(blok.hoogte_cm);
+  if (!(b > 0) || !(h > 0) || !Number.isFinite(b) || !Number.isFinite(h)) {
+    throw new TypeError(`De afbeelding op plaats ${i + 1} van het document heeft geen geldige maten.`);
+  }
+  const factor = Math.min(1, MAX_AFBEELDING_CM.breedte / b, MAX_AFBEELDING_CM.hoogte / h);
+  b *= factor;
+  h *= factor;
+  return { soort: 'afbeelding', png, breedte_cm: b, hoogte_cm: h, alt: String(blok.alt ?? ''), bijschrift: String(blok.bijschrift ?? '').trim() };
+}
+
+/**
+ * Een afbeelding als eigen alinea (in de regel, gecentreerd), met de alt-tekst in wp:docPr descr (schermlezers in Word)
+ * en daaronder het bijschrift, cursief. Het PNG-bestand komt als word/media/afbeeldingN.png in het document.
+ */
+function wAfbeelding(blok, media) {
+  if (!media) throw new TypeError('Een afbeelding kan alleen in een document met blokken.');
+  const nr = media.length + 1;
+  const rid = `rId${media.eerste + media.length}`;
+  media.push({ naam: `afbeelding${nr}.png`, png: blok.png, rid });
+  const cx = Math.round(blok.breedte_cm * EMU_PER_CM);
+  const cy = Math.round(blok.hoogte_cm * EMU_PER_CM);
+  const alt = xmlTekst(blok.alt);
+  const naam = `Figuur ${nr}`;
+  const tekening =
+    `<w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/>` +
+    '<wp:effectExtent l="0" t="0" r="0" b="0"/>' +
+    `<wp:docPr id="${nr}" name="${naam}" descr="${alt}"/>` +
+    `<wp:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="1"/></wp:cNvGraphicFramePr>` +
+    `<a:graphic><a:graphicData uri="${NS_PIC}"><pic:pic>` +
+    `<pic:nvPicPr><pic:cNvPr id="${nr}" name="afbeelding${nr}.png" descr="${alt}"/><pic:cNvPicPr/></pic:nvPicPr>` +
+    `<pic:blipFill><a:blip r:embed="${rid}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>` +
+    `<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>` +
+    '</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing>';
+  const bijschrift = blok.bijschrift
+    ? `<w:p><w:pPr><w:spacing w:before="60" w:after="200"/><w:jc w:val="center"/></w:pPr>` +
+      `<w:r><w:rPr><w:i/><w:color w:val="404040"/><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr>${wTekst(blok.bijschrift)}</w:r></w:p>`
+    : '';
+  return `<w:p><w:pPr><w:keepNext/><w:spacing w:before="120" w:after="${bijschrift ? 0 : 200}"/><w:jc w:val="center"/></w:pPr><w:r>${tekening}</w:r></w:p>${bijschrift}`;
+}
+
+/**
+ * Zet blokken om naar Word-alinea's. Elke genummerde lijst krijgt een eigen nummering (in lijsten).
+ * media: de afbeeldingen die onderweg gevonden worden ({ naam, png, rid }); elk krijgt een eigen verwijzing.
+ */
+function wBlokken(blokken, lijsten, diepte = 0, media = null) {
   const inspring = diepte * INSPRING_CITAAT;
   let uit = '';
   for (const blok of blokken) {
     if (blok.soort === 'kop') uit += wAlinea(blok.regels, `<w:pStyle w:val="Heading${blok.niveau}"/>`);
     else if (blok.soort === 'tabel') uit += wTabel(blok);
     else if (blok.soort === 'paginaeinde') uit += PAGINA_EINDE;
-    else if (blok.soort === 'citaat') uit += wBlokken(blok.blokken, lijsten, diepte + 1);
+    else if (blok.soort === 'afbeelding') uit += wAfbeelding(blok, media);
+    else if (blok.soort === 'citaat') uit += wBlokken(blok.blokken, lijsten, diepte + 1, media);
     else if (blok.soort === 'lijst') {
       let nummering = 1; // 1 = opsommingstekens
       if (blok.genummerd) {
@@ -1080,6 +1148,8 @@ function docxNummering(lijsten) {
  *   { soort: 'citaat', tekst }
  *   { soort: 'tabel', kop: [tekst], rijen: [[tekst of getal]], breedtes?: [getal] }
  *   { soort: 'paginaeinde' }
+ *   { soort: 'afbeelding', png: Uint8Array, breedte_cm, hoogte_cm, alt, bijschrift? }   een PNG (bijv. een figuur uit
+ *     figuren.js), gecentreerd; alt komt in wp:docPr descr; te groot wordt naar verhouding kleiner (hooguit 16 × 24 cm)
  * Een tabel is zo breed als de tekst en heeft dunne randen. De kopregel is vet en komt terug op elke pagina
  * waarop de tabel doorloopt. Getallen staan rechts en krijgen een komma als decimaalteken; ook tekst die een
  * getal is ('7,4', '45%') staat rechts. Wil je een vast aantal decimalen, geef het getal dan als tekst ('7,40').
@@ -1088,9 +1158,12 @@ function docxNummering(lijsten) {
  */
 export function maakDocx({ titel = '', markdown = '', blokken, voettekst = '' } = {}) {
   const lijsten = [];
-  let inhoud = titel ? wAlinea([String(titel)], '<w:pStyle w:val="Title"/>', {}) : '';
-  inhoud += wBlokken(Array.isArray(blokken) ? rapportBlokken(blokken) : mdBlokken(String(markdown ?? '')), lijsten);
   const voet = String(voettekst ?? '').trim();
+  // Afbeeldingen krijgen de verwijzingen na stijlen, nummering, instellingen en (als die er is) de voettekst.
+  const media = [];
+  media.eerste = voet ? 5 : 4;
+  let inhoud = titel ? wAlinea([String(titel)], '<w:pStyle w:val="Title"/>', {}) : '';
+  inhoud += wBlokken(Array.isArray(blokken) ? rapportBlokken(blokken) : mdBlokken(String(markdown ?? '')), lijsten, 0, media);
   const deel = (naam, soort, xml) => ({ naam: `word/${naam}.xml`, soort, type: `${TYPE_W}.${soort}+xml`, inhoud: XML_KOP + xml });
   const pagina =
     `<w:sectPr>${voet ? '<w:footerReference w:type="default" r:id="rId4"/>' : ''}<w:pgSz w:w="${PAGINA_BREEDTE}" w:h="${PAGINA_HOOGTE}"/>` +
@@ -1105,11 +1178,14 @@ export function maakDocx({ titel = '', markdown = '', blokken, voettekst = '' } 
     const alinea = wAlinea(tekstRegels(voet), '<w:pStyle w:val="Footer"/>', {});
     rest.push(deel('footer1', 'footer', `<w:ftr xmlns:w="${NS_W}">${alinea}</w:ftr>`)); // wordt rId4, zie pagina
   }
+  // Alleen met afbeeldingen komen de namen voor tekeningen erbij (zonder afbeeldingen blijft het document gelijk).
+  const ns = media.length ? ` xmlns:wp="${NS_WP}" xmlns:a="${NS_A}" xmlns:pic="${NS_PIC}"` : '';
   return officeZip([
-    deel('document', 'document.main', `<w:document xmlns:w="${NS_W}" xmlns:r="${NS_REL_DOC}"><w:body>${inhoud || '<w:p/>'}${pagina}</w:body></w:document>`),
-    { naam: 'word/_rels/document.xml.rels', inhoud: relatiesXml(rest.map((o) => [o.soort, o.naam.slice(5)])) },
+    deel('document', 'document.main', `<w:document xmlns:w="${NS_W}" xmlns:r="${NS_REL_DOC}"${ns}><w:body>${inhoud || '<w:p/>'}${pagina}</w:body></w:document>`),
+    { naam: 'word/_rels/document.xml.rels', inhoud: relatiesXml([...rest.map((o) => [o.soort, o.naam.slice(5)]), ...media.map((m) => ['image', `media/${m.naam}`])]) },
     ...rest,
-  ]);
+    ...media.map((m) => ({ naam: `word/media/${m.naam}`, inhoud: m.png })),
+  ], media.length ? [['png', 'image/png']] : []);
 }
 
 // ---------- Agenda (.ics voor Outlook en andere agenda's) ----------
