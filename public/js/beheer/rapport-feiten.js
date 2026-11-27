@@ -250,7 +250,8 @@ export function verzamelFeiten({ data, dashboards, peildatum }) {
     const dagen = (r.per_dag || []).map((p) => p.datum);
     // Een vraag met minder dan `drempel` scores is niet te tonen. Dan ook het gemiddelde van zijn thema niet,
     // want daaruit en uit de andere vragen is het verborgen gemiddelde terug te rekenen.
-    const kleineVraag = (q) => (q.n > 0 && q.n < drempel) || (q.type === 'schaal' && q.n_score > 0 && q.n_score < drempel);
+    // Bij schaal- en cijfervragen telt het aantal scores (weet niet / n.v.t. niet).
+    const kleineVraag = (q) => (q.n > 0 && q.n < drempel) || ((q.type === 'schaal' || q.type === 'cijfer') && q.n_score > 0 && q.n_score < drempel);
     const themasMetKleineVraag = new Set(s.vragen.filter((q) => q.type === 'schaal' && kleineVraag(q)).map((q) => q.thema_id));
     lijsten.push({
       id: s.vragenlijst_id,
@@ -275,6 +276,7 @@ export function verzamelFeiten({ data, dashboards, peildatum }) {
         // De antwoordmogelijkheden (zonder de rij "Niet ingevuld" van een achtergrondvraag).
         const opties = (q.verdeling || []).filter((v) => !(beschermd && v.waarde === 'niet_ingevuld')).map((v) => v.label);
         const basis = { thema_naam: q.thema_naam || '', type: q.type, tekst: q.tekst, meerdere: !!q.meerdere_antwoorden, beschermd, opties };
+        if (q.type === 'cijfer') basis.schaal_soort = q.schaal_soort === 'nps' ? 'nps' : 'rapport';
         if (klein || q.type === 'open') return { ...basis, n: klein ? null : q.n, verborgen: klein, verdeling: [] };
         if (beschermd) {
           // Al gemaskeerd door het dashboard; voor de zekerheid opnieuw als de rij "Niet ingevuld" ontbreekt.
@@ -293,11 +295,18 @@ export function verzamelFeiten({ data, dashboards, peildatum }) {
         return {
           ...basis,
           n: q.n,
-          n_score: q.type === 'schaal' && Number.isInteger(q.n_score) ? q.n_score : undefined,
+          n_score: (q.type === 'schaal' || q.type === 'cijfer') && Number.isInteger(q.n_score) ? q.n_score : undefined,
           verborgen: false,
           gemiddelde: eindig(q.gemiddelde) ? q.gemiddelde : null,
           percentage_ja: eindig(q.percentage_ja) ? q.percentage_ja : null,
           verdeling: (q.verdeling || []).map((v) => ({ waarde: v.waarde, label: v.label, aantal: v.aantal, percentage: v.percentage })),
+          // Cijfervraag: de soort (0–10 of 1–10), de eNPS (0–10) of het deel onvoldoendes (1–10).
+          ...(q.type === 'cijfer' ? {
+            enps: q.enps && eindig(q.enps.score) ? {
+              promotors: q.enps.promotors, passief: q.enps.passief, criticasters: q.enps.criticasters, score: q.enps.score,
+            } : null,
+            pct_onvoldoende: eindig(q.pct_onvoldoende) ? q.pct_onvoldoende : null,
+          } : {}),
         };
       }),
       open: verborgen ? [] : (s.open || [])
@@ -569,12 +578,13 @@ function feitenResultaten(f, inhoud, sectie, { verbergOpen = false } = {}) {
   } else {
     uit.push(alinea('Deze vragenlijst heeft geen schaalvragen (1 tot 5), dus er zijn geen gemiddelde scores per thema.'));
   }
+  uit.push(...cijferTabel(f, l));
   if (sectie.beknopt) return uit;
 
-  // Per thema de vragen
+  // Per thema de vragen (de cijfervragen staan al in hun eigen tabel)
   const groepen = [];
   for (const q of l.vragen) {
-    if (q.type === 'open') continue;
+    if (q.type === 'open' || q.type === 'cijfer') continue;
     let g = groepen[groepen.length - 1];
     if (!g || g.naam !== q.thema_naam) {
       g = { naam: q.thema_naam, vragen: [] };
@@ -624,6 +634,36 @@ function feitenResultaten(f, inhoud, sectie, { verbergOpen = false } = {}) {
       }
     }
   }
+  return uit;
+}
+
+/**
+ * Tabel "Cijfervragen": per cijfervraag het gemiddelde, bij 0 tot 10 de eNPS en bij een rapportcijfer het deel
+ * onvoldoendes (5 of lager). Een vraag met minder dan `drempel` cijfers is niet getoond. Lege lijst als er geen
+ * cijfervragen zijn.
+ */
+function cijferTabel(f, l) {
+  const vragen = l.vragen.filter((q) => q.type === 'cijfer');
+  if (!vragen.length) return [];
+  const rijen = vragen.map((q) => {
+    const nps = q.schaal_soort === 'nps';
+    const soort = nps ? 'cijfer 0–10' : 'rapportcijfer 1–10';
+    if (q.verborgen) return [q.tekst, soort, 'niet getoond', '–', '–', `minder dan ${f.drempel}`];
+    const cijfers = Number.isInteger(q.n_score) ? q.n_score : (q.verdeling || []).filter((v) => v.waarde !== 'weet_niet').reduce((t, v) => t + (v.aantal || 0), 0);
+    if (!cijfers) return [q.tekst, soort, '–', '–', '–', 0];
+    return [
+      q.tekst,
+      soort,
+      nlGetal(q.gemiddelde, 1),
+      nps && q.enps ? metTeken(q.enps.score, 0) : '–',
+      !nps && eindig(q.pct_onvoldoende) ? nlProcent(q.pct_onvoldoende) : '–',
+      cijfers,
+    ];
+  });
+  const uit = [tabel(['Vraag', 'Soort', 'Gemiddelde', 'eNPS', 'Onvoldoende (5 of lager)', 'Cijfers'], rijen, `Cijfervragen – ${lijstNaam(l)}`)];
+  const zinnen = ['Cijfervragen tellen niet mee in de gemiddelden per thema.'];
+  if (vragen.some((q) => q.schaal_soort === 'nps')) zinnen.push('De eNPS is het percentage promotors (cijfer 9 of 10) min het percentage criticasters (cijfer 0 tot en met 6); hij loopt van −100 tot +100.');
+  uit.push(alinea(zinnen.join(' ')));
   return uit;
 }
 
@@ -726,7 +766,8 @@ function feitenBijlageVragen(f, inhoud, { verbergOpen = false } = {}) {
   if (!l) return [alinea('Er is nog geen vragenlijst.')];
   if (verbergOpen && openOpPeildatum(l)) return [alinea(openVerborgenZin(l))];
   const uit = [alinea(`De vragenlijst "${lijstNaam(l)}" bestaat uit ${aantalTekst(l.vragen.length, 'vraag', 'vragen')}.`)];
-  const soortNaam = { schaal: 'schaal 1–5', janee: 'ja/nee', meerkeuze: 'meerkeuze', open: 'open vraag' };
+  const soortNaam = { schaal: 'schaal 1–5', janee: 'ja/nee', meerkeuze: 'meerkeuze', open: 'open vraag', cijfer: 'rapportcijfer 1–10' };
+  const soortVan = (q) => (q.type === 'cijfer' && q.schaal_soort === 'nps' ? 'cijfer 0–10' : soortNaam[q.type] || q.type);
   let thema = null;
   let items = [];
   const sluit = () => {
@@ -740,7 +781,7 @@ function feitenBijlageVragen(f, inhoud, { verbergOpen = false } = {}) {
       uit.push(kop(thema || 'Zonder thema', 3));
     }
     const opties = q.type === 'meerkeuze' && q.opties.length ? `: ${q.opties.join(' / ')}` : '';
-    items.push(`${q.tekst} (${soortNaam[q.type] || q.type}${opties})`);
+    items.push(`${q.tekst} (${soortVan(q)}${opties})`);
   }
   sluit();
   return uit;

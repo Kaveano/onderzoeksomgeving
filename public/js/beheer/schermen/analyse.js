@@ -113,6 +113,7 @@ function variabeleOpties(model, lijsten, { metJaNee = false } = {}) {
   const meetpuntIds = new Set();
   const schaal = new Map(); // stam → tekst (de tekst uit de laatste vragenlijst wint)
   const janee = new Map();
+  const cijfer = new Map(); // cijfervragen: nooit in een thema- of meetpuntscore, wel als eigen variabele
   for (const l of lijsten) {
     for (const q of l.vragen) {
       if (q.type === 'schaal') {
@@ -121,6 +122,8 @@ function variabeleOpties(model, lijsten, { metJaNee = false } = {}) {
         schaal.set(q.stam, q.tekst);
       } else if (q.type === 'janee') {
         janee.set(q.stam, q.tekst);
+      } else if (q.type === 'cijfer' && q.bereik) {
+        cijfer.set(q.stam, q.tekst);
       }
     }
   }
@@ -128,6 +131,7 @@ function variabeleOpties(model, lijsten, { metJaNee = false } = {}) {
     { groep: "Thema's", opties: model.themas.filter((t) => themaIds.has(t.id)).map((t) => ({ waarde: `t:${t.id}`, label: t.naam })) },
     { groep: 'Meetpunten', opties: model.meetpunten.filter((m) => meetpuntIds.has(m.id)).map((m) => ({ waarde: `m:${m.id}`, label: m.naam })) },
     { groep: 'Vragen (schaal 1 tot 5)', opties: [...schaal].map(([stam, tekst]) => ({ waarde: `v:${stam}`, label: kort(tekst, 90) })) },
+    { groep: 'Cijfervragen (0–10 / 1–10)', opties: [...cijfer].map(([stam, tekst]) => ({ waarde: `v:${stam}`, label: kort(tekst, 90) })) },
   ];
   if (metJaNee) {
     groepen.push({ groep: 'Ja/nee-vragen', opties: [...janee].map(([stam, tekst]) => ({ waarde: `v:${stam}`, label: kort(tekst, 90) })) });
@@ -438,7 +442,7 @@ export async function toon(container, ctx) {
       ['Verschil', metTeken(r.welch.verschil), `${naamVerschil}. Het echte verschil ligt waarschijnlijk tussen ${g(r.welch.ciLaag)} en ${g(r.welch.ciHoog)} (95%-interval).`],
       ['Toets op het verschil (Welch t-toets)', `t(${dfTekst(r.welch.df)}) = ${g(r.welch.t)}; ${pTekst(r.welch.p)}`, null],
       r.mw ? ['Controle met rangnummers (Mann-Whitney)', `U = ${g(r.mw.u, Number.isInteger(r.mw.u) ? 0 : 1)}; z = ${g(r.mw.z)}; ${pTekst(r.mw.p)}`,
-        'Deze toets past bij antwoorden op een schaal van 1 tot 5. Komt hij op hetzelfde uit, dan is de conclusie steviger.'] : null,
+        'Deze toets past bij antwoorden op een schaal (1 tot 5) of een cijfer. Komt hij op hetzelfde uit, dan is de conclusie steviger.'] : null,
       r.d ? ['Effectgrootte (Hedges’ g)', `${ge(r.d.g, 'g')} – ${S.effectGrootte(r.d.g, 'g')}`, `95%-interval ${bereik(r.d.ciLaag, r.d.ciHoog)}. Vuistregel: vanaf 0,2 klein, vanaf 0,5 middelgroot, vanaf 0,8 groot.`] : null,
     ]);
   }
@@ -740,7 +744,7 @@ export async function toon(container, ctx) {
       uitkomsten([
         ['Toets op verschil (variantieanalyse, ANOVA)', anovaTekst, 'Toetst of de gemiddelden van de groepen meer van elkaar verschillen dan je door toeval verwacht.'],
         welchTekst ? ['Controle bij ongelijke groepen (Welch-ANOVA)', welchTekst, 'Houdt er rekening mee dat de groepen niet even groot zijn of niet dezelfde spreiding hebben.'] : null,
-        kwTekst ? ['Controle met rangnummers (Kruskal-Wallis)', kwTekst, 'Deze toets past bij antwoorden op een schaal van 1 tot 5.'] : null,
+        kwTekst ? ['Controle met rangnummers (Kruskal-Wallis)', kwTekst, 'Deze toets past bij antwoorden op een schaal (1 tot 5) of een cijfer.'] : null,
         ['Effectgrootte (eta²)', `${ge(r.anova.etaKwadraat, 'eta2')} – ${etaLabel}`,
           `De groepsindeling hangt samen met ongeveer ${getal(r.anova.etaKwadraat * 100, 0)}% van de verschillen in score. Vuistregel: vanaf 0,01 klein, vanaf 0,06 middelgroot, vanaf 0,14 groot.`],
         r.kw ? ['Effectgrootte bij rangnummers (epsilon²)', `${ge(r.kw.epsilonKwadraat, 'epsilon2')} – ${S.effectGrootte(r.kw.epsilonKwadraat, 'epsilon2')}`, null] : null,
@@ -822,7 +826,7 @@ export async function toon(container, ctx) {
       uitkomsten([
         ['Aantal respondenten', nTekst(pr.n), 'Alleen respondenten met een score op beide tellen mee.'],
         ['Correlatie (Pearson r)', `r = ${ge(pr.r, 'r')}; ${pTekst(pr.p)}`, `${ci}Een r van 0 betekent geen samenhang; 1 of ${MIN}1 een volmaakte samenhang.`],
-        sp ? ['Controle met rangnummers (Spearman)', `rho = ${ge(sp.rho, 'rho')}; ${pTekst(sp.p)}`, 'Deze maat past bij antwoorden op een schaal van 1 tot 5.'] : null,
+        sp ? ['Controle met rangnummers (Spearman)', `rho = ${ge(sp.rho, 'rho')}; ${pTekst(sp.p)}`, 'Deze maat past bij antwoorden op een schaal (1 tot 5) of een cijfer.'] : null,
         ['Sterkte van het verband', duiding.effect, 'Vuistregel: vanaf 0,1 klein, vanaf 0,3 middelgroot, vanaf 0,5 groot.'],
       ]),
       janee ? h('p', { class: 'an-noot' }, 'Bij een ja/nee-vraag telt ja als 1 en nee als 0. Een “hogere score” betekent daar dus: vaker ja.') : null,

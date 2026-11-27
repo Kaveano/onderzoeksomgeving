@@ -309,6 +309,12 @@ export async function vragenInlezen(ctx) {
     geen: 'Maak eerst een vragenlijst bij Vragenlijsten; daarna kun je er vragen in inlezen.',
   });
   if (!vl) return null;
+  // Kenmerken die al in de vragenlijst staan (zoals afdeling): die krijgt een ingelezen vraag niet nog eens.
+  let kenmerkenNu = [];
+  try {
+    kenmerkenNu = ((await api.get(`/vragenlijsten/${vl.id}`)).vragen || []).map((q) => q.kenmerk).filter(Boolean);
+  } catch { /* dan controleert de server het */ }
+  const kenmerkNamen = ctx.instellingen.kenmerken || {};
   const eersteThema = o.themas[0]?.naam || 'Werkbeleving';
   return inleesDialoog({
     titel: `Vragen inlezen in "${vl.titel}"`,
@@ -320,6 +326,7 @@ export async function vragenInlezen(ctx) {
         ['Thema', 'Vraag', 'Soort', 'Antwoordmogelijkheden', 'Verplicht'],
         [eersteThema, 'Ik kan mijn werk goed aan.', 'schaal', '', 'ja'],
         [eersteThema, 'Heb je het afgelopen jaar een ontwikkelgesprek gehad?', 'ja/nee', '', 'nee'],
+        [eersteThema, 'Welk rapportcijfer geef je je werk?', 'rapportcijfer', '', 'nee'],
         ['Achtergrond', 'Op welke afdeling werk je?', 'meerkeuze', 'Kantoor; Productie; Logistiek', 'nee'],
         [eersteThema, 'Wat zou je als eerste veranderen?', 'open', '', 'nee'],
       ] }],
@@ -344,15 +351,20 @@ export async function vragenInlezen(ctx) {
         ],
         controleer: () => {
           if (koppeling.tekst < 0) return { items: [], problemen: [], regel: 'Kies nog de kolom met de vraag of stelling.' };
-          const r = verwerkVragen(rijen, koppeling, { themas: o.themas, standaardThema, bestaand: vl.aantal_vragen, max: 100, nummers, totaalrijen });
+          const r = verwerkVragen(rijen, koppeling, { themas: o.themas, standaardThema, bestaand: vl.aantal_vragen, max: 100, nummers, totaalrijen, kenmerken: kenmerkenNu });
           nieuweThemas = r.nieuweThemas;
           const tel = (t) => r.items.filter((q) => q.type === t).length;
-          const soorten = [[tel('schaal'), 'schaal'], [tel('janee'), 'ja/nee'], [tel('meerkeuze'), 'meerkeuze'], [tel('open'), 'open']].filter(([n]) => n).map(([n, s]) => `${n} × ${s}`);
+          const soorten = [[tel('schaal'), 'schaal'], [tel('cijfer'), 'cijfer'], [tel('janee'), 'ja/nee'], [tel('meerkeuze'), 'meerkeuze'], [tel('open'), 'open']].filter(([n]) => n).map(([n, s]) => `${n} × ${s}`);
+          const metKenmerk = r.items.filter((q) => q.kenmerk);
           return {
             items: r.items,
             problemen: r.problemen,
             regel: `${aantal(r.items.length, 'vraag', 'vragen')} van de ${aantal(rijen.length, 'rij', 'rijen')} ${r.items.length === 1 ? 'is' : 'zijn'} bruikbaar${soorten.length ? ` (${soorten.join(', ')})` : ''}.`,
-            extra: nieuweThemas.length ? h('p', {}, `${nieuweThemas.length === 1 ? 'Dit thema bestaat nog niet en wordt' : 'Deze thema\'s bestaan nog niet en worden'} aangemaakt: `, h('strong', {}, nieuweThemas.join(', ')), '.') : null,
+            extra: [
+              nieuweThemas.length ? h('p', {}, `${nieuweThemas.length === 1 ? 'Dit thema bestaat nog niet en wordt' : 'Deze thema\'s bestaan nog niet en worden'} aangemaakt: `, h('strong', {}, nieuweThemas.join(', ')), '.') : null,
+              metKenmerk.length ? h('p', {}, 'Herkend als achtergrondvraag (kenmerk, met uitsplitsen aan): ',
+                h('strong', {}, metKenmerk.map((q) => `${q.tekst} (${kenmerkNamen[q.kenmerk]?.naam || q.kenmerk})`).join('; ')), '.') : null,
+            ],
           };
         },
         opslaan: async (items) => {
@@ -361,7 +373,16 @@ export async function vragenInlezen(ctx) {
             const r = await api.post(`/onderzoeken/${ctx.params.id}/themas`, { naam });
             themaId.set(naam, r.id);
           }
-          const vragen = items.map((q) => ({ thema_id: q.thema.id || themaId.get(q.thema.nieuw), type: q.type, tekst: q.tekst, opties: q.opties, verplicht: q.verplicht, schaal_soort: 'eens' }));
+          const vragen = items.map((q) => ({
+            thema_id: q.thema.id || themaId.get(q.thema.nieuw),
+            type: q.type,
+            tekst: q.tekst,
+            opties: q.opties,
+            verplicht: q.verplicht,
+            schaal_soort: q.schaal_soort || 'eens',
+            kenmerk: q.kenmerk || '',
+            uitsplitsen: !!q.kenmerk,
+          }));
           await api.post(`/vragenlijsten/${vl.id}/vragen/reeks`, { vragen });
           if (nieuweThemas.length) await ctx.herlaadOnderzoek();
           return vragen.length;
@@ -383,8 +404,10 @@ export async function antwoordenInlezen(ctx) {
   if (!vl) return null;
   const { vragen } = await api.get(`/vragenlijsten/${vl.id}`);
   const schalen = ctx.instellingen.schalen || {};
+  const cijferschalen = ctx.instellingen.cijferschalen || null;
   const voorbeeldCel = (q) => {
     if (q.type === 'schaal') return 4;
+    if (q.type === 'cijfer') return 7;
     if (q.type === 'janee') return 'ja';
     if (q.type === 'meerkeuze') return q.opties[0]?.label || '';
     return 'Vrije tekst';
@@ -393,7 +416,7 @@ export async function antwoordenInlezen(ctx) {
     titel: `Antwoorden inlezen in "${vl.titel}"`,
     uitleg: 'Voor antwoorden die je op papier hebt verzameld of uit een ander programma komen. Elke rij in het bestand is één respondent, elke kolom één vraag.',
     stappen: [
-      'Schaalvragen: een cijfer van 1 tot 5. Ja/nee-vragen: ja of nee. Meerkeuze: de tekst van het antwoord.',
+      'Schaalvragen: een cijfer van 1 tot 5. Cijfervragen: een cijfer van 0 tot 10 (of 1 tot 10 bij een rapportcijfer). Ja/nee-vragen: ja of nee. Meerkeuze: de tekst van het antwoord.',
       'Alleen kolommen die je aan een vraag koppelt, worden ingelezen. Een kolom met namen of e-mailadressen wordt niet bewaard.',
       'Lees hetzelfde bestand niet twee keer in: de antwoorden tellen dan dubbel.',
     ],
@@ -421,11 +444,12 @@ export async function antwoordenInlezen(ctx) {
             veldRij('Datum van invullen', kolomKeuze(kop, rijen, datumKolom, (i) => { datumKolom = i; bijwerken(); }, { leeg: '— geen: gebruik vandaag —' })),
             vragen.flatMap((q, i) => veldRij(`V${i + 1}. ${q.tekst}`,
               kolomKeuze(kop, rijen, koppeling[q.id] ?? -1, (k) => { koppeling[q.id] = k; bijwerken(); }, { leeg: '— niet in het bestand —' }),
-              { schaal: 'schaal 1–5', janee: 'ja/nee', meerkeuze: 'meerkeuze', open: 'open vraag' }[q.type]))),
+              q.type === 'cijfer' ? (q.schaal_soort === 'nps' ? 'cijfer 0–10' : 'rapportcijfer 1–10')
+                : { schaal: 'schaal 1–5', janee: 'ja/nee', meerkeuze: 'meerkeuze', open: 'open vraag' }[q.type]))),
         ],
         controleer: () => {
           if (!gekoppeld()) return { items: [], problemen: [], regel: 'Koppel minstens één vraag aan een kolom.' };
-          const r = verwerkAntwoorden(rijen, koppeling, datumKolom, vragen, schalen, vandaag(), { nummers, totaalrijen });
+          const r = verwerkAntwoorden(rijen, koppeling, datumKolom, vragen, schalen, vandaag(), { nummers, totaalrijen, cijferschalen });
           return { items: r.items, problemen: r.problemen, regel: `${aantal(r.items.length, 'respondent', 'respondenten')} van de ${aantal(rijen.length, 'rij', 'rijen')} ${r.items.length === 1 ? 'heeft' : 'hebben'} bruikbare antwoorden. Na het inlezen tellen ze mee in alle resultaten.` };
         },
         // Per verzoek hooguit zo'n 3.000 antwoordcellen, zodat de server binnen de gratis rekentijd blijft.
