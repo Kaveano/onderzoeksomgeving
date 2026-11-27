@@ -3,7 +3,8 @@
 // - data/startcollectie.json: elk record geldig, elke bron een https-link of DOI en een vast onderwerp;
 // - data/startcollectie-sleutels.json: sleutels en citeersleutels uniek en volgens hun patroon;
 // - migrations/0016_bibliotheek_start.sql: byte voor byte gelijk aan een nieuwe generatie, vóór 0017, elke opdracht klein;
-// - op een verse lokale D1 met alle migraties (0001–0017) geeft GET /bibliotheek precies de 89 startbronnen.
+// - op een verse lokale D1 met alle migraties (0001–0017) geeft GET /bibliotheek precies de 89 startbronnen;
+// - zoeken in deze collectie: de rangorde bij de woorden uit de review van P7 (wetgeving, WOR, diversiteit, loon).
 // Er draait geen testserver (dus geen vaste poort): Wrangler voert de migraties uit in een tijdelijke map en de test
 // leest de database via getPlatformProxy, net als test/migratie.test.mjs, en roept de route lijst() rechtstreeks aan.
 // Uitvoeren: node --test test/bibliotheek-start.test.mjs
@@ -17,6 +18,7 @@ import { fileURLToPath } from 'node:url';
 import { getPlatformProxy } from 'wrangler';
 
 import { CITEERSLEUTEL, ONDERWERPEN, onderwerpUitTekst, apaVerwijzing, apaKort } from '../public/js/beheer/bibliotheek-regels.js';
+import { zoek } from '../public/js/beheer/bibliotheek-zoeken.js';
 import { controleerRecords, wijsSleutelsToe, maakMigratie, MAX_STATEMENT, SLEUTEL_PATROON } from '../scripts/startcollectie.mjs';
 import { lijst } from '../src/routes/bibliotheek.js';
 
@@ -143,6 +145,39 @@ test('sleutels: uniek en volgens hun patroon; elke bron heeft de sleutel van het
   }
   const cbs = rijen.find((b) => b.sleutel === 'cbs-2025-cao-lonen');
   assert.equal(cbs.citeersleutel, 'cbs2025');
+});
+
+// ---------- Zoeken in de echte collectie (review van P7) ----------
+
+test('zoeken: de rangorde in de startcollectie bij wetgeving, WOR, diversiteit en loon', () => {
+  const bibliotheek = wijsSleutelsToe(omgezet.bronnen, structuredClone(SLEUTELS), '2026-11-27').lijst.map((r, i) => ({
+    ...r.bron, id: i + 1, collectie: 'start', sleutel: r.sleutel, citeersleutel: r.citeersleutel, notities: '', verborgen: 0, onderzoeken: [],
+  }));
+  const zoekSleutels = (tekst) => zoek(bibliotheek, { tekst }).treffers.map((t) => t.bron.sleutel);
+  const wetgeving = bibliotheek.filter((b) => b.onderwerpen.includes('wetgeving')).map((b) => b.sleutel).sort();
+  assert.equal(wetgeving.length, 17);
+  // Besluit a: het onderwerp is te vinden met het woord dat de HR-adviseur typt
+  for (const tekst of ['wetgeving', 'regelgeving', 'Wet- en regelgeving']) {
+    assert.deepEqual([...zoekSleutels(tekst)].sort(), wetgeving, tekst);
+  }
+  // WOR: alleen de drie bronnen die de WOR noemen, niet de Engelse artikelen met "work" of "workers"
+  const wor = ['ap-2025-or-personeelsvolgsystemen', 'ser-zj-medezeggenschap-arbo', 'ser-zj-medezeggenschap-privacy'];
+  assert.deepEqual([...zoekSleutels('WOR')].sort(), wor);
+  assert.deepEqual([...zoekSleutels('wor')].sort(), wor);
+  // Diversiteit: eerst de twee studies over diversiteit, daarna pas bronnen met alleen het samengevoegde onderwerp
+  const div = zoekSleutels('diversiteit');
+  assert.deepEqual(div.slice(0, 2).sort(), ['shore-2011-inclusie-diversiteit-werkgroepen', 'van-knippenberg-de-dreu-homan-2004-diversiteit-prestatie']);
+  assert.ok(div.length > 2, 'de bronnen met het onderwerp "Sociale veiligheid, diversiteit en inclusie" blijven gevonden');
+  assert.deepEqual(zoekSleutels('inclusie').slice(0, 1), ['shore-2011-inclusie-diversiteit-werkgroepen']);
+  // Loon: het CBS-bericht over de cao-lonen en de meta-analyse over salaristevredenheid bovenaan
+  for (const tekst of ['loon', 'salaris']) {
+    assert.deepEqual(zoekSleutels(tekst).slice(0, 2).sort(), ['cbs-2025-cao-lonen', 'williams-mcdaniel-nguyen-2006-salaristevredenheid'], tekst);
+  }
+  // Wat al goed ging, blijft gelijk (aantallen uit de UI-controle van P7)
+  assert.equal(zoekSleutels('verzuim').length, 17);
+  assert.equal(zoekSleutels('werkdruk').length, 24);
+  assert.equal(zoekSleutels('privacy').length, 13);
+  assert.equal(zoekSleutels('eNPS').length, 0);
 });
 
 test('migratie: byte voor byte gelijk aan een nieuwe generatie (--controle en in een lege map)', () => {

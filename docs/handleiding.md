@@ -103,7 +103,9 @@ Bovenin staat naast **Onderzoeken** en **Sjablonen** de **Bibliotheek**: één v
 - **Eigen bronnen**: wat je zelf toevoegt, plakt of inleest. Die kun je aanpassen en verwijderen.
 
 **Zoeken**
-- Typ een paar woorden, bijvoorbeeld *verzuim jongeren* of *werkdruk zorg*. Je hoeft niet precies te typen: *medewerkers* vindt ook *medewerker*, *verzuim* vindt ook *ziekteverzuim*, en *verloop* vindt ook bronnen over *turnover* of *uitstroom*.
+- Typ een paar woorden, bijvoorbeeld *verzuim jongeren* of *werkdruk zorg*. Je hoeft niet precies te typen: *medewerkers* vindt ook *medewerker*, *verzuim* vindt ook *ziekteverzuim*, en *verloop* vindt ook bronnen over *turnover* of *uitstroom*. Ook Nederlands en Engels horen bij elkaar: *diversiteit* vindt *diversity*, *loon* vindt *cao-lonen* en *pay*, *wetgeving* vindt bronnen over wet- en regelgeving.
+- Een woord van 4 letters of meer vindt ook langere woorden die zo beginnen (*werk* vindt *werkdruk*). Een kort woord of een afkorting, zoals *WOR*, *AVG* of *CBS*, zoekt alleen dat hele woord.
+- Bovenaan staan de bronnen waar je woord in de titel of de samenvatting staat. Bronnen die het woord alleen in hun onderwerp hebben, komen daarna.
 - Zet woorden tussen aanhalingstekens om ze precies zo samen te vinden: *"nieuwe medewerkers"*.
 - Eerst zie je bronnen met al je woorden. Zijn die er niet, dan zie je bronnen met een deel van de woorden (dat staat er dan bij).
 - Met de **filters** kies je onderwerp, soort bron, jaar, taal, collectie, betrouwbaarheid en bronnen met eigen notities. Op een telefoon klap je de filters open met **Filters**.

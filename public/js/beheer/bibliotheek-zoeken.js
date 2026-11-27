@@ -6,7 +6,10 @@
 // - normaliseren: kleine letters, zonder accenten (zie bibliotheek-regels.js normaliseer);
 // - een lichte Nederlandse stemmer (stam): medewerkers → medewerker, processen → proces;
 // - samengestelde woorden: "verzuim" vindt "ziekteverzuim";
-// - vaste synoniemen voor HR-onderwerpen (verloop ~ turnover);
+// - het begin van een woord pas vanaf MIN_BEGIN (4) letters: "werk" vindt "werkdruk", maar "WOR" vindt niet "work";
+// - vaste synoniemen voor HR-onderwerpen, ook Nederlands ~ Engels (verloop ~ turnover, diversiteit ~ diversity);
+// - een treffer in de naam van een onderwerp telt minder dan een treffer in de titel of de samenvatting: een
+//   onderwerp is een ruw etiket en de naam bevat soms meer begrippen ("Sociale veiligheid, diversiteit en inclusie");
 // - "…" zoekt een woordgroep;
 // - eerst bronnen met alle woorden; zijn die er niet, dan bronnen met een deel van de woorden;
 // - filters en facetten (per facet de aantallen met alle andere filters aan);
@@ -61,13 +64,16 @@ const SYNONIEM_GROEPEN = [
   ['inclusie', 'diversiteit', 'inclusion', 'diversity'],
   ['ongewenst', 'pesten', 'intimidatie', 'discriminatie', 'harassment', 'bullying', 'grensoverschrijdend'],
   ['tevredenheid', 'satisfaction', 'medewerkerstevredenheid', 'mto', 'medewerkersonderzoek'],
-  ['arbeidsvoorwaarden', 'beloning', 'salaris', 'compensation', 'benefits', 'cao'],
+  ['arbeidsvoorwaarden', 'beloning', 'salaris', 'loon', 'lonen', 'compensation', 'benefits', 'cao', 'salary', 'pay', 'wages'],
   ['ontwikkeling', 'loopbaan', 'opleiding', 'scholing', 'career', 'training', 'leren'],
   ['vitaliteit', 'gezondheid', 'welzijn', 'wellbeing', 'health', 'duurzame inzetbaarheid'],
   ['cultuur', 'organisatiecultuur', 'verandering', 'change', 'culture'],
   ['vragenlijst', 'enquete', 'survey', 'questionnaire'],
   ['privacy', 'avg', 'gdpr', 'gegevensbescherming'],
   ['analytics', 'kengetallen', 'kpi', 'people analytics', 'dashboard'],
+  // Het onderwerp "Wet- en regelgeving" (startcollectie, P7). Niet 'wet' of 'wetten': de stam 'wet' is ook het begin
+  // van 'wetenschap'.
+  ['wetgeving', 'regelgeving', 'wet- en regelgeving', 'legislation'],
 ];
 export const SYNONIEMEN = SYNONIEM_GROEPEN.map((g) => [...new Set(g.map(normaliseer))]);
 
@@ -82,10 +88,24 @@ function synoniemenVan(t, s) {
   return [...uit].map((w) => ({ w, s: stam(w), groep: w.includes(' ') }));
 }
 
-// Velden en hun gewicht.
+// Velden en hun gewicht. Bij zoeken weegt de naam van een onderwerp 1 (D3 §2.7 zei 4): een precieze treffer in de
+// samenvatting (1,5) en elke treffer in de titel (minstens 3) gaan dan voor. Zo komen bij "diversiteit" eerst de bronnen
+// over diversiteit, en pas daarna de bronnen die alleen het onderwerp "Sociale veiligheid, diversiteit en inclusie"
+// hebben. Bij "Passende bronnen" (zoekBijOnderzoek) blijft het 4 (ONDERWERP_BIJ_ONDERZOEK): de zoekvraag komt daar uit
+// de thema's van het onderzoek, en het onderwerp is juist wat een bron aan die thema's verbindt.
 const VELDEN = [
-  ['titel', 6], ['trefwoorden', 4], ['onderwerpen', 4], ['auteurs', 3], ['kernpunten', 2], ['samenvatting', 1.5], ['details', 1], ['notities', 1],
+  ['titel', 6], ['trefwoorden', 4], ['auteurs', 3], ['kernpunten', 2], ['samenvatting', 1.5], ['onderwerpen', 1], ['details', 1], ['notities', 1],
 ];
+
+/**
+ * Het begin van een woord telt pas vanaf zoveel letters (D3 §2.7 had geen grens). Korter gaf te veel ruis in een
+ * collectie met Nederlandse en Engelse bronnen: "wor" (WOR) vond "work" en "workers", "man" vond "management".
+ * Een kort woord of een afkorting (WOR, AVG, CBS, PSA) zoekt zo alleen het hele woord.
+ */
+export const MIN_BEGIN = 4;
+
+/** Gewicht van de naam van een onderwerp bij zoekBijOnderzoek (D3 §2.7). */
+const ONDERWERP_BIJ_ONDERZOEK = 4;
 
 function veldTekst(bron, veld) {
   const d = bron.details || {};
@@ -145,21 +165,29 @@ export function leesZoekvraag(tekst) {
   return { termen, groepen };
 }
 
-/** Hoe goed een term in een veld past: 1 (precies), 0,8 (begin van een woord), 0,6 (synoniem), 0,5 (in een samenstelling), 0. */
+/**
+ * Hoe goed een term in een veld past: 1 (precies), 0,8 (begin van een woord, vanaf MIN_BEGIN letters), 0,6 (synoniem,
+ * ook het begin van een woord vanaf MIN_BEGIN letters), 0,5 (in een samenstelling, vanaf 4 letters), 0.
+ */
 function factor(veld, term) {
   const { t, s, syn } = term;
   if (veld.vormen.has(t) || veld.vormen.has(s)) return 1;
-  if (s.length >= 2 && veld.vormTekst.includes(` ${s}`)) return 0.8;
+  if (s.length >= MIN_BEGIN && veld.vormTekst.includes(` ${s}`)) return 0.8;
   for (const x of syn) {
-    if (x.groep ? veld.tekst.includes(` ${x.w} `) : (veld.vormen.has(x.w) || veld.vormen.has(x.s) || veld.vormTekst.includes(` ${x.s}`))) return 0.6;
+    if (x.groep ? veld.tekst.includes(` ${x.w} `)
+      : (veld.vormen.has(x.w) || veld.vormen.has(x.s) || (x.s.length >= MIN_BEGIN && veld.vormTekst.includes(` ${x.s}`)))) return 0.6;
   }
   if (s.length >= 4 && veld.vormTekst.includes(s)) return 0.5;
   return 0;
 }
 
-/** Score van één bron voor de zoekvraag: { score, alle: alle termen gevonden, deel: aantal gevonden termen }. */
-function scoreVan(bron, vraag) {
+/**
+ * Score van één bron voor de zoekvraag: { score, alle: alle termen gevonden, deel: aantal gevonden termen }.
+ * onderwerpGewicht: een ander gewicht voor de naam van een onderwerp (zoekBijOnderzoek).
+ */
+function scoreVan(bron, vraag, { onderwerpGewicht = null } = {}) {
   const { velden, alles } = bereidVoor(bron);
+  const gewicht = (v) => (onderwerpGewicht !== null && v.veld === 'onderwerpen' ? onderwerpGewicht : v.gewicht);
   let score = 0;
   let gevonden = 0;
   for (const term of vraag.termen) {
@@ -167,14 +195,14 @@ function scoreVan(bron, vraag) {
     if (!kanPassen(alles, term)) continue;
     for (const v of velden) {
       const f = factor(v, term);
-      if (f) beste = Math.max(beste, v.gewicht * f);
+      if (f) beste = Math.max(beste, gewicht(v) * f);
     }
     if (beste) gevonden++;
     score += beste;
   }
   for (const g of vraag.groepen) {
     let beste = 0;
-    for (const v of velden) if (v.tekst.includes(` ${g} `)) beste = Math.max(beste, v.gewicht);
+    for (const v of velden) if (v.tekst.includes(` ${g} `)) beste = Math.max(beste, gewicht(v));
     if (beste) gevonden++;
     score += beste;
   }
@@ -346,7 +374,7 @@ export function zoekBijOnderzoek(bronnen, { themas = [], onderzoeksvraag = '', f
   const vraag = leesZoekvraag(tekst);
   const treffers = (Array.isArray(bronnen) ? bronnen : [])
     .filter((b) => FILTERS.every((f) => filterUitslag(b, filters)[f]))
-    .map((bron) => ({ id: bron.id, bron, ...scoreVan(bron, vraag) }))
+    .map((bron) => ({ id: bron.id, bron, ...scoreVan(bron, vraag, { onderwerpGewicht: ONDERWERP_BIJ_ONDERZOEK }) }))
     .filter((r) => r.gevonden > 0)
     .sort(SORTERINGEN.relevantie)
     .slice(0, 10)
