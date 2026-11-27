@@ -3,11 +3,14 @@
 // komt alleen via export/inzendingen bij de beheerder, nooit bij een meelezer.
 //
 // - Een codering hoort bij één antwoord (inzending + open vraag van die vragenlijst) of bij één stuk eigen invoer.
-//   PUT …/coderingen vervangt de codes van één stuk in één batch (twee opdrachten).
+//   PUT …/coderingen vervangt de codes van één stuk.
 // - Een citaat is een aanpasbare kopie. Het mag pas in_rapport zijn als het gecontroleerd is (anders 400). Pas je de
 //   tekst aan, dan vervalt "gecontroleerd" (en dus "in rapport"), tenzij je het in hetzelfde verzoek opnieuw aanvinkt.
 // - Een gearchiveerd onderzoek: alles alleen-lezen (409).
-// Rekentijd: per route hooguit één losse query plus twee batches; geen antwoorden ingelezen in de Worker.
+//
+// Rekentijd (BOUWPLAN FT-02): per route hooguit één batch plus twee losse queries; de antwoorden worden niet in de
+// Worker ingelezen. Controle en schrijven gaan samen in één batch: de schrijfopdrachten hebben dezelfde voorwaarden
+// in hun WHERE (een "bewaakte" opdracht). Klopt er iets niet, dan schrijven ze niets en geeft de route de reden.
 
 import { Fout, json, leesJson } from '../lib/http.js';
 import * as v from '../lib/validatie.js';
@@ -17,46 +20,56 @@ import {
 } from '../../public/js/beheer/codering-regels.js';
 
 const isUniekFout = (e) => /UNIQUE/i.test(String(e?.message || e));
+const GEARCHIVEERD = 'Dit onderzoek is gearchiveerd en kan niet meer worden gewijzigd.';
 
-async function haalCode(env, id) {
-  const c = await een(env, 'SELECT * FROM codes WHERE id = ?', id);
-  if (!c) throw new Fout(404, 'Deze code bestaat niet (meer).');
-  return c;
+/** Een code of citaat met de status van het onderzoek (één query); 404 als hij niet bestaat, 409 als gearchiveerd. */
+async function haalMetStatus(env, tabel, id, nietGevonden) {
+  const rij = await een(env, `SELECT x.*, o.status AS onderzoek_status FROM ${tabel} x JOIN onderzoeken o ON o.id = x.onderzoek_id WHERE x.id = ?`, id);
+  if (!rij) throw new Fout(404, nietGevonden);
+  if (rij.onderzoek_status === 'gearchiveerd') throw new Fout(409, GEARCHIVEERD);
+  return rij;
 }
-
-async function haalCitaat(env, id) {
-  const c = await een(env, 'SELECT * FROM citaten WHERE id = ?', id);
-  if (!c) throw new Fout(404, 'Dit citaat bestaat niet (meer).');
-  return c;
-}
+const haalCode = (env, id) => haalMetStatus(env, 'codes', id, 'Deze code bestaat niet (meer).');
+const haalCitaat = (env, id) => haalMetStatus(env, 'citaten', id, 'Dit citaat bestaat niet (meer).');
 
 /**
- * Het stuk waar een codering of citaat bij hoort: { inzending_id, vraag_id } of { invoer_id }.
- * Controleert dat de inzending bij een vragenlijst van dit onderzoek hoort, dat de vraag een open vraag van die
- * vragenlijst is en (bij metAntwoord) dat er een antwoord op staat; of dat de invoer bij dit onderzoek hoort.
+ * Het stuk waar een codering of citaat bij hoort, als SQL-voorwaarden voor één batch.
+ * → { stuk: { inzending_id, vraag_id } | { invoer_id }, params: [...], controles: [[naam, sql, melding, status]] }.
+ * De parameters zijn vast genummerd: ?1 onderzoek, ?2 extra (lijst met code-ids of code-id), ?3 extra (aantal),
+ * ?4 inzending of invoer, ?5 vraag, ?6 pad naar het antwoord. metAntwoord: er moet iets zijn ingevuld.
  */
-async function controleerStuk(env, body, onderzoekId, { metAntwoord = true } = {}) {
+function stukControles(body, onderzoekId, { metAntwoord = '1' } = {}) {
   const invoerId = v.optioneelId(body.invoer_id, 'invoer');
   if (invoerId) {
     if (body.inzending_id || body.vraag_id) throw new Fout(400, 'Kies een antwoord óf een stuk eigen invoer.');
-    const rij = await een(env, 'SELECT 1 AS ja FROM eigen_invoer WHERE id = ? AND onderzoek_id = ?', invoerId, onderzoekId);
-    if (!rij) throw new Fout(400, 'Deze invoer hoort niet bij dit onderzoek.');
-    return { invoer_id: invoerId };
+    return {
+      stuk: { invoer_id: invoerId },
+      params: [invoerId, null, null],
+      controles: [['stuk', 'EXISTS (SELECT 1 FROM eigen_invoer WHERE id = ?4 AND onderzoek_id = ?1 AND ?5 IS NULL AND ?6 IS NULL)', 'Deze invoer hoort niet bij dit onderzoek.', 400]],
+    };
   }
   const inzendingId = v.id(body.inzending_id, 'antwoord');
   const vraagId = v.id(body.vraag_id, 'vraag');
-  const [inz, vraag] = await env.DB.batch([
-    // Het pad naar het antwoord als tekst meegeven: een getal zou de database als 6002.0 in het pad zetten.
-    env.DB.prepare(`SELECT json_type(i.antwoorden, ?2) AS soort, trim(json_extract(i.antwoorden, ?2)) AS tekst
-      FROM inzendingen i JOIN vragenlijsten vl ON vl.id = i.vragenlijst_id WHERE i.id = ?1 AND vl.onderzoek_id = ?3`).bind(inzendingId, `$."${vraagId}"`, onderzoekId),
-    env.DB.prepare(`SELECT 1 AS ja FROM vragen q WHERE q.id = ?1 AND q.type = 'open'
-      AND q.vragenlijst_id = (SELECT vragenlijst_id FROM inzendingen WHERE id = ?2)`).bind(vraagId, inzendingId),
-  ]);
-  const i = inz.results[0];
-  if (!i) throw new Fout(400, 'Dit antwoord hoort niet bij dit onderzoek.');
-  if (!vraag.results.length) throw new Fout(400, 'Kies een open vraag van de vragenlijst van dit antwoord.');
-  if (metAntwoord && (i.soort !== 'text' || !i.tekst)) throw new Fout(400, 'Op deze vraag staat in dit antwoord niets ingevuld.');
-  return { inzending_id: inzendingId, vraag_id: vraagId };
+  return {
+    stuk: { inzending_id: inzendingId, vraag_id: vraagId },
+    // Het pad naar het antwoord als tekst: een getal zou de database als 6002.0 in het pad zetten.
+    params: [inzendingId, vraagId, `$."${vraagId}"`],
+    controles: [
+      ['stuk', 'EXISTS (SELECT 1 FROM inzendingen i JOIN vragenlijsten vl ON vl.id = i.vragenlijst_id WHERE i.id = ?4 AND vl.onderzoek_id = ?1)',
+        'Dit antwoord hoort niet bij dit onderzoek.', 400],
+      ['vraag', "EXISTS (SELECT 1 FROM vragen q WHERE q.id = ?5 AND q.type = 'open' AND q.vragenlijst_id = (SELECT vragenlijst_id FROM inzendingen WHERE id = ?4))",
+        'Kies een open vraag van de vragenlijst van dit antwoord.', 400],
+      ['antwoord', `(${metAntwoord} = 0 OR EXISTS (SELECT 1 FROM inzendingen WHERE id = ?4 AND json_type(antwoorden, ?6) = 'text' AND trim(json_extract(antwoorden, ?6)) <> ''))`,
+        'Op deze vraag staat in dit antwoord niets ingevuld.', 400],
+    ],
+  };
+}
+
+/** Voert de controles uit (eerste rij van de batch) en gooit de eerste fout. */
+function gooiEersteFout(rij, controles) {
+  for (const [naam, , melding, status] of controles) {
+    if (!rij || !rij[naam]) throw new Fout(status, melding);
+  }
 }
 
 // ---------- Overzicht ----------
@@ -112,13 +125,12 @@ export async function codeNieuw({ request, env, params }) {
 export async function codeWijzig({ request, env, params }) {
   const id = v.id(params.id);
   const code = await haalCode(env, id);
-  await haalBewerkbaarOnderzoek(env, code.onderzoek_id);
   const body = await leesJson(request, 10_000);
   if (body.samenvoegen_in !== undefined) {
     const doelId = v.id(body.samenvoegen_in, 'code');
     if (doelId === id) throw new Fout(400, 'Kies een andere code om mee samen te voegen.');
-    const doel = await haalCode(env, doelId);
-    if (doel.onderzoek_id !== code.onderzoek_id) throw new Fout(400, 'Kies een code van dit onderzoek.');
+    const doel = await een(env, 'SELECT onderzoek_id FROM codes WHERE id = ?', doelId);
+    if (!doel || doel.onderzoek_id !== code.onderzoek_id) throw new Fout(400, 'Kies een code van dit onderzoek.');
     await env.DB.batch([
       env.DB.prepare(`INSERT OR IGNORE INTO coderingen (onderzoek_id, code_id, inzending_id, vraag_id, invoer_id)
         SELECT onderzoek_id, ?, inzending_id, vraag_id, invoer_id FROM coderingen WHERE code_id = ?`).bind(doelId, id),
@@ -142,8 +154,7 @@ export async function codeWijzig({ request, env, params }) {
 /** DELETE /codes/:id: de code verdwijnt van alle antwoorden; citaten blijven bestaan (zonder code). */
 export async function codeVerwijder({ env, params }) {
   const id = v.id(params.id);
-  const code = await haalCode(env, id);
-  await haalBewerkbaarOnderzoek(env, code.onderzoek_id);
+  await haalCode(env, id);
   await env.DB.batch([
     env.DB.prepare('DELETE FROM coderingen WHERE code_id = ?').bind(id),
     env.DB.prepare('UPDATE citaten SET code_id = NULL WHERE code_id = ?').bind(id),
@@ -157,31 +168,33 @@ export async function codeVerwijder({ env, params }) {
 /**
  * PUT /onderzoeken/:id/coderingen { inzending_id, vraag_id | invoer_id, code_ids: [] } → { ok, code_ids }
  * Vervangt de codes van één antwoord of één stuk eigen invoer (een lege lijst haalt alle codes weg).
+ * Eén batch: de controles, het verwijderen en het toevoegen (die laatste twee alleen als alle controles kloppen).
  */
 export async function coderingen({ request, env, params }) {
   const onderzoekId = v.id(params.id);
   await haalBewerkbaarOnderzoek(env, onderzoekId);
   const body = await leesJson(request, 20_000);
   const codeIds = v.idLijst(body.code_ids ?? [], 'Codes', { max: MAX_CODES });
-  const stuk = await controleerStuk(env, body, onderzoekId, { metAntwoord: codeIds.length > 0 });
-  const lijst = JSON.stringify(codeIds);
-  const [codesOk, totaal] = await env.DB.batch([
-    env.DB.prepare('SELECT COUNT(*) AS n FROM codes WHERE onderzoek_id = ? AND id IN (SELECT value FROM json_each(?))').bind(onderzoekId, lijst),
-    env.DB.prepare('SELECT COUNT(*) AS n FROM coderingen WHERE onderzoek_id = ?').bind(onderzoekId),
+  const { stuk, params: p, controles } = stukControles(body, onderzoekId, { metAntwoord: '(?3 > 0)' });
+  const alle = [
+    ...controles,
+    ['codes', '(SELECT COUNT(*) FROM codes WHERE onderzoek_id = ?1 AND id IN (SELECT value FROM json_each(?2))) = ?3', 'Kies codes van dit onderzoek.', 400],
+    ['ruimte', `(SELECT COUNT(*) FROM coderingen WHERE onderzoek_id = ?1) + ?3 <= ${MAX_CODERINGEN}`,
+      `Een onderzoek kan hooguit ${MAX_CODERINGEN.toLocaleString('nl-NL')} gecodeerde antwoorden hebben.`, 409],
+  ];
+  const voorwaarde = alle.map(([, sql]) => sql).join(' AND ');
+  const waarden = [onderzoekId, JSON.stringify(codeIds), codeIds.length, ...p];
+  const [controle] = await env.DB.batch([
+    env.DB.prepare(`SELECT ${alle.map(([naam, sql]) => `${sql} AS ${naam}`).join(', ')}`).bind(...waarden),
+    stuk.invoer_id
+      ? env.DB.prepare(`DELETE FROM coderingen WHERE onderzoek_id = ?1 AND invoer_id = ?4 AND ${voorwaarde}`).bind(...waarden)
+      : env.DB.prepare(`DELETE FROM coderingen WHERE onderzoek_id = ?1 AND inzending_id = ?4 AND vraag_id = ?5 AND ${voorwaarde}`).bind(...waarden),
+    stuk.invoer_id
+      ? env.DB.prepare(`INSERT INTO coderingen (onderzoek_id, code_id, invoer_id) SELECT ?1, value, ?4 FROM json_each(?2) WHERE ${voorwaarde}`).bind(...waarden)
+      : env.DB.prepare(`INSERT INTO coderingen (onderzoek_id, code_id, inzending_id, vraag_id) SELECT ?1, value, ?4, ?5 FROM json_each(?2) WHERE ${voorwaarde}`)
+        .bind(...waarden),
   ]);
-  if (codesOk.results[0].n !== codeIds.length) throw new Fout(400, 'Kies codes van dit onderzoek.');
-  if (totaal.results[0].n + codeIds.length > MAX_CODERINGEN) throw new Fout(409, `Een onderzoek kan hooguit ${MAX_CODERINGEN.toLocaleString('nl-NL')} gecodeerde antwoorden hebben.`);
-  const opdrachten = stuk.invoer_id
-    ? [
-      env.DB.prepare('DELETE FROM coderingen WHERE onderzoek_id = ? AND invoer_id = ?').bind(onderzoekId, stuk.invoer_id),
-      env.DB.prepare('INSERT INTO coderingen (onderzoek_id, code_id, invoer_id) SELECT ?, value, ? FROM json_each(?)').bind(onderzoekId, stuk.invoer_id, lijst),
-    ]
-    : [
-      env.DB.prepare('DELETE FROM coderingen WHERE onderzoek_id = ? AND inzending_id = ? AND vraag_id = ?').bind(onderzoekId, stuk.inzending_id, stuk.vraag_id),
-      env.DB.prepare('INSERT INTO coderingen (onderzoek_id, code_id, inzending_id, vraag_id) SELECT ?, value, ?, ? FROM json_each(?)')
-        .bind(onderzoekId, stuk.inzending_id, stuk.vraag_id, lijst),
-    ];
-  await env.DB.batch(opdrachten);
+  gooiEersteFout(controle.results[0], alle);
   return json({ ok: true, code_ids: codeIds });
 }
 
@@ -193,11 +206,7 @@ function citaatTekst(waarde) {
   return t;
 }
 
-async function controleerCode(env, codeId, onderzoekId) {
-  if (codeId === null) return;
-  const rij = await een(env, 'SELECT onderzoek_id FROM codes WHERE id = ?', codeId);
-  if (!rij || rij.onderzoek_id !== onderzoekId) throw new Fout(400, 'Kies een code van dit onderzoek.');
-}
+const CODE_VAN_ONDERZOEK = '(?2 IS NULL OR EXISTS (SELECT 1 FROM codes WHERE id = ?2 AND onderzoek_id = ?1))';
 
 /** POST /onderzoeken/:id/citaten { inzending_id, vraag_id | invoer_id, code_id?, tekst, gecontroleerd?, in_rapport? } → 201 { id } */
 export async function citaatNieuw({ request, env, params }) {
@@ -209,15 +218,27 @@ export async function citaatNieuw({ request, env, params }) {
   const inRapport = v.vlag(body.in_rapport);
   if (inRapport && !gecontroleerd) throw new Fout(400, CITAAT_NIET_GECONTROLEERD);
   const codeId = v.optioneelId(body.code_id, 'code');
-  const stuk = await controleerStuk(env, body, onderzoekId);
-  await controleerCode(env, codeId, onderzoekId);
+  const { stuk, params: p, controles } = stukControles(body, onderzoekId);
+  const alle = [
+    ...controles,
+    ['code', CODE_VAN_ONDERZOEK, 'Kies een code van dit onderzoek.', 400],
+    ['ruimte', `(SELECT COUNT(*) FROM citaten WHERE onderzoek_id = ?1) < ${MAX_CITATEN}`, `Een onderzoek kan hooguit ${MAX_CITATEN} citaten hebben.`, 409],
+  ];
+  const voorwaarde = alle.map(([, sql]) => sql).join(' AND ');
   const nu = nuIso();
-  const rij = await env.DB.prepare(`INSERT INTO citaten (onderzoek_id, code_id, inzending_id, vraag_id, invoer_id, tekst, gecontroleerd, in_rapport,
-      volgorde, aangemaakt_op, bijgewerkt_op)
-    SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, COALESCE((SELECT MAX(volgorde) FROM citaten WHERE onderzoek_id = ?1), 0) + 1, ?9, ?9
-    WHERE (SELECT COUNT(*) FROM citaten WHERE onderzoek_id = ?1) < ${MAX_CITATEN} RETURNING id`)
-    .bind(onderzoekId, codeId, stuk.inzending_id ?? null, stuk.vraag_id ?? null, stuk.invoer_id ?? null, tekst, gecontroleerd, inRapport, nu).first();
-  if (!rij) throw new Fout(409, `Een onderzoek kan hooguit ${MAX_CITATEN} citaten hebben.`);
+  const waarden = [onderzoekId, codeId, null, ...p, tekst, gecontroleerd, inRapport, nu];
+  const [controle, invoegen] = await env.DB.batch([
+    // ?10 (de tijd) staat erin omdat de database het aantal parameters telt tot het hoogste nummer.
+    env.DB.prepare(`SELECT ${alle.map(([naam, sql]) => `${sql} AS ${naam}`).join(', ')}, ?10 AS tijd`).bind(...waarden),
+    env.DB.prepare(`INSERT INTO citaten (onderzoek_id, code_id, inzending_id, vraag_id, invoer_id, tekst, gecontroleerd, in_rapport,
+        volgorde, aangemaakt_op, bijgewerkt_op)
+      SELECT ?1, ?2, ${stuk.invoer_id ? 'NULL, NULL, ?4' : '?4, ?5, NULL'}, ?7, ?8, ?9,
+        COALESCE((SELECT MAX(volgorde) FROM citaten WHERE onderzoek_id = ?1), 0) + 1, ?10, ?10
+      WHERE ${voorwaarde} RETURNING id`).bind(...waarden),
+  ]);
+  gooiEersteFout(controle.results[0], alle);
+  const rij = invoegen.results[0];
+  if (!rij) throw new Fout(409, 'Het citaat kon niet worden opgeslagen. Probeer het opnieuw.');
   return json({ id: rij.id }, 201);
 }
 
@@ -228,7 +249,6 @@ export async function citaatNieuw({ request, env, params }) {
 export async function citaatWijzig({ request, env, params }) {
   const id = v.id(params.id);
   const c = await haalCitaat(env, id);
-  await haalBewerkbaarOnderzoek(env, c.onderzoek_id);
   const body = await leesJson(request, 20_000);
   const tekst = body.tekst === undefined ? c.tekst : citaatTekst(body.tekst);
   const nieuweTekst = tekst !== c.tekst;
@@ -238,18 +258,18 @@ export async function citaatWijzig({ request, env, params }) {
   if (body.in_rapport === undefined && !gecontroleerd) inRapport = 0;
   if (inRapport && !gecontroleerd) throw new Fout(400, CITAAT_NIET_GECONTROLEERD);
   const codeId = body.code_id === undefined ? c.code_id : v.optioneelId(body.code_id, 'code');
-  if (body.code_id !== undefined) await controleerCode(env, codeId, c.onderzoek_id);
   const volgorde = body.volgorde === undefined ? c.volgorde : v.geheelGetal(body.volgorde, 'Volgorde', { min: 0, max: 100_000 }) ?? c.volgorde;
-  await env.DB.prepare('UPDATE citaten SET tekst = ?, gecontroleerd = ?, in_rapport = ?, code_id = ?, volgorde = ?, bijgewerkt_op = ? WHERE id = ?')
-    .bind(tekst, gecontroleerd, inRapport, codeId, volgorde, nuIso(), id).run();
+  // Bewaakt: alleen met een code van hetzelfde onderzoek (of geen code).
+  const r = await env.DB.prepare(`UPDATE citaten SET tekst = ?3, gecontroleerd = ?4, in_rapport = ?5, code_id = ?2, volgorde = ?6, bijgewerkt_op = ?7
+    WHERE id = ?8 AND ${CODE_VAN_ONDERZOEK}`).bind(c.onderzoek_id, codeId, tekst, gecontroleerd, inRapport, volgorde, nuIso(), id).run();
+  if (!r.meta?.changes) throw new Fout(400, 'Kies een code van dit onderzoek.');
   return json({ ok: true, gecontroleerd, in_rapport: inRapport });
 }
 
 /** DELETE /citaten/:id */
 export async function citaatVerwijder({ env, params }) {
   const id = v.id(params.id);
-  const c = await haalCitaat(env, id);
-  await haalBewerkbaarOnderzoek(env, c.onderzoek_id);
+  await haalCitaat(env, id);
   await env.DB.prepare('DELETE FROM citaten WHERE id = ?').bind(id).run();
   return json({ ok: true });
 }

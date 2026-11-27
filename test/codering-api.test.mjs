@@ -135,8 +135,12 @@ test('de codes van één antwoord vervangen, met de controles van het plan', asy
   assert.equal(r.status, 400, 'de vraag van een andere vragenlijst');
   r = await zet({ inzending_id: 61013, vraag_id: 6002, code_ids: [s.a] });
   assert.equal(r.data.fout, 'Op deze vraag staat in dit antwoord niets ingevuld.');
+  assert.equal((await zet({ inzending_id: 61002, vraag_id: 6002, code_ids: [s.a] })).status, 200);
   r = await zet({ inzending_id: 61002, vraag_id: 6002, code_ids: [6026] });
   assert.equal(r.data.fout, 'Kies codes van dit onderzoek.');
+  assert.deepEqual((await stand()).coderingen.filter((c) => c.inzending_id === 61002).map((c) => c.code_id), [s.a],
+    'een geweigerd verzoek laat de bestaande codes staan (controle en schrijven in één batch)');
+  await zet({ inzending_id: 61002, vraag_id: 6002, code_ids: [] });
   r = await zet({ inzending_id: 61002, vraag_id: 6002, code_ids: [s.a, s.a] });
   assert.equal(r.status, 400);
   // Interview
