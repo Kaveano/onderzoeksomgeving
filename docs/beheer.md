@@ -68,18 +68,26 @@ Grenzen die de app zelf stelt, zodat één verzoek altijd binnen de gratis reken
 **Dashboard**
 - Er worden geen groepen of getallen getoond die op minder dan 5 respondenten berusten.
 - Waar nodig worden ook andere groepen of getallen verborgen, zodat niets uit het totaal terug te rekenen is.
+- Alle regels voor het verbergen staan op één plek: `public/js/beheer/privacy.js` (zuiver; de Worker, de schermen en de tests gebruiken dezelfde code). De grens van 5 staat alleen daar; `drempelVan()` zorgt dat geen instelling hem kan verlagen.
+- Het rekenwerk van het dashboard staat in `public/js/beheer/dashboard-rekenen.js` (`dashboardUitRijen`). `src/routes/dashboard.js` haalt alleen de rijen op (één batch). De browser kan precies hetzelfde uitrekenen uit de export (`rijenUitExport`); `test/dashboard-rekenen.test.mjs` controleert dat het resultaat gelijk is aan `GET /dashboard`.
+- Achtergrondvragen (`uitsplitsen = 1` of een `kenmerk`, met één antwoord) zijn **beschermd**: hun verdeling gaat door `maskeerVerdeling` (met "Niet ingevuld", percentages van de hele lijst, `n` = null zodra er iets verborgen is). Dat geldt voor de beheerder, de meelezer, de rapportfeiten (`vragen[].beschermd`) en bij het tonen van oude rapporten (meerkeuzevragen met één antwoord worden dan voor de zekerheid gemaskeerd).
 
 **Deellinks (meelezers)**
 - Een meelezer heeft de link (`/d/<code>`, niet te raden) én een toegangscode van 10 tekens nodig. Van de toegangscode staat alleen een hash met zout in de database.
 - Na 5 verkeerde codes per afzender per link volgt 15 minuten wachttijd; voor alle afzenders samen geldt maximaal 50 per link (beide ondeelbaar geteld). Voor dat tellen wordt dezelfde niet terug te rekenen afzendercode bewaard als bij het inloggen; die wordt na een dag gewist.
 - Een meelezer krijgt een eigen sessiecookie per link (`__Host-kijk-…`, HttpOnly, Secure, SameSite=Strict, 8 uur). Intrekken, een nieuwe code, verlopen of verwijderen beëindigt lopende sessies direct.
 - De server geeft een meelezer alleen wat is aangevinkt. Uitkomsten van een vragenlijst, vraag, thema of meetmoment met minder dan 5 respondenten worden aan de serverkant weggelaten, net als open antwoorden (tenzij aangevinkt) en links naar vragenlijsten. Een thema of meetmoment met een vraag van minder dan 5 respondenten valt ook weg, net als punten in het verloop die op een kleine of nog open vragenlijst berusten.
-- Vragenlijsten die nog openstaan, krijgt een meelezer alleen als "tussenstand" is aangevinkt (anders is het antwoord van een nieuwe respondent af te leiden door twee keer te kijken).
+- Vragenlijsten die nog openstaan, krijgt een meelezer alleen als "tussenstand" is aangevinkt (anders is het antwoord van een nieuwe respondent af te leiden door twee keer te kijken). `tussenstand` staat los van `dashboard` en wordt ook bewaard bij een link die alleen rapporten deelt.
+- Boven `KIJK_MAX_INZENDINGEN` inzendingen (standaard 3.000, alle vragenlijsten van het onderzoek samen) rekent de server het dashboard niet live uit voor een meelezer (413, met de melding om een rapport te vragen). Dat kost anders te veel rekentijd. De grens is aan te passen met de variabele `KIJK_MAX_INZENDINGEN` bij de Worker.
 - Een rapport wordt voor een meelezer aan de serverkant opgebouwd uit de vastgelegde feiten, alleen met de hoofdstukken die aanstaan.
 - Van meelezers wordt alleen de datum van het laatste bezoek per link bewaard, plus bij verkeerde toegangscodes de afzendercode (een dag).
 
 **Rapporten**
 - De feiten in een rapport worden in de browser met vaste regels uit de gegevens samengesteld (geen AI) en met een peildatum in de database vastgelegd. Uitkomsten van minder dan 5 respondenten worden niet opgenomen.
+- Een toets (verloop tussen meetmomenten) gebruikt themascores per respondent, het dashboard alle losse antwoorden. Vallen in een vragenlijst 1 tot 4 gedeeltelijk ingevulde respondenten weg, dan wordt die toets niet getoond (anders zijn hun antwoorden uit de twee getallen terug te rekenen).
+
+**Eigen datasets (Analyse, onderdeel 6)**
+- Groepen met minder dan 5 waarden doen niet mee; samenhang vraagt minstens 10 rijen. Kolommen die over gezondheid lijken te gaan (verzuim, ziekmelding, diagnose, arbo) staan bij het inlezen standaard uit, net als kolommen met persoonsgegevens.
 
 **Inlezen uit Excel of CSV**
 - Het bestand wordt in de browser gelezen; de server krijgt alleen de gekozen gegevens en controleert die opnieuw met dezelfde regels als bij handmatige invoer of invullen. Elke reeks wordt ondeelbaar opgeslagen (alles of niets).

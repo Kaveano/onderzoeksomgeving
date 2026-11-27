@@ -138,7 +138,8 @@ Het tabblad **Dashboard** toont:
 
 **Anonimiteit**
 - Groepen met minder dan **5 respondenten** worden niet getoond. Hetzelfde geldt voor elke score binnen een groep die op minder dan 5 personen berust; die zie je als "<5".
-- Kleine groepen worden samengevoegd, zodat ze niet uit het totaal terug te rekenen zijn.
+- Kleine groepen worden samengevoegd, zodat ze niet uit het totaal terug te rekenen zijn. Bij **Overige groepen samen** staan alle antwoorden die niet apart te zien zijn, ook antwoorden die niemand gaf. Zo verraadt de lijst niet waar de paar respondenten zitten.
+- **Achtergrondvragen** (een vraag om op uit te splitsen, zoals afdeling, of een vraag over een kenmerk zoals geslacht) zijn extra beschermd. In de verdeling staat ook **Niet ingevuld**, en de percentages zijn van alle respondenten van de vragenlijst. Een aantal van 1 tot 4 zie je als **×**, net als de kleinste andere aantallen die nodig zijn om het niet terug te rekenen. Zie je ergens een ×, dan staat ook het totaal aantal antwoorden op die vraag er niet bij. Dat geldt voor jou, voor meelezers, in rapporten en bij de uitsplitsing.
 - Leg de uitkomsten van verschillende uitsplitsingen niet naast elkaar om kleinere groepen af te leiden.
 
 Met **Neem op in stuk** zet je de cijfers van een kaart als tekst in een van je stukken, bijvoorbeeld in het Conceptrapport.
@@ -191,7 +192,9 @@ Hiermee onderzoek je gegevens die niet uit een vragenlijst komen, zoals een over
    - **Hangen twee getallen met elkaar samen?** Bijvoorbeeld leeftijd en verzuimdagen.
    - **Hangen twee indelingen met elkaar samen?** Bijvoorbeeld afdeling en soort contract (kruistabel).
 
-Een groep met minder dan 3 waarden doet niet mee aan een vergelijking. Een dataset kan maximaal 2.000 rijen en 40 kolommen hebben; een onderzoek maximaal 10 datasets.
+Een groep met minder dan 5 waarden doet niet mee aan een vergelijking, net als bij de vragenlijsten. Voor samenhang zijn minstens 10 rijen met een waarde in beide kolommen nodig. Een dataset kan maximaal 2.000 rijen en 40 kolommen hebben; een onderzoek maximaal 10 datasets.
+
+**Gegevens over gezondheid.** Kolommen die over verzuim, ziekmeldingen of diagnoses lijken te gaan, staan bij het inlezen uit, met de melding *"Deze kolom lijkt over gezondheid te gaan. Gebruik hiervoor 'Personeelsbestand voor HR-analytics'; dan worden alleen groepscijfers bewaard."* Verzuim per medewerker is een gegeven over iemands gezondheid; dat hoort niet als losse rijen in een eigen dataset.
 
 ## 6. Eigen invoer
 
@@ -300,8 +303,9 @@ Wil je de opdrachtgever, de directie of de ondernemingsraad de resultaten laten 
 
 1. Klik op **+ Deellink maken**.
 2. Vul in voor wie de link is en vink aan wat diegene mag zien:
-   - **Resultaten** (het dashboard), met of zonder de **open antwoorden**, en desgewenst ook de **tussenstand van vragenlijsten die nog openstaan**;
-   - losse **rapporten** en **stukken**.
+   - **Resultaten** (het dashboard), met of zonder de **open antwoorden**;
+   - losse **rapporten** en **stukken**;
+   - desgewenst de **tussenstand van vragenlijsten die nog openstaan**. Dat vinkje staat los van de resultaten: het geldt voor de resultaten en voor rapporten. Bij een rapport waarin een vragenlijst nog openstond, zie je **(een vragenlijst stond nog open)**.
 3. Kies tot wanneer de link werkt (standaard 30 dagen).
 4. Je krijgt **de link** en **een toegangscode** te zien. Stuur ze apart van elkaar, bijvoorbeeld de link per e-mail (**Open e-mail met de link**) en de code per sms of telefoon.
    - **Noteer de toegangscode meteen.** Hij wordt niet leesbaar bewaard en is later niet meer op te vragen. Kwijt? Klik op **Nieuwe code**.
@@ -310,6 +314,7 @@ Wat de meelezer ziet en kan:
 - Alleen lezen: niets wijzigen, niets downloaden behalve afdrukken.
 - Alleen wat jij hebt aangevinkt. Uitkomsten van minder dan 5 respondenten blijven altijd verborgen. Staat in een thema of meetmoment een vraag van minder dan 5 respondenten, dan blijft ook dat thema of meetmoment verborgen, zodat die vraag niet terug te rekenen is.
 - Een vragenlijst die nog openstaat, ziet de meelezer pas als je hem sluit. Zo kan niemand door later nog eens te kijken afleiden wat één nieuwe respondent heeft geantwoord. Wil je toch tussentijds laten meekijken, vink dan de tussenstand aan.
+- Bij een heel groot onderzoek (meer dan 3.000 ingevulde vragenlijsten samen) rekent de app de resultaten niet live uit voor een meelezer. Die ziet dan: *"Deze resultaten zijn te groot om hier live te tonen. Vraag de onderzoeker om een rapport."* Deel in dat geval een rapport.
 - Rapporten zien er voor de meelezer hetzelfde uit als bij jou, maar alleen met de hoofdstukken die je hebt aangezet.
 - Na 5 verkeerde toegangscodes moet diegene 15 minuten wachten. Dat geldt per apparaat of netwerk: iemand anders die de link heeft, kan de echte meelezer zo niet buitensluiten.
 
