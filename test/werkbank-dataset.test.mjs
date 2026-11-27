@@ -39,8 +39,7 @@ test('pariteit met spssGegevens: dezelfde namen, codes per rij en themascores', 
     if (['respondent', 'datum'].includes(sv.naam) || sv.naam.endsWith('_enps')) return;
     const v = perNaam.get(sv.naam);
     if (sv.soort === 'tekst') {
-      // Open vragen staan erin, maar zijn niet te analyseren (en de tekst komt nooit in de werkbank). Een
-      // cijfervraag is in het SPSS-pakket (nog) tekst; in de werkbank is het een getal.
+      // Open vragen staan erin, maar zijn niet te analyseren (en de tekst komt nooit in de werkbank).
       if (v && v.type === 'open') assert.equal(v.analyseerbaar, false, sv.naam);
       return;
     }
@@ -59,7 +58,7 @@ test('pariteit met spssGegevens: dezelfde namen, codes per rij en themascores', 
       }
     }
   });
-  for (const naam of ['vragenlijst', 'meetmoment', 'v01', 'v02', 'v03', 'v08', 'v09_1', 'v09_3', 'thema01', 'thema02']) assert.ok(vergeleken.includes(naam), naam);
+  for (const naam of ['vragenlijst', 'meetmoment', 'afdeling', 'leeftijd', 'v03', 'v08', 'v09_1', 'v09_3', 'thema01', 'thema02']) assert.ok(vergeleken.includes(naam), naam);
   // Meerkeuze: de hernoemde optie houdt haar code en heeft beide namen in het label (zoals in SPSS).
   const afd = ds.perId.get('v:1000');
   assert.deepEqual(afd.labels.map((l) => l.label), ['Kantoor / Kantoor en staf', 'Productie', 'Verkoop', 'Service']);
