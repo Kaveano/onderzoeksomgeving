@@ -200,7 +200,7 @@ npx wrangler d1 migrations apply DB --remote
 npx wrangler d1 export onderzoeksomgeving --remote --output backup-voor-0011.sql
 ```
 
-Wil je extra zeker zijn, probeer de migraties dan eerst op een lokale kopie van die reservekopie: `npx wrangler d1 execute DB --local --file backup-voor-0011.sql`, daarna `npm run db:lokaal`. Gaat er live toch iets mis, dan zet je de database met D1 Time Travel terug naar het moment vóór de migratie (`npx wrangler d1 time-travel restore onderzoeksomgeving --timestamp=<tijdstip>`). Migraties 0012 tot en met 0015 voegen alleen nieuwe tabellen toe.
+Wil je extra zeker zijn, probeer de migraties dan eerst op een lokale kopie van die reservekopie: `npx wrangler d1 execute DB --local --file backup-voor-0011.sql`, daarna `npm run db:lokaal`. Gaat er live toch iets mis, dan zet je de database met D1 Time Travel terug naar het moment vóór de migratie (`npx wrangler d1 time-travel restore onderzoeksomgeving --timestamp=<tijdstip>`). Migraties 0012 tot en met 0015 voegen alleen nieuwe tabellen en hun indexen toe. Elke verwijzing met `ON DELETE CASCADE` of `SET NULL` heeft een index die met die kolom begint (bijvoorbeeld `coderingen(inzending_id)`); anders doorzoekt SQLite bij elke verwijderde inzending de hele tabel. `test/migratie.test.mjs` controleert dat voor alle nieuwe tabellen.
 
 Online zetten:
 

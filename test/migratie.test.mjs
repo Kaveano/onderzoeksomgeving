@@ -207,6 +207,29 @@ test('0012–0015: de nieuwe tabellen en indexen bestaan, met hun controles', as
     'idx_bron_koppelingen_bron', 'idx_codes_naam', 'idx_coderingen_antwoord', 'idx_coderingen_invoer', 'idx_coderingen_onderzoek',
     'idx_citaten_onderzoek',
   ]) assert.ok(indexen.has(i), i);
+  // Elke verwijzing met ON DELETE CASCADE / SET NULL heeft een index die met die kolom begint. Anders doorzoekt
+  // elke verwijderde inzending, eigen invoer, code of dataset de hele tabel (review P1: 0,14 miljoen stappen per
+  // inzending bij 20.000 coderingen). SQLite zoekt de kinderen met kolom = ?; dat plan moet die index gebruiken.
+  for (const [tabel, kolom, index] of [
+    ['coderingen', 'inzending_id', 'idx_coderingen_inzending'], ['coderingen', 'invoer_id', 'idx_coderingen_eigen_invoer'],
+    ['coderingen', 'code_id', 'idx_coderingen_code'], ['citaten', 'inzending_id', 'idx_citaten_inzending'],
+    ['citaten', 'invoer_id', 'idx_citaten_eigen_invoer'], ['citaten', 'code_id', 'idx_citaten_code'],
+    ['werkbank_definities', 'dataset_id', 'idx_wb_definities_dataset'], ['werkbank_analyses', 'dataset_id', 'idx_wb_analyses_dataset'],
+  ]) {
+    assert.deepEqual((await alle(`SELECT name FROM pragma_index_info('${index}')`)).map((r) => r.name), [kolom], index);
+    const plan = (await alle(`EXPLAIN QUERY PLAN SELECT 1 FROM ${tabel} WHERE ${kolom} = ?`, 1)).map((r) => r.detail).join(' | ');
+    assert.match(plan, new RegExp(`USING (COVERING )?INDEX ${index}\\b`), `${tabel}.${kolom}: ${plan}`);
+  }
+  // Alle verwijzingen van de nieuwe tabellen samen: geen enkele zonder index die met de kolom begint.
+  for (const tabel of NIEUWE_TABELLEN) {
+    const verwijzingen = await alle(`SELECT "from" AS kolom FROM pragma_foreign_key_list('${tabel}')`);
+    const indexKolommen = new Set();
+    for (const ix of await alle(`SELECT name FROM pragma_index_list('${tabel}') WHERE partial = 0`)) {
+      indexKolommen.add((await een(`SELECT name FROM pragma_index_info('${ix.name}') WHERE seqno = 0`)).name);
+    }
+    const pk = (await alle(`SELECT name FROM pragma_table_info('${tabel}') WHERE pk = 1`)).map((r) => r.name);
+    for (const { kolom } of verwijzingen) assert.ok(indexKolommen.has(kolom) || pk[0] === kolom, `${tabel}.${kolom} heeft geen index`);
+  }
   assert.equal((await een("SELECT waarde FROM instellingen WHERE sleutel = 'bibliotheek_versie'")).waarde, '1');
 
   // JSON-velden weigeren tekst die geen JSON is.

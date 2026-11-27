@@ -29,3 +29,7 @@ CREATE TABLE werkbank_analyses (
   bijgewerkt_op TEXT    NOT NULL
 );
 CREATE INDEX idx_wb_analyses_onderzoek ON werkbank_analyses(onderzoek_id);
+
+-- Indexen voor dataset_id (ON DELETE CASCADE): anders doorzoekt het verwijderen van een dataset beide tabellen helemaal.
+CREATE INDEX idx_wb_definities_dataset ON werkbank_definities(dataset_id);
+CREATE INDEX idx_wb_analyses_dataset ON werkbank_analyses(dataset_id);

@@ -41,3 +41,13 @@ CREATE TABLE citaten (
   bijgewerkt_op TEXT    NOT NULL
 );
 CREATE INDEX idx_citaten_onderzoek ON citaten(onderzoek_id);
+
+-- Indexen voor de verwijzingen hierboven (ON DELETE CASCADE / SET NULL). Zonder index doorzoekt SQLite bij elke
+-- verwijderde inzending, eigen invoer of code de hele tabel coderingen en citaten: met 20.000 coderingen kost het
+-- wissen van een vragenlijst met 2.000 inzendingen dan ruim 260 miljoen stappen, met deze indexen 0,25 miljoen.
+CREATE INDEX idx_coderingen_inzending ON coderingen(inzending_id);
+CREATE INDEX idx_coderingen_eigen_invoer ON coderingen(invoer_id);
+CREATE INDEX idx_coderingen_code ON coderingen(code_id);
+CREATE INDEX idx_citaten_inzending ON citaten(inzending_id);
+CREATE INDEX idx_citaten_eigen_invoer ON citaten(invoer_id);
+CREATE INDEX idx_citaten_code ON citaten(code_id);
