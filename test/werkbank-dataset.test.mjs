@@ -282,7 +282,9 @@ test('afhankelijkheden: volgorde, kring en een verdwenen variabele geven een dui
   const fouten = new Map(ds.fouten.map((f) => [f.id, f.tekst]));
   assert.equal(fouten.get(3), FOUT_KRING);
   assert.equal(fouten.get(4), FOUT_KRING);
-  assert.equal(fouten.get(5), foutOntbreekt('v:999999'));
+  // Zonder rekenkern (die de naam opzoekt) noemt de melding geen intern nummer zoals “v:999999”.
+  assert.equal(fouten.get(5), foutOntbreekt(null));
+  assert.ok(!/v:999999/.test(fouten.get(5)));
   assert.deepEqual(zoekKring(defs).sort(), [3, 4]);
   assert.equal(zoekKring(defs.slice(0, 2)), null);
 });
