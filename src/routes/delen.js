@@ -9,6 +9,7 @@
 // - een kijker kan niets wijzigen en krijgt nooit losse antwoorden of exports;
 // - resultaten van vragenlijsten of meetmomenten met minder dan 5 respondenten worden niet getoond;
 // - open antwoorden en stukken alleen als de beheerder die heeft vrijgegeven;
+// - uitkomsten van vragenlijsten die (op de peildatum) nog openstaan alleen met de tussenstand, ook in rapporten;
 // - van kijkers wordt niets bewaard (alleen de datum waarop de link het laatst is bekeken).
 
 import { Fout, json, leesJson } from '../lib/http.js';
@@ -478,5 +479,6 @@ export async function rapport({ request, env, params }) {
   if (!link.mag.rapporten.includes(id)) throw new Fout(404, 'Dit rapport is niet gedeeld via deze link.');
   const rij = await een(env, 'SELECT * FROM rapporten WHERE id = ? AND onderzoek_id = ?', id, link.onderzoek_id);
   if (!rij) throw new Fout(404, 'Dit rapport bestaat niet (meer).');
-  return json({ rapport: rapportVoorKijker(rij) });
+  // Zonder tussenstand geen uitkomsten van vragenlijsten die op de peildatum nog openstonden (BOUWPLAN B8).
+  return json({ rapport: rapportVoorKijker(rij, { verbergOpen: !link.mag.tussenstand }) });
 }

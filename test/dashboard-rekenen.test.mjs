@@ -449,3 +449,33 @@ test('verloop ja/nee-achtergrondvraag: een verborgen aantal in één vragenlijst
   assert.equal(p.n, 35);
   assert.equal(p.percentage_ja, Math.round((15 / 35) * 10000) / 100);
 });
+
+// ---------- Gedeeld rapport: zonder tussenstand geen uitkomsten van een vragenlijst die op de peildatum openstond ----------
+
+test('deellink: een rapport met een open vragenlijst toont de uitkomsten alleen met de tussenstand (B8)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { gevallen } = JSON.parse(readFileSync(new URL('./fixtures/rapport-v1-blokken.json', import.meta.url), 'utf8'));
+  const g = gevallen[1]; // tussenrapport; hoofdlijst = vervolgmeting, open op de peildatum
+  await reeks([['INSERT INTO rapporten (id, onderzoek_id, soort, titel, inhoud, feiten, aangemaakt_op, bijgewerkt_op) VALUES (71, 2, ?, ?, ?, ?, ?, ?)',
+    g.soort, g.titel, JSON.stringify(g.inhoud), JSON.stringify(g.feiten), NU, NU]]);
+  const haal = async (tussenstand, ip) => {
+    const r = await delen.nieuw({ request: jsonVerzoek('http://lokaal/x', { naam: `R${ip}`, onderdelen: { dashboard: false, rapporten: [71], tussenstand } }), env, params: { id: '2' } });
+    const { deellink, toegangscode } = JSON.parse(await r.text());
+    const binnen = await delen.toegang({ request: jsonVerzoek(`http://lokaal/api/kijk/${deellink.code}/toegang`, { toegangscode }, { 'CF-Connecting-IP': `192.0.2.${ip}` }), env, params: { code: deellink.code } });
+    const koekje = binnen.headers.get('Set-Cookie').split(';')[0];
+    const a = await delen.rapport({ request: new Request(`http://lokaal/api/kijk/${deellink.code}/rapporten/71`, { headers: { Cookie: koekje } }), env, params: { code: deellink.code, id: '71' } });
+    assert.equal(a.status, 200);
+    return JSON.parse(await a.text()).rapport.blokken;
+  };
+  const met = await haal(true, 21);
+  const zonder = await haal(false, 22);
+  const verwacht = (verbergOpen) => JSON.parse(JSON.stringify(rapportNaarBlokken({ titel: g.titel, soort: g.soort, inhoud: g.inhoud, feiten: g.feiten }, { markeerLeeg: false, verbergOpen })));
+  assert.deepEqual(met, verwacht(false));
+  assert.deepEqual(met, g.blokken, 'met tussenstand: het rapport zoals het is');
+  assert.deepEqual(zonder, verwacht(true));
+  const tekst = blokkenNaarTekst(zonder);
+  assert.match(tekst, /stond op de peildatum nog open\. De uitkomsten worden hier getoond als hij gesloten is/);
+  assert.doesNotMatch(tekst, /Vervolgmeting: \d|Score 4 of 5|Hedges/);
+  assert.notDeepEqual(met, zonder);
+  await reeks([['DELETE FROM rapporten WHERE id = 71']]);
+});

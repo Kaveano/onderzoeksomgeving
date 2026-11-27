@@ -254,3 +254,45 @@ test('oude feiten: een ja/nee-achtergrondvraag met een klein aantal wordt bij he
   assert.deepEqual(ongewijzigd.kop, ['Antwoord', 'Aantal', 'Percentage']);
   assert.deepEqual(ongewijzigd.rijen, [['Ja', 20, '53%'], ['Nee', 18, '47%']]);
 });
+
+test('verbergOpen (B8): zonder tussenstand geen uitkomsten van een vragenlijst die op de peildatum openstond', async () => {
+  const { gevallen } = JSON.parse(readFileSync(new URL('./fixtures/rapport-v1-blokken.json', import.meta.url), 'utf8'));
+  const naar = (g, opties) => JSON.parse(JSON.stringify(feiten.rapportNaarBlokken({ titel: g.titel, soort: g.soort, inhoud: g.inhoud, feiten: g.feiten }, opties)));
+  const feitenVan = (blokken, kopTekst) => {
+    const i = blokken.findIndex((b) => b.soort === 'kop' && b.niveau === 1 && b.tekst.includes(kopTekst));
+    return blokken.slice(i + 1).find((b) => b.soort === 'feiten')?.blokken || null;
+  };
+  // Tussenrapport: hoofdlijst is de vervolgmeting (open op de peildatum, n 32).
+  const tussen = gevallen[1];
+  const open = tussen.feiten.lijsten.find((l) => l.status === 'open');
+  assert.equal(open.id, 3);
+  assert.deepEqual(naar(tussen, { verbergOpen: false }), tussen.blokken, 'met tussenstand: precies het oude rapport');
+  const zonder = naar(tussen, { verbergOpen: true });
+  const zin = `De vragenlijst "${open.titel} (${open.meetmoment_naam})" stond op de peildatum nog open. De uitkomsten worden hier getoond als hij gesloten is en de cijfers zijn bijgewerkt.`;
+  assert.equal(feiten.openVerborgenZin(open), zin);
+  assert.deepEqual(feitenVan(zonder, 'Voorlopige resultaten'), [{ soort: 'alinea', tekst: zin }]);
+  // Verloop: het meetmoment met de open lijst valt weg, en daarmee alle toetsen.
+  const verloop = feitenVan(zonder, 'Ontwikkeling');
+  assert.deepEqual(verloop, [{ soort: 'alinea', tekst: 'Er zijn alleen resultaten van het meetmoment Nulmeting. Een vergelijking tussen meetmomenten is pas mogelijk als een tweede meetmoment minstens 5 respondenten heeft.' }]);
+  // Stand van zaken: de responstabel blijft (dat aantal ziet een meelezer ook op het dashboard), de responszin is kort.
+  const stand = feitenVan(zonder, 'Stand van zaken');
+  assert.deepEqual(stand.find((b) => b.soort === 'tabel'), feitenVan(tussen.blokken, 'Stand van zaken').find((b) => b.soort === 'tabel'));
+  assert.ok(stand.some((b) => b.soort === 'alinea' && b.tekst === `De vragenlijst "${open.titel} (${open.meetmoment_naam})" stond op de peildatum nog open.`));
+  // Nergens meer een gemiddelde of verdeling van de vervolgmeting.
+  const tekst = feiten.blokkenNaarTekst(zonder);
+  assert.doesNotMatch(tekst, /Vervolgmeting: \d|Verschil \(|Hedges|Score 4 of 5/);
+  // Eindrapport met de gesloten nulmeting als hoofdlijst: Resultaten blijft, het verloop verliest de vervolgmeting.
+  const eind = gevallen[0];
+  const eindZonder = naar(eind, { verbergOpen: true });
+  assert.deepEqual(feitenVan(eindZonder, 'Resultaten'), feitenVan(eind.blokken, 'Resultaten'));
+  assert.deepEqual(feitenVan(eindZonder, 'Bijlage'), feitenVan(eind.blokken, 'Bijlage'));
+  assert.equal(feitenVan(eindZonder, 'Ontwikkeling').length, 1);
+  assert.ok(feitenVan(eind.blokken, 'Ontwikkeling').length > 1, 'zonder verbergOpen staat het verloop met toetsen er wel');
+  // Oude feiten (geval 2) werken hetzelfde: alles volgt uit lijsten[].status.
+  assert.equal(feitenVan(naar(gevallen[2], { verbergOpen: true }), 'Ontwikkeling').length, 1);
+  // De route voor de meelezer verbergt standaard (alleen de deellink met tussenstand zet het uit).
+  const { rapportVoorKijker } = await import('../src/routes/rapporten.js');
+  const rij = { id: 9, onderzoek_id: 1, soort: tussen.soort, titel: tussen.titel, inhoud: JSON.stringify(tussen.inhoud), feiten: JSON.stringify(tussen.feiten), aangemaakt_op: '', bijgewerkt_op: '' };
+  assert.deepEqual(JSON.parse(JSON.stringify(rapportVoorKijker(rij).blokken)), zonder);
+  assert.deepEqual(JSON.parse(JSON.stringify(rapportVoorKijker(rij, { verbergOpen: false }).blokken)), naar(tussen, { markeerLeeg: false }));
+});

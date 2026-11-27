@@ -314,6 +314,7 @@ Wat de meelezer ziet en kan:
 - Alleen lezen: niets wijzigen, niets downloaden behalve afdrukken.
 - Alleen wat jij hebt aangevinkt. Uitkomsten van minder dan 5 respondenten blijven altijd verborgen. Staat in een thema of meetmoment een vraag van minder dan 5 respondenten, dan blijft ook dat thema of meetmoment verborgen, zodat die vraag niet terug te rekenen is.
 - Een vragenlijst die nog openstaat, ziet de meelezer pas als je hem sluit. Zo kan niemand door later nog eens te kijken afleiden wat één nieuwe respondent heeft geantwoord. Wil je toch tussentijds laten meekijken, vink dan de tussenstand aan.
+- Dat geldt ook voor rapporten. Stond een vragenlijst op de peildatum van het rapport nog open, dan ziet een meelezer zonder tussenstand daarvan alleen hoeveel lijsten er waren ingevuld en de zin dat de vragenlijst nog openstond. In het verloop valt dat meetmoment weg. Sluit de vragenlijst en klik in het rapport op **Cijfers bijwerken**; daarna ziet de meelezer de uitkomsten wel.
 - Bij een heel groot onderzoek (meer dan 3.000 ingevulde vragenlijsten samen) rekent de app de resultaten niet live uit voor een meelezer. Die ziet dan: *"Deze resultaten zijn te groot om hier live te tonen. Vraag de onderzoeker om een rapport."* Deel in dat geval een rapport.
 - Rapporten zien er voor de meelezer hetzelfde uit als bij jou, maar alleen met de hoofdstukken die je hebt aangezet.
 - Na 5 verkeerde toegangscodes moet diegene 15 minuten wachten. Dat geldt per apparaat of netwerk: iemand anders die de link heeft, kan de echte meelezer zo niet buitensluiten.

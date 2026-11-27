@@ -173,9 +173,11 @@ export async function verwijder({ env, params }) {
 /**
  * Rapport voor een kijker (deellink). De kijker krijgt alleen de kant-en-klare tekst en tabellen van de
  * hoofdstukken die aanstaan, precies zoals ze in het rapport staan; de ruwe, vastgelegde cijfers gaan niet mee.
+ * verbergOpen (standaard aan): geen uitkomsten van vragenlijsten die op de peildatum nog openstonden. De deellink
+ * zet het alleen uit als de tussenstand gedeeld is (BOUWPLAN B8, D3 §4.6).
  */
-export function rapportVoorKijker(rij) {
+export function rapportVoorKijker(rij, { verbergOpen = true } = {}) {
   const r = rapportUitDb(rij);
-  const blokken = rapportNaarBlokken({ titel: r.titel, soort: r.soort, inhoud: r.inhoud, feiten: r.feiten }, { markeerLeeg: false });
+  const blokken = rapportNaarBlokken({ titel: r.titel, soort: r.soort, inhoud: r.inhoud, feiten: r.feiten }, { markeerLeeg: false, verbergOpen: verbergOpen !== false });
   return { id: r.id, soort: r.soort, titel: r.titel, blokken, bijgewerkt_op: r.bijgewerkt_op };
 }

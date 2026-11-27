@@ -30,6 +30,14 @@ const eindig = (x) => typeof x === 'number' && Number.isFinite(x);
 /** B7: tekst als een toets niet getoond wordt omdat er 1 tot 4 gedeeltelijk ingevulde respondenten wegvallen. */
 export const TOETS_WEGGEVALLEN = 'niet getoond: te weinig volledig ingevulde antwoorden om dit veilig naast het dashboard te tonen';
 
+/**
+ * B8 (D3 §4.6): een meelezer zonder tussenstand ziet geen uitkomsten van een vragenlijst die op de peildatum nog
+ * openstond (verbergOpen). Anders kan hij het rapport naast het dashboard of een later rapport leggen en aan het
+ * verschil zien wat een paar nieuwe respondenten antwoordden. Werkt ook op oude feiten: alles volgt uit lijsten[].status.
+ */
+export const openVerborgenZin = (l) => `De vragenlijst "${lijstNaam(l)}" stond op de peildatum nog open. De uitkomsten worden hier getoond als hij gesloten is en de cijfers zijn bijgewerkt.`;
+const openOpPeildatum = (l) => !!l && l.status === 'open';
+
 /** Getal met maximaal twee decimalen en de eenheid, zoals op het dashboard: 6,4% · 12 dagen · 0,04 */
 function waardeMetEenheid(w, eenheid) {
   const g = eindig(w) ? w.toLocaleString('nl-NL', { maximumFractionDigits: 2 }).replace(/^-/, MIN) : '–';
@@ -419,8 +427,9 @@ function lijstNaam(l) {
   return l.meetmoment_naam ? `${l.titel} (${l.meetmoment_naam})` : l.titel;
 }
 
-function responsZin(l, drempel) {
+function responsZin(l, drempel, { verbergOpen = false } = {}) {
   if (!l.n) return `De vragenlijst "${lijstNaam(l)}" is nog niet ingevuld.`;
+  if (verbergOpen && openOpPeildatum(l)) return `De vragenlijst "${lijstNaam(l)}" stond op de peildatum nog open.`;
   if (l.verborgen) {
     return `De vragenlijst "${lijstNaam(l)}" is door minder dan ${drempel} personen ingevuld. Om de anonimiteit te beschermen worden daarvan geen uitkomsten gerapporteerd.`;
   }
@@ -472,7 +481,7 @@ function invoerZin(f) {
   return `Naast de vragenlijsten is eigen invoer vastgelegd: ${opsomming(delen)}.`;
 }
 
-function feitenAanpak(f, { metMethode = true } = {}) {
+function feitenAanpak(f, { metMethode = true, verbergOpen = false } = {}) {
   const uit = [];
   if (f.meetmomenten.length) {
     uit.push(alinea(f.meetmomenten.length === 1
@@ -481,7 +490,7 @@ function feitenAanpak(f, { metMethode = true } = {}) {
   }
   if (f.lijsten.length) {
     uit.push(lijstenTabel(f));
-    for (const l of f.lijsten) if (l.n && !l.verborgen && l.van) uit.push(alinea(responsZin(l, f.drempel)));
+    for (const l of f.lijsten) if (l.n && !l.verborgen && l.van) uit.push(alinea(responsZin(l, f.drempel, { verbergOpen })));
   } else {
     uit.push(alinea('Er is in dit onderzoek nog geen vragenlijst.'));
   }
@@ -525,9 +534,10 @@ function beschermdeVerdeling(q, l, drempel) {
   return { verdeling: m.verdeling, iets_verborgen: true, heeftAntwoorden: heeft(m.verdeling) };
 }
 
-function feitenResultaten(f, inhoud, sectie) {
+function feitenResultaten(f, inhoud, sectie, { verbergOpen = false } = {}) {
   const l = hoofdLijst(f, inhoud);
   if (!l) return [alinea('Er is nog geen vragenlijst met antwoorden.')];
+  if (verbergOpen && openOpPeildatum(l)) return [alinea(openVerborgenZin(l))];
   const uit = [alinea(responsZin(l, f.drempel))];
   if (!l.n || l.verborgen) return uit;
   if (l.status === 'open') uit.push(alinea(`De vragenlijst stond op de peildatum (${nlDatum(f.peildatum)}) nog open; de uitkomsten kunnen nog veranderen.`));
@@ -635,8 +645,16 @@ function toetsZin(t) {
   return `${zin} ${basis}`;
 }
 
-function feitenVerloop(f) {
-  const mm = f.verloop.meetmomenten.filter((m) => f.verloop.themas.some((t) => t.punten.some((p) => p.meetmoment_id === m.id && p.gemiddelde !== null)));
+function feitenVerloop(f, { verbergOpen = false } = {}) {
+  // verbergOpen: punten van een meetmoment met een vragenlijst die op de peildatum openstond, en de toetsen
+  // van of naar zo'n meetmoment, niet tonen (D3 §4.6). De toetsen kennen alleen de naam van het meetmoment.
+  const openMm = new Set(verbergOpen ? f.lijsten.filter((l) => openOpPeildatum(l) && l.meetmoment_id).map((l) => l.meetmoment_id) : []);
+  const openNamen = new Set([...(f.meetmomenten || []), ...(f.verloop.meetmomenten || [])].filter((m) => openMm.has(m.id)).map((m) => m.naam));
+  const verloopThemas = openMm.size
+    ? f.verloop.themas.map((t) => ({ ...t, punten: t.punten.map((p) => (openMm.has(p.meetmoment_id) ? { ...p, gemiddelde: null, n: null } : p)) }))
+    : f.verloop.themas;
+  const toetsen = openNamen.size ? f.toetsen.filter((t) => !openNamen.has(t.van?.naam) && !openNamen.has(t.naar?.naam)) : f.toetsen;
+  const mm = f.verloop.meetmomenten.filter((m) => verloopThemas.some((t) => t.punten.some((p) => p.meetmoment_id === m.id && p.gemiddelde !== null)));
   if (mm.length < 2) {
     return [alinea(mm.length === 1
       ? `Er zijn alleen resultaten van het meetmoment ${mm[0].naam}. Een vergelijking tussen meetmomenten is pas mogelijk als een tweede meetmoment minstens ${f.drempel} respondenten heeft.`
@@ -646,7 +664,7 @@ function feitenVerloop(f) {
   const laatste = mm[mm.length - 1];
   const uit = [tabel(
     ['Thema', ...mm.map((m) => m.naam), `Verschil (${laatste.naam} − ${eerste.naam})`],
-    f.verloop.themas.map((t) => {
+    verloopThemas.map((t) => {
       const w = (m) => t.punten.find((p) => p.meetmoment_id === m.id)?.gemiddelde ?? null;
       const a = w(eerste);
       const b = w(laatste);
@@ -654,9 +672,9 @@ function feitenVerloop(f) {
     }),
     'Gemiddelde score per thema en meetmoment (schaal 1–5)',
   )];
-  if (f.toetsen.length) {
+  if (toetsen.length) {
     uit.push(alinea('Per thema is getoetst of het verschil tussen het eerste en het laatste meetmoment groter is dan op grond van toeval te verwachten is (t-toets van Welch, tweezijdig, grens 5%). De toets gebruikt per respondent de themascore: het gemiddelde van de schaalvragen van dat thema die iemand beantwoordde, als dat minstens de helft was. De tabel hierboven middelt alle losse antwoorden, zoals het dashboard. Daardoor kunnen de aantallen en de gemiddelden van de toets iets afwijken van de tabel.'));
-    uit.push({ soort: 'lijst', items: f.toetsen.map(toetsZin) });
+    uit.push({ soort: 'lijst', items: toetsen.map(toetsZin) });
     uit.push(alinea('Bij het lezen: de vragenlijsten zijn anoniem, dus de metingen worden vergeleken als twee groepen en niet per persoon. Een significant verschil zegt niets over de oorzaak, en significant betekent niet automatisch belangrijk.'));
   }
   return uit;
@@ -703,9 +721,10 @@ function feitenVervolg(f) {
   return uit;
 }
 
-function feitenBijlageVragen(f, inhoud) {
+function feitenBijlageVragen(f, inhoud, { verbergOpen = false } = {}) {
   const l = hoofdLijst(f, inhoud);
   if (!l) return [alinea('Er is nog geen vragenlijst.')];
+  if (verbergOpen && openOpPeildatum(l)) return [alinea(openVerborgenZin(l))];
   const uit = [alinea(`De vragenlijst "${lijstNaam(l)}" bestaat uit ${aantalTekst(l.vragen.length, 'vraag', 'vragen')}.`)];
   const soortNaam = { schaal: 'schaal 1–5', janee: 'ja/nee', meerkeuze: 'meerkeuze', open: 'open vraag' };
   let thema = null;
@@ -727,8 +746,9 @@ function feitenBijlageVragen(f, inhoud) {
   return uit;
 }
 
-function feitenBijlageOpen(f, inhoud) {
+function feitenBijlageOpen(f, inhoud, { verbergOpen = false } = {}) {
   const l = hoofdLijst(f, inhoud);
+  if (verbergOpen && openOpPeildatum(l)) return [alinea(openVerborgenZin(l))];
   if (!l || !l.open.length) {
     return [alinea(`Er zijn geen open antwoorden om te tonen (open vragen met minder dan ${f.drempel} antwoorden worden niet opgenomen).`)];
   }
@@ -740,20 +760,24 @@ function feitenBijlageOpen(f, inhoud) {
   return uit;
 }
 
-/** De feitenblokken van één hoofdstuk. Leeg als het hoofdstuk geen feiten heeft. */
-export function sectieFeiten(sectie, feiten, inhoud) {
+/**
+ * De feitenblokken van één hoofdstuk. Leeg als het hoofdstuk geen feiten heeft.
+ * ctx.verbergOpen: voor een meelezer zonder tussenstand (zie openVerborgenZin).
+ */
+export function sectieFeiten(sectie, feiten, inhoud, ctx = {}) {
   if (!feiten || !SECTIESOORTEN[sectie.soort]?.feiten) return [];
+  const verbergOpen = ctx.verbergOpen === true;
   switch (sectie.soort) {
     case 'aanleiding': return feitenAanleiding(feiten);
-    case 'aanpak': return feitenAanpak(feiten);
-    case 'stand': return feitenAanpak(feiten, { metMethode: false });
-    case 'resultaten': return feitenResultaten(feiten, inhoud, sectie);
-    case 'verloop': return feitenVerloop(feiten);
+    case 'aanpak': return feitenAanpak(feiten, { verbergOpen });
+    case 'stand': return feitenAanpak(feiten, { metMethode: false, verbergOpen });
+    case 'resultaten': return feitenResultaten(feiten, inhoud, sectie, { verbergOpen });
+    case 'verloop': return feitenVerloop(feiten, { verbergOpen });
     case 'cijfers': return feitenCijfers(feiten);
     case 'aanbevelingen': return feitenAanbevelingen(feiten);
     case 'vervolg': return feitenVervolg(feiten);
-    case 'bijlage-vragen': return feitenBijlageVragen(feiten, inhoud);
-    case 'bijlage-open': return feitenBijlageOpen(feiten, inhoud);
+    case 'bijlage-vragen': return feitenBijlageVragen(feiten, inhoud, { verbergOpen });
+    case 'bijlage-open': return feitenBijlageOpen(feiten, inhoud, { verbergOpen });
     default: return [];
   }
 }
@@ -837,9 +861,11 @@ export function nogInTeVullen(inhoud) {
 /**
  * Het complete rapport als blokken.
  * opties.markeerLeeg: toon "[nog in te vullen]" bij hoofdstukken zonder eigen tekst (voor het voorbeeld);
- * opties.bron: toon bij feitenblokken de regel dat ze automatisch uit de gegevens komen.
+ * opties.bron: toon bij feitenblokken de regel dat ze automatisch uit de gegevens komen;
+ * opties.verbergOpen: meelezer zonder tussenstand, dus geen uitkomsten van vragenlijsten die op de peildatum
+ * openstonden (BOUWPLAN B8; zie openVerborgenZin).
  */
-export function rapportNaarBlokken({ titel, soort, inhoud, feiten }, { markeerLeeg = false, bron = true } = {}) {
+export function rapportNaarBlokken({ titel, soort, inhoud, feiten }, { markeerLeeg = false, bron = true, verbergOpen = false } = {}) {
   const uit = [];
   const f = feiten || null;
   uit.push({ soort: 'titel', tekst: titel, ondertitel: inhoud.ondertitel || '', soortNaam: RAPPORTSOORTEN[soort] || 'Rapport' });
@@ -855,7 +881,7 @@ export function rapportNaarBlokken({ titel, soort, inhoud, feiten }, { markeerLe
   for (const { sectie, nummer, isBijlage } of genummerdeSecties(inhoud)) {
     uit.push(kop(isBijlage ? sectie.titel.replace(/^Bijlage:\s*/i, `Bijlage ${nummer}: `) : `${nummer}. ${sectie.titel}`, 1));
     const eigen = tekstNaarBlokken(sectie.tekst, 2);
-    const feitenBlokken = sectie.feiten !== false && f ? sectieFeiten(sectie, f, inhoud) : [];
+    const feitenBlokken = sectie.feiten !== false && f ? sectieFeiten(sectie, f, inhoud, { verbergOpen }) : [];
     const eigenEerst = !['aanleiding', 'aanpak', 'stand', 'resultaten', 'verloop', 'cijfers', 'bijlage-vragen', 'bijlage-open', 'vervolg'].includes(sectie.soort);
     const voegEigen = () => {
       if (eigen.length) uit.push(...eigen);

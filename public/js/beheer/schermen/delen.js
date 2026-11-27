@@ -397,7 +397,7 @@ export async function toon(container, ctx) {
           type: 'checkbox',
           label: 'Ook de tussenstand van vragenlijsten die nog openstaan (in de resultaten en in rapporten)',
           waarde: onderdelen.tussenstand,
-          hulp: 'Liever niet. Wie tijdens het invullen twee keer kijkt, kan aan het verschil zien wat één nieuwe respondent heeft geantwoord. Zonder dit vinkje ziet de meelezer de uitkomsten van een vragenlijst pas als je hem hebt gesloten (het aantal ingevulde lijsten wel).',
+          hulp: 'Liever niet. Wie tijdens het invullen twee keer kijkt, kan aan het verschil zien wat één nieuwe respondent heeft geantwoord. Zonder dit vinkje ziet de meelezer de uitkomsten van een vragenlijst pas als je hem hebt gesloten (het aantal ingevulde lijsten wel). In een rapport werk je daarna ook de cijfers bij.',
         },
         {
           naam: 'verloopt_op',
