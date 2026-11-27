@@ -330,14 +330,16 @@ export async function toon(container, ctx) {
   function watGedeeld(l) {
     const delen = [];
     if (l.onderdelen.dashboard) {
-      delen.push(`resultaten ${l.onderdelen.open_antwoorden ? 'met' : 'zonder'} open antwoorden${l.onderdelen.tussenstand ? ' (ook tussenstanden)' : ''}`);
+      delen.push(`resultaten ${l.onderdelen.open_antwoorden ? 'met' : 'zonder'} open antwoorden`);
     }
     const nr = (l.onderdelen.rapporten || []).filter((id) => rapporten.some((r) => r.id === id)).length;
     if (nr) delen.push(aantal(nr, 'rapport', 'rapporten'));
     const n = l.onderdelen.stukken.filter((id) => stukken.some((s) => s.id === id)).length;
     if (n) delen.push(aantal(n, 'stuk', 'stukken'));
     if (!delen.length) return 'niets (de gedeelde documenten bestaan niet meer)';
-    return delen.length > 1 ? `${delen.slice(0, -1).join(', ')} en ${delen[delen.length - 1]}` : delen[0];
+    const tekst = delen.length > 1 ? `${delen.slice(0, -1).join(', ')} en ${delen[delen.length - 1]}` : delen[0];
+    // De tussenstand geldt voor de resultaten en voor rapporten, niet voor stukken.
+    return l.onderdelen.tussenstand && (l.onderdelen.dashboard || nr) ? `${tekst}, ook de tussenstand van open vragenlijsten` : tekst;
   }
 
   /** Onderdelen zonder stukken of rapporten die intussen zijn verwijderd (de server weigert die). */
@@ -376,18 +378,12 @@ export async function toon(container, ctx) {
           waarde: onderdelen.open_antwoorden,
           hulp: 'Open antwoorden kunnen herkenbaar zijn voor collega\'s. Deel ze alleen als dat zo is afgesproken.',
         },
-        {
-          naam: 'tussenstand',
-          type: 'checkbox',
-          label: 'Ook de tussenstand van vragenlijsten die nog openstaan',
-          waarde: onderdelen.tussenstand,
-          hulp: 'Liever niet. Wie tijdens het invullen twee keer kijkt, kan aan het verschil zien wat één nieuwe respondent heeft geantwoord. Zonder dit vinkje ziet de meelezer de resultaten van een vragenlijst pas als je hem hebt gesloten (het aantal ingevulde lijsten wel).',
-        },
         ...rapporten.map((r) => ({
           naam: `rapport_${r.id}`,
           type: 'checkbox',
-          label: `Rapport: ${r.titel}`,
+          label: `Rapport: ${r.titel}${r.heeft_open ? ' (een vragenlijst stond nog open)' : ''}`,
           waarde: onderdelen.rapporten.includes(r.id),
+          hulp: r.heeft_open ? 'Die uitkomsten ziet de meelezer alleen als je hieronder ook de tussenstand deelt.' : undefined,
         })),
         ...stukken.map((s) => ({
           naam: `stuk_${s.id}`,
@@ -395,6 +391,14 @@ export async function toon(container, ctx) {
           label: `Stuk: ${s.titel || 'Zonder titel'}`,
           waarde: onderdelen.stukken.includes(s.id),
         })),
+        {
+          // Los van de resultaten: de tussenstand geldt ook voor rapporten (BOUWPLAN B8).
+          naam: 'tussenstand',
+          type: 'checkbox',
+          label: 'Ook de tussenstand van vragenlijsten die nog openstaan (in de resultaten en in rapporten)',
+          waarde: onderdelen.tussenstand,
+          hulp: 'Liever niet. Wie tijdens het invullen twee keer kijkt, kan aan het verschil zien wat één nieuwe respondent heeft geantwoord. Zonder dit vinkje ziet de meelezer de uitkomsten van een vragenlijst pas als je hem hebt gesloten (het aantal ingevulde lijsten wel).',
+        },
         {
           naam: 'verloopt_op',
           type: 'date',
@@ -407,7 +411,7 @@ export async function toon(container, ctx) {
         const gekozenStukken = stukken.filter((s) => w[`stuk_${s.id}`]);
         const gekozenRapporten = rapporten.filter((r) => w[`rapport_${r.id}`]);
         if (!w.dashboard && !gekozenStukken.length && !gekozenRapporten.length) return 'Kies minstens één onderdeel dat de kijker mag zien.';
-        if ((w.open_antwoorden || w.tussenstand) && !w.dashboard) return 'Open antwoorden en tussenstanden horen bij de resultaten. Vink ook "Resultaten" aan, of zet die uit.';
+        if (w.open_antwoorden && !w.dashboard) return 'Open antwoorden horen bij de resultaten. Vink ook "Resultaten" aan, of zet de open antwoorden uit.';
         return null;
       },
       opslaan: async (w) => {
@@ -417,7 +421,7 @@ export async function toon(container, ctx) {
           onderdelen: {
             dashboard: w.dashboard,
             open_antwoorden: w.dashboard && w.open_antwoorden,
-            tussenstand: w.dashboard && w.tussenstand,
+            tussenstand: w.tussenstand,
             stukken: stukken.filter((s) => w[`stuk_${s.id}`]).map((s) => s.id),
             rapporten: rapporten.filter((r) => w[`rapport_${r.id}`]).map((r) => r.id),
           },

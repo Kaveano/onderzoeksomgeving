@@ -77,14 +77,18 @@ export function rapportUitDb(rij) {
 export async function lijst({ env, params }) {
   const onderzoekId = v.id(params.id);
   await haalOnderzoek(env, onderzoekId);
+  // heeft_open: in de vastgelegde cijfers staat een vragenlijst met antwoorden die op de peildatum nog openstond
+  // (het scherm Delen meldt dan dat een meelezer die uitkomsten alleen met de tussenstand ziet).
   const rijen = await alle(
     env,
     `SELECT id, soort, titel, aangemaakt_op, bijgewerkt_op,
-       CASE WHEN feiten = '' THEN NULL ELSE json_extract(feiten, '$.peildatum') END AS peildatum
+       CASE WHEN feiten = '' THEN NULL ELSE json_extract(feiten, '$.peildatum') END AS peildatum,
+       CASE WHEN json_valid(feiten) THEN EXISTS (SELECT 1 FROM json_each(feiten, '$.lijsten')
+         WHERE json_extract(value, '$.status') = 'open' AND json_extract(value, '$.n') > 0) ELSE 0 END AS heeft_open
      FROM rapporten WHERE onderzoek_id = ? ORDER BY id`,
     onderzoekId,
   );
-  return json({ rapporten: rijen });
+  return json({ rapporten: rijen.map((r) => ({ ...r, heeft_open: !!r.heeft_open })) });
 }
 
 export async function nieuw({ request, env, params }) {

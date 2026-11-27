@@ -25,6 +25,11 @@ const MAX_POGINGEN = 5; // per afzender per link
 const MAX_POGINGEN_LINK = 50; // alle afzenders samen per link (remt raden vanaf veel adressen)
 const MAX_LINKS_PER_ONDERZOEK = 20;
 const CODE_PATROON = /^[A-Za-z0-9_-]{16,40}$/;
+// Boven dit aantal inzendingen (alle vragenlijsten van het onderzoek samen) rekent de server het dashboard niet
+// live uit voor een kijker: dat kost te veel rekentijd op de gratis laag. Instelbaar met de variabele
+// KIJK_MAX_INZENDINGEN (alleen hoger of lager, nooit uit). Zie docs/beheer.md (belastingtest).
+export const KIJK_MAX_INZENDINGEN = 3000;
+export const TE_GROOT = 'Deze resultaten zijn te groot om hier live te tonen. Vraag de onderzoeker om een rapport.';
 // Zonder tekens die op elkaar lijken (0/O, 1/I/L).
 const ALFABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 
@@ -83,8 +88,9 @@ async function controleerOnderdelen(env, ruw, onderzoekId, { magLeeg = false } =
   const onderdelen = {
     dashboard: o.dashboard !== false,
     open_antwoorden: o.open_antwoorden === true && o.dashboard !== false,
-    // Tussenstand: ook resultaten van vragenlijsten die nog openstaan (standaard niet; zie kijkerDashboard).
-    tussenstand: o.tussenstand === true && o.dashboard !== false,
+    // Tussenstand: ook uitkomsten van vragenlijsten die nog openstaan (standaard niet; zie kijkerDashboard).
+    // Los van het dashboard: de keuze geldt ook voor gedeelde rapporten (BOUWPLAN B8).
+    tussenstand: o.tussenstand === true,
     stukken: stukIds,
     rapporten: rapportIds,
   };
@@ -92,6 +98,17 @@ async function controleerOnderdelen(env, ruw, onderzoekId, { magLeeg = false } =
     throw new Fout(400, 'Kies minstens één onderdeel dat de kijker mag zien.');
   }
   return onderdelen;
+}
+
+/** De opgeslagen onderdelen van een link, zoals beheer en kijker ze gebruiken. De tussenstand staat los van het dashboard. */
+function leesOnderdelen(onderdelen) {
+  return {
+    dashboard: onderdelen.dashboard === true,
+    open_antwoorden: onderdelen.dashboard === true && onderdelen.open_antwoorden === true,
+    tussenstand: onderdelen.tussenstand === true,
+    stukken: onderdelen.stukken || [],
+    rapporten: onderdelen.rapporten || [],
+  };
 }
 
 function linkVoorBeheer(rij) {
@@ -106,7 +123,7 @@ function linkVoorBeheer(rij) {
     id: rij.id,
     naam: rij.naam,
     code: rij.code,
-    onderdelen: { dashboard: onderdelen.dashboard === true, open_antwoorden: onderdelen.dashboard === true && onderdelen.open_antwoorden === true, tussenstand: onderdelen.dashboard === true && onderdelen.tussenstand === true, stukken: onderdelen.stukken || [], rapporten: onderdelen.rapporten || [] },
+    onderdelen: leesOnderdelen(onderdelen),
     verloopt_op: rij.verloopt_op,
     ingetrokken: !!rij.ingetrokken,
     verlopen,
@@ -211,7 +228,7 @@ async function werkendeLink(env, code) {
   } catch {
     onderdelen = {};
   }
-  rij.mag = { dashboard: onderdelen.dashboard === true, open_antwoorden: onderdelen.dashboard === true && onderdelen.open_antwoorden === true, tussenstand: onderdelen.dashboard === true && onderdelen.tussenstand === true, stukken: onderdelen.stukken || [], rapporten: onderdelen.rapporten || [] };
+  rij.mag = leesOnderdelen(onderdelen);
   return rij;
 }
 
@@ -318,6 +335,9 @@ export async function dashboard({ request, env, params }) {
   await vereisSessie(request, env, link);
   if (!link.mag.dashboard) throw new Fout(403, 'De resultaten zijn niet gedeeld via deze link.');
   const o = await haalOnderzoek(env, link.onderzoek_id);
+  const grens = Number(env.KIJK_MAX_INZENDINGEN) > 0 ? Number(env.KIJK_MAX_INZENDINGEN) : KIJK_MAX_INZENDINGEN;
+  const tel = await een(env, 'SELECT COUNT(*) AS n FROM inzendingen i JOIN vragenlijsten vl ON vl.id = i.vragenlijst_id WHERE vl.onderzoek_id = ?', o.id);
+  if (tel.n > grens) throw new Fout(413, TE_GROOT, { te_groot: true });
   const url = new URL(request.url);
   const d = await berekenDashboard(env, o, {
     vragenlijst: url.searchParams.get('vragenlijst'),
@@ -339,6 +359,8 @@ export async function dashboard({ request, env, params }) {
  * - een punt in het verloop waar een kleine of nog open vragenlijst aan bijdraagt: geen gemiddelde;
  * - geen open antwoorden (tenzij gedeeld), geen links, geen aantallen eigen invoer;
  * - gemiddelden afgerond op twee decimalen.
+ * De verdeling van een achtergrondvraag (beschermd: kenmerk of uitsplitsvraag) is al gemaskeerd door
+ * dashboardUitRijen: kleine aantallen en hun percentages zijn null, net als n zodra er iets verborgen is.
  */
 export function kijkerDashboard(d, mag) {
   const rond = (x) => (typeof x === 'number' && Number.isFinite(x) ? Math.round(x * 100) / 100 : x);

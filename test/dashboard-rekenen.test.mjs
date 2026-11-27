@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { getPlatformProxy } from 'wrangler';
 import { dashboard } from '../src/routes/dashboard.js';
 import { data as exportData } from '../src/routes/export.js';
+import * as delen from '../src/routes/delen.js';
 import { kijkerDashboard } from '../src/routes/delen.js';
 import { dashboardUitRijen, rijenUitExport } from '../public/js/beheer/dashboard-rekenen.js';
 import { verzamelFeiten, rapportNaarBlokken, standaardInhoud, blokkenNaarTekst } from '../public/js/beheer/rapport-feiten.js';
@@ -360,4 +361,37 @@ test('een kijker van een open vragenlijst ziet zonder tussenstand niets, met tus
   const met = kijkerDashboard(structuredClone(d), { dashboard: true, open_antwoorden: false, tussenstand: true });
   assert.deepEqual(met.selectie.vragen.find((q) => q.id === 2106).verdeling.map((v) => v.aantal), [null, 16, null, null]);
   await reeks([['UPDATE vragenlijsten SET status = ? WHERE id = 1100', 'gesloten']]);
+});
+
+// ---------- Delen: tussenstand los van de resultaten (criterium 5) en de grens voor meelezers ----------
+
+const jsonVerzoek = (url, body, koppen = {}) => new Request(url, { method: 'POST', headers: { 'Content-Type': 'application/json', ...koppen }, body: JSON.stringify(body) });
+
+test('criterium 5: een deellink met alleen een rapport en de tussenstand bewaart tussenstand: true', async () => {
+  await reeks([["INSERT INTO rapporten (id, onderzoek_id, soort, titel, inhoud, aangemaakt_op, bijgewerkt_op) VALUES (70, 2, 'tussen', 'Tussenrapport', '{\"secties\":[]}', ?, ?)", NU, NU]]);
+  const r = await delen.nieuw({ request: jsonVerzoek('http://lokaal/x', { naam: 'Directie', onderdelen: { dashboard: false, rapporten: [70], tussenstand: true } }), env, params: { id: '2' } });
+  const nieuw = JSON.parse(await r.text());
+  assert.equal(r.status, 201);
+  assert.deepEqual(nieuw.deellink.onderdelen, { dashboard: false, open_antwoorden: false, tussenstand: true, stukken: [], rapporten: [70] });
+  const lijst = JSON.parse(await (await delen.lijst({ env, params: { id: '2' } })).text()).deellinks;
+  assert.equal(lijst.find((l) => l.id === nieuw.deellink.id).onderdelen.tussenstand, true);
+  // Open antwoorden horen nog steeds bij de resultaten.
+  const w = await delen.wijzig({ request: jsonVerzoek('http://lokaal/x', { naam: 'Directie', onderdelen: { dashboard: false, open_antwoorden: true, rapporten: [70], tussenstand: true } }), env, params: { id: String(nieuw.deellink.id) } });
+  assert.equal(w.status, 200);
+  const na = JSON.parse(await (await delen.lijst({ env, params: { id: '2' } })).text()).deellinks.find((l) => l.id === nieuw.deellink.id);
+  assert.deepEqual(na.onderdelen, { dashboard: false, open_antwoorden: false, tussenstand: true, stukken: [], rapporten: [70] });
+});
+
+test('meelezer: boven KIJK_MAX_INZENDINGEN geen live dashboard, met een duidelijke melding', async () => {
+  const r = await delen.nieuw({ request: jsonVerzoek('http://lokaal/x', { naam: 'OR', onderdelen: { dashboard: true } }), env, params: { id: '2' } });
+  const { deellink, toegangscode } = JSON.parse(await r.text());
+  const binnen = await delen.toegang({ request: jsonVerzoek(`http://lokaal/api/kijk/${deellink.code}/toegang`, { toegangscode }, { 'CF-Connecting-IP': '192.0.2.7' }), env, params: { code: deellink.code } });
+  assert.equal(binnen.status, 200);
+  const koekje = binnen.headers.get('Set-Cookie').split(';')[0];
+  const vraag = (e) => delen.dashboard({ request: new Request(`http://lokaal/api/kijk/${deellink.code}/dashboard?vragenlijst=1100`, { headers: { Cookie: koekje } }), env: e, params: { code: deellink.code } });
+  assert.equal(delen.KIJK_MAX_INZENDINGEN, 3000);
+  const ok = await vraag(env);
+  assert.equal(ok.status, 200, 'onderzoek 2 heeft 30 inzendingen');
+  await assert.rejects(vraag({ ...env, KIJK_MAX_INZENDINGEN: '29' }), (e) => e.status === 413 && e.message === 'Deze resultaten zijn te groot om hier live te tonen. Vraag de onderzoeker om een rapport.');
+  assert.equal((await vraag({ ...env, KIJK_MAX_INZENDINGEN: '30' })).status, 200, 'precies op de grens mag nog');
 });
