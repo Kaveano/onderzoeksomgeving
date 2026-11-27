@@ -10,7 +10,8 @@
 import { Fout } from './http.js';
 import * as validatie from './validatie.js';
 import { nuIso } from './db.js';
-import { SCHALEN, VRAAGTYPEN } from './schalen.js';
+import { SCHALEN, VRAAGTYPEN, CIJFERSCHALEN } from './schalen.js';
+import { KENMERKEN } from '../../public/js/beheer/kenmerken.js';
 import { MAX_VRAGEN, legeInhoud } from './sjabloon-toepassen.js';
 import { STANDAARD_SJABLONEN } from '../sjablonen.js';
 import { EXTRA_SJABLONEN } from '../sjablonen-extra.js';
@@ -98,8 +99,10 @@ const kort = (t, max = 60) => (t.length > max ? `${t.slice(0, max - 1).trimEnd()
  * { vragenlijst: {titel, introtekst, bedanktekst},
  *   themas: [{naam, omschrijving, meetpunten: [{naam, omschrijving, eenheid}]}],
  *   vragen: [{thema, meetpunt, type, tekst, toelichting, opties, schaal_soort, meerdere_antwoorden,
- *             verplicht, weet_niet, uitsplitsen}],
+ *             verplicht, weet_niet, uitsplitsen, kenmerk?}],
  *   acties: [tekst] }
+ * kenmerk (achtergrondkenmerk, zoals 'afdeling') staat er alleen in als het is ingevuld; zo blijft de inhoud van
+ * sjablonen zonder kenmerken precies gelijk. schaal_soort is bij een cijfervraag 'nps' (0 tot 10) of 'rapport' (1 tot 10).
  * Onbekende velden vallen weg. De vragen staan in de volgorde van de thema's (zo zien
  * respondenten ze ook). Bij een fout volgt een Fout (400) die het probleem benoemt.
  */
@@ -162,6 +165,7 @@ export function controleerSjabloonInhoud(ruw) {
   }
   const vragen = [];
   const teksten = new Map();
+  const kenmerkBij = new Map(); // kenmerk → vraagnummer (elk kenmerk één keer, behalve 'overig')
   ruweVragen.forEach((q, i) => {
     const waar = `Vraag ${i + 1}`;
     if (!isObject(q)) throw fout(`${waar}: de gegevens zijn ongeldig.`);
@@ -202,7 +206,7 @@ export function controleerSjabloonInhoud(ruw) {
     const meerdere = isAan(q.meerdere_antwoorden);
     if (meerdere && type !== 'meerkeuze') throw fout(`${waar}: meerdere antwoorden kan alleen bij een meerkeuzevraag.`);
     const weetNiet = isAan(q.weet_niet);
-    if (weetNiet && type !== 'schaal') throw fout(`${waar}: het antwoord "weet niet" kan alleen bij een schaalvraag.`);
+    if (weetNiet && type !== 'schaal' && type !== 'cijfer') throw fout(`${waar}: het antwoord "weet niet" kan alleen bij een schaalvraag of een cijfervraag.`);
     const uitsplitsen = isAan(q.uitsplitsen);
     if (uitsplitsen && !((type === 'meerkeuze' && !meerdere) || type === 'janee')) {
       throw fout(`${waar}: uitsplitsing kan alleen bij een meerkeuzevraag met één antwoord of bij een ja/nee-vraag.`);
@@ -211,6 +215,25 @@ export function controleerSjabloonInhoud(ruw) {
     if (type === 'schaal' && q.schaal_soort !== undefined && q.schaal_soort !== null && q.schaal_soort !== '') {
       if (typeof q.schaal_soort !== 'string' || !Object.hasOwn(SCHALEN, q.schaal_soort)) throw fout(`${waar}: kies een geldige schaal.`);
       schaal = q.schaal_soort;
+    }
+    if (type === 'cijfer') {
+      schaal = 'rapport';
+      if (q.schaal_soort !== undefined && q.schaal_soort !== null && q.schaal_soort !== '') {
+        if (typeof q.schaal_soort !== 'string' || !Object.hasOwn(CIJFERSCHALEN, q.schaal_soort)) throw fout(`${waar}: kies een geldige cijferschaal (0 tot 10 of 1 tot 10).`);
+        schaal = q.schaal_soort;
+      }
+    }
+    let kenmerk = '';
+    if (q.kenmerk !== undefined && q.kenmerk !== null && q.kenmerk !== '') {
+      if (typeof q.kenmerk !== 'string' || !Object.hasOwn(KENMERKEN, q.kenmerk)) throw fout(`${waar}: kies een geldig kenmerk.`);
+      if (!((type === 'meerkeuze' && !meerdere) || type === 'janee')) {
+        throw fout(`${waar}: een kenmerk kan alleen bij een meerkeuzevraag met één antwoord of bij een ja/nee-vraag.`);
+      }
+      if (!KENMERKEN[q.kenmerk].meerdere && kenmerkBij.has(q.kenmerk)) {
+        throw fout(`${waar}: het kenmerk ${KENMERKEN[q.kenmerk].naam} staat al bij vraag ${kenmerkBij.get(q.kenmerk)}. Elk kenmerk mag één keer voorkomen.`);
+      }
+      kenmerkBij.set(q.kenmerk, i + 1);
+      kenmerk = q.kenmerk;
     }
 
     vragen.push({
@@ -227,6 +250,7 @@ export function controleerSjabloonInhoud(ruw) {
         verplicht: isAan(q.verplicht),
         weet_niet: weetNiet,
         uitsplitsen,
+        ...(kenmerk ? { kenmerk } : {}),
       },
     });
   });

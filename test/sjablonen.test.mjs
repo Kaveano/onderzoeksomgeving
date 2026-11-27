@@ -212,7 +212,7 @@ test('standaardsjablonen worden één keer klaargezet en zijn op te vragen', asy
     assert.equal(s.herstelbaar, true);
   }
   const mto = standaard.find((s) => s.bron === 'medewerkerstevredenheid');
-  assert.deepEqual(mto.samenvatting, { themas: 8, meetpunten: 12, vragen: 25, acties: 7 });
+  assert.deepEqual(mto.samenvatting, { themas: 8, meetpunten: 12, vragen: 26, acties: 7 });
   ids.mto = mto.id;
   ids.hr = standaard.find((s) => s.bron === 'hr-processen').id;
   ids.arbo = standaard.find((s) => s.bron === 'arbeidsvoorwaarden').id;
@@ -227,7 +227,7 @@ test('een sjabloon is aan te wijzen met nummer, oude vorm (eigen-N) en kenmerk v
   assert.equal(opKenmerk.status, 200);
   assert.equal(opKenmerk.data.id, ids.mto);
   assert.equal(opKenmerk.data.bron, 'medewerkerstevredenheid');
-  assert.equal(opKenmerk.data.inhoud.vragen.length, 25);
+  assert.equal(opKenmerk.data.inhoud.vragen.length, 26);
   assert.match(JSON.stringify(opKenmerk.data.inhoud), /\{bedrijf\}/);
   for (const ref of [ids.mto, `eigen-${ids.mto}`]) {
     const r = await api(`/sjablonen/${ref}`);
@@ -255,7 +255,7 @@ test('de inhoud wordt streng gecontroleerd, met een melding die het probleem ben
     ['eenheid te lang', { themas: [{ naam: 'A', meetpunten: [{ naam: 'M', eenheid: 'x'.repeat(31) }] }] }, /meetpunt 1: de eenheid is te lang/],
     ['onbekend thema', { ...basis(), vragen: [vraag(), vraag({ thema: 'C', tekst: 'Tweede?' })] }, /Vraag 2: kies een thema dat in het sjabloon staat\./],
     ['meetpunt van ander thema', { ...basis(), vragen: [vraag({ meetpunt: 'N' })] }, /Vraag 1: het meetpunt "N" staat niet bij het thema "A"/],
-    ['onbekend vraagtype', { ...basis(), vragen: [vraag({ type: 'cijfer' })] }, /Vraag 1: kies een geldig vraagtype/],
+    ['onbekend vraagtype', { ...basis(), vragen: [vraag({ type: 'rangorde' })] }, /Vraag 1: kies een geldig vraagtype/],
     ['vraag zonder tekst', { ...basis(), vragen: [vraag({ tekst: '' })] }, /Vraag 1: vul de vraag in\./],
     ['vraag te lang', { ...basis(), vragen: [vraag({ tekst: 'x'.repeat(1001) })] }, /Vraag 1: de vraag is te lang \(maximaal 1000 tekens\)/],
     ['te weinig opties', { ...basis(), vragen: [vraag({ type: 'meerkeuze', opties: ['Eén', ' '] })] }, /Vraag 1: geef minimaal twee antwoordmogelijkheden op/],
@@ -348,7 +348,7 @@ test('eigen sjabloon maken, ophalen, wijzigen, kopiëren en verwijderen', async 
   const kopie2 = (await api(`/sjablonen/${k2.data.id}`)).data;
   assert.equal(kopie2.standaard, false);
   assert.equal(kopie2.bron, null);
-  assert.equal(kopie2.inhoud.vragen.length, 25);
+  assert.equal(kopie2.inhoud.vragen.length, 26);
   assert.equal((await post('/sjablonen', { kopie_van: 999999 })).status, 404);
 
   // Leeg sjabloon (zonder inhoud) mag.
@@ -437,8 +437,8 @@ test('samenvoegen geeft dezelfde inhoud als toepassen op een nieuw onderzoek', a
   const r = await post('/sjablonen/samenvoegen', { ids: [ids.mto, 'hr-processen'] });
   assert.equal(r.status, 200);
   const { inhoud } = r.data;
-  assert.equal(r.data.aantal_vragen, 42);
-  assert.equal(inhoud.vragen.length, 42); // 25 + 19, de twee achtergrondvragen één keer
+  assert.equal(r.data.aantal_vragen, 43);
+  assert.equal(inhoud.vragen.length, 43); // 26 + 19, de twee achtergrondvragen één keer
   assert.equal(inhoud.themas.length, 14);
   assert.equal(inhoud.themas.at(-1).naam, 'Achtergrond');
   assert.equal(inhoud.themas.filter((t) => t.naam === 'Achtergrond').length, 1);
@@ -469,11 +469,11 @@ test('samenvoegen geeft dezelfde inhoud als toepassen op een nieuw onderzoek', a
   // Eén sjabloon: de titel van de vragenlijst blijft staan. Geen sjablonen: lege inhoud.
   const een = await post('/sjablonen/samenvoegen', { ids: [`eigen-${ids.mto}`] });
   assert.equal(een.data.inhoud.vragenlijst.titel, 'Medewerkersonderzoek');
-  assert.equal(een.data.inhoud.vragen.length, 25);
+  assert.equal(een.data.inhoud.vragen.length, 26);
   const geen = await post('/sjablonen/samenvoegen', { ids: [] });
   assert.deepEqual(geen.data.inhoud, { vragenlijst: { titel: '', introtekst: '', bedanktekst: '' }, themas: [], vragen: [], acties: [] });
   // Dubbele keuze telt één keer.
-  assert.equal((await post('/sjablonen/samenvoegen', { ids: [ids.mto, ids.mto, String(ids.mto)] })).data.inhoud.vragen.length, 25);
+  assert.equal((await post('/sjablonen/samenvoegen', { ids: [ids.mto, ids.mto, String(ids.mto)] })).data.inhoud.vragen.length, 26);
 
   assert.equal((await post('/sjablonen/samenvoegen', { ids: [999999] })).status, 404);
   assert.equal((await post('/sjablonen/samenvoegen', { ids: 'x' })).status, 400);
@@ -591,7 +591,7 @@ test('nieuw onderzoek: inhoud ook bewaren als nieuw sjabloon', async () => {
   assert.equal(beide.status, 201);
   const vlBeide = (await api(`/onderzoeken/${beide.data.id}/vragenlijsten`)).data.vragenlijsten;
   assert.equal(vlBeide.length, 1);
-  assert.equal(vlBeide[0].aantal_vragen, 25 + 4); // "Op welke afdeling werk je?" staat in beide
+  assert.equal(vlBeide[0].aantal_vragen, 26 + 4); // "Op welke afdeling werk je?" staat in beide
   await ruimOnderzoekOp(beide.data.id);
 
   // Te veel vragen samen: geweigerd, niets aangemaakt.
@@ -599,7 +599,7 @@ test('nieuw onderzoek: inhoud ook bewaren als nieuw sjabloon', async () => {
   veel.vragen = Array.from({ length: 90 }, (_, i) => ({ thema: 'Werkdruk', type: 'open', tekst: `Extra vraag ${i}?` }));
   const teveel = await post('/onderzoeken', { bedrijfsnaam: 'Teveel BV', titel: 'Teveel', sjablonen: [ids.mto], inhoud: veel });
   assert.equal(teveel.status, 400);
-  assert.match(teveel.data.fout, /samen 115 vragen/);
+  assert.match(teveel.data.fout, /samen 116 vragen/);
   assert.ok(!(await api('/onderzoeken')).data.onderzoeken.some((o) => o.bedrijfsnaam === 'Teveel BV'));
   await del(`/sjablonen/${r.data.sjabloon_id}`);
 });

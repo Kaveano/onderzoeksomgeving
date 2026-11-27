@@ -4,7 +4,8 @@
 
 import { nuIso } from './db.js';
 import { willekeurigeCode } from './auth.js';
-import { SCHALEN, VRAAGTYPEN } from './schalen.js';
+import { SCHALEN, VRAAGTYPEN, CIJFERSCHALEN } from './schalen.js';
+import { KENMERKEN, kenmerkVoorTekst } from '../../public/js/beheer/kenmerken.js';
 import { Fout } from './http.js';
 import { INTRO_ANONIEM } from '../sjablonen.js';
 
@@ -13,7 +14,7 @@ export const MAX_VRAGEN = 100;
 // Zoveel opdrachten gaan er hooguit in één batch naar de database.
 const MAX_PER_BATCH = 200;
 
-function vervang(tekst, bedrijf) {
+export function vervang(tekst, bedrijf) {
   // "van {bedrijf}." met "Voorbeeld B.V." mag geen dubbele punt opleveren.
   // Vervangen via een functie, zodat tekens als $ in de bedrijfsnaam geen betekenis krijgen.
   return String(tekst ?? '')
@@ -24,6 +25,14 @@ function vervang(tekst, bedrijf) {
 const sleutel = (s) => String(s ?? '').trim().toLowerCase();
 const lijst = (x) => (Array.isArray(x) ? x : []);
 const isAchtergrond = (naam) => sleutel(naam) === 'achtergrond';
+const magKenmerkHebben = (type, meerdere) => (type === 'meerkeuze' && !meerdere) || type === 'janee';
+
+/** schaal_soort zoals hij in de database komt: een schaal 1 tot 5, een cijferschaal of 'eens'. */
+function schaalSoortVan(v) {
+  if (v.type === 'schaal') return Object.hasOwn(SCHALEN, v.schaal_soort) ? v.schaal_soort : 'eens';
+  if (v.type === 'cijfer') return Object.hasOwn(CIJFERSCHALEN, v.schaal_soort) ? v.schaal_soort : 'rapport';
+  return 'eens';
+}
 
 export function standaardIntro(bedrijf) {
   return `${vervang('Fijn dat je mee wilt doen aan dit onderzoek van {bedrijf}.', bedrijf)} Het invullen duurt maar een paar minuten.\n\n${INTRO_ANONIEM}`;
@@ -53,6 +62,8 @@ export function legeInhoud() {
  *   een later sjabloon al bij een ander thema voor (bijv. "Verzuimpercentage"), dan wordt het
  *   niet nog eens aangemaakt, tenzij er een vraag naar verwijst.
  * - Vragen met dezelfde tekst komen er één keer in.
+ * - Een achtergrondkenmerk (zoals 'afdeling') komt één keer voor: geven twee sjablonen hetzelfde kenmerk bij
+ *   verschillende vragen, dan houdt de eerste het en krijgt de latere vraag geen kenmerk ('' staat er dan niet in).
  * - Het thema "Achtergrond" en de vragen daarvan staan altijd achteraan.
  * - Acties met dezelfde tekst komen er één keer in.
  * - Hebben meerdere sjablonen vragen, dan blijft de titel van de vragenlijst leeg
@@ -112,6 +123,7 @@ export function voegSjablonenSamen(inhouden, { bedrijf = null } = {}) {
   // 2. Vragen (zonder dubbele; een vraag met een onbekend thema krijgt dat thema erbij)
   const vragen = [];
   const gezien = new Set();
+  const kenmerken = new Set();
   for (const inhoud of bronnen) {
     for (const v of lijst(inhoud.vragen)) {
       if (!v || typeof v !== 'object' || !Object.hasOwn(VRAAGTYPEN, v.type)) continue;
@@ -122,6 +134,11 @@ export function voegSjablonenSamen(inhouden, { bedrijf = null } = {}) {
       const thema = zorgThema(themaNaam);
       const meetpunt = v.meetpunt ? thema.meetpunten.find((m) => sleutel(m.naam) === sleutel(t(v.meetpunt))) : null;
       const meerdere = v.type === 'meerkeuze' && !!v.meerdere_antwoorden;
+      let kenmerk = typeof v.kenmerk === 'string' && Object.hasOwn(KENMERKEN, v.kenmerk) && magKenmerkHebben(v.type, meerdere) ? v.kenmerk : '';
+      if (kenmerk && !KENMERKEN[kenmerk].meerdere) {
+        if (kenmerken.has(kenmerk)) kenmerk = '';
+        else kenmerken.add(kenmerk);
+      }
       vragen.push({
         thema: thema.naam,
         meetpunt: meetpunt ? meetpunt.naam : null,
@@ -131,11 +148,12 @@ export function voegSjablonenSamen(inhouden, { bedrijf = null } = {}) {
         opties: v.type === 'meerkeuze'
           ? lijst(v.opties).map((o) => t(typeof o === 'string' ? o : o && o.label)).filter(Boolean)
           : [],
-        schaal_soort: v.type === 'schaal' && Object.hasOwn(SCHALEN, v.schaal_soort) ? v.schaal_soort : 'eens',
+        schaal_soort: schaalSoortVan(v),
         meerdere_antwoorden: meerdere,
         verplicht: !!v.verplicht,
-        weet_niet: v.type === 'schaal' && !!v.weet_niet,
+        weet_niet: (v.type === 'schaal' || v.type === 'cijfer') && !!v.weet_niet,
         uitsplitsen: !!v.uitsplitsen && !meerdere && (v.type === 'meerkeuze' || v.type === 'janee'),
+        ...(kenmerk ? { kenmerk } : {}),
       });
     }
   }
@@ -291,6 +309,16 @@ export async function pasSjablonenToe(env, onderzoek, inhouden, { meetmomentId =
         nu,
       ),
     );
+    // Kenmerk: zoals in het sjabloon, of anders herkend aan de tekst (ook bij oudere en eigen sjablonen);
+    // elk kenmerk hooguit één keer per vragenlijst (behalve 'overig').
+    const kenmerkGebruikt = new Set(samen.vragen.map((v) => v.kenmerk).filter(Boolean));
+    const kenmerkVan = (v) => {
+      if (v.kenmerk) return v.kenmerk;
+      const k = kenmerkVoorTekst(v.tekst);
+      if (!k || !magKenmerkHebben(v.type, v.meerdere_antwoorden) || (!KENMERKEN[k].meerdere && kenmerkGebruikt.has(k))) return '';
+      kenmerkGebruikt.add(k);
+      return k;
+    };
     samen.vragen.forEach((v, i) => {
       const themaId = themaIds.get(sleutel(v.thema)) ?? null;
       let meetpuntId = null;
@@ -302,10 +330,10 @@ export async function pasSjablonenToe(env, onderzoek, inhouden, { meetmomentId =
       opdrachten.push(
         env.DB.prepare(
           `INSERT INTO vragen (vragenlijst_id, thema_id, meetpunt_id, type, tekst, toelichting, opties, schaal_soort,
-             meerdere_antwoorden, verplicht, weet_niet, uitsplitsen, volgorde)
+             meerdere_antwoorden, verplicht, weet_niet, uitsplitsen, volgorde, kenmerk)
            VALUES ((SELECT id FROM vragenlijsten WHERE code = ?), ${THEMA_ID},
              COALESCE(?, (SELECT id FROM meetpunten WHERE thema_id = ${THEMA_ID} AND naam = ? ORDER BY id DESC LIMIT 1)),
-             ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         ).bind(
           code,
           ...themaParams(v.thema),
@@ -322,6 +350,7 @@ export async function pasSjablonenToe(env, onderzoek, inhouden, { meetmomentId =
           v.weet_niet ? 1 : 0,
           v.uitsplitsen ? 1 : 0,
           i + 1,
+          kenmerkVan(v),
         ),
       );
     });
@@ -407,6 +436,7 @@ export async function maakSjabloonInhoud(env, onderzoek, vragenlijstId = null) {
       verplicht: !!v.verplicht,
       weet_niet: !!v.weet_niet,
       uitsplitsen: !!v.uitsplitsen,
+      ...(v.kenmerk ? { kenmerk: v.kenmerk } : {}),
     })),
     acties: acties.map((a) => terug(a.titel)),
   };
