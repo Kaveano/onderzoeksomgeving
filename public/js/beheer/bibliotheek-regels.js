@@ -27,7 +27,9 @@ export const BRONSOORTEN = {
   overig: 'Overig',
 };
 
-// Onderwerpen: de 12 standaardsjablonen plus vier vakgebieden. sjablonen = de ids in src/sjablonen*.js.
+// Onderwerpen: de 12 standaardsjablonen plus vijf vakgebieden. sjablonen = de ids in src/sjablonen*.js.
+// 'wetgeving' is erbij gekomen met de startcollectie (besluit van het onderzoeksteam, BOUWPLAN P7): 17 bronnen gaan
+// over wet- en regelgeving (AVG, Arbowet, WOR).
 export const ONDERWERPEN = {
   tevredenheid: { naam: 'Tevredenheid en betrokkenheid', sjablonen: ['medewerkerstevredenheid'] },
   'hr-processen': { naam: 'HR-processen', sjablonen: ['hr-processen'] },
@@ -45,6 +47,7 @@ export const ONDERWERPEN = {
   statistiek: { naam: 'Statistiek en analyse', sjablonen: [] },
   privacy: { naam: 'Privacy, AVG en ethiek', sjablonen: [] },
   'hr-analytics': { naam: 'HR-analytics en kengetallen', sjablonen: [] },
+  wetgeving: { naam: 'Wet- en regelgeving', sjablonen: [] },
 };
 
 export const TALEN = { nl: 'Nederlands', en: 'Engels', de: 'Duits', fr: 'Frans', anders: 'Andere taal' };
@@ -1247,10 +1250,11 @@ export function taalUitTekst(t) {
 
 /**
  * Andere namen voor de vaste onderwerpen (genormaliseerd, zoals normaliseer() ze maakt). Alleen namen die precies
- * één onderwerp bedoelen; o.a. de sleutels uit het bestand van het onderzoeksteam (bronnen/startcollectie.json).
- * Niet hier: "wet-regelgeving" (geen vast onderwerp; wordt een trefwoord met een melding, zie BOUWPLAN P7 stap 3).
+ * één onderwerp bedoelen; o.a. de sleutels uit het bestand van het onderzoeksteam (data/startcollectie.json), zoals
+ * "wet-regelgeving" (→ wetgeving, "Wet- en regelgeving").
  */
 const ONDERWERP_ALIASSEN = {
+  'wet regelgeving': 'wetgeving', 'wet en regelgeving': 'wetgeving', regelgeving: 'wetgeving',
   onderzoeksmethode: 'methode', onderzoeksmethoden: 'methode', methodologie: 'methode', vragenlijsten: 'methode',
   'privacy ethiek': 'privacy', 'privacy en ethiek': 'privacy', avg: 'privacy',
   'tevredenheid bevlogenheid': 'tevredenheid', 'tevredenheid en bevlogenheid': 'tevredenheid', betrokkenheid: 'tevredenheid', bevlogenheid: 'tevredenheid',
@@ -1275,10 +1279,118 @@ export function onderwerpUitTekst(t) {
 const kort = (t, max) => (t.length > max ? t.slice(0, max) : t);
 
 /**
+ * De velden die normaliseerStartbron (en scripts/startcollectie.mjs voor 'sleutel') uit een record leest. Andere
+ * velden worden niet gebruikt; het script noemt ze één keer. Bewust niet gebruikt (besluit van het onderzoeksteam,
+ * P7): 'relevantie' (een bron heeft geen veld voor "waarom relevant"; de samenvatting komt uit 'samenvatting') en
+ * 'open_access' (geen veld).
+ */
+export const STARTRECORD_VELDEN = new Set(['sleutel', 'titel', 'soort', 'organisatie', 'afkorting', 'auteurs', 'jaar', 'taal', 'url', 'doi',
+  'onderwerpen', 'trefwoorden', 'samenvatting', 'kernpunten', 'betrouwbaarheid', 'betrouwbaarheid_toelichting', 'details', 'bron_details',
+  'controle', 'tijdschrift', 'jaargang', 'nummer', 'paginas', 'artikelnummer', 'uitgever', 'druk', 'boektitel', 'redacteuren',
+  'rapportnummer', 'sitenaam', 'datum', 'geraadpleegd', 'instelling', 'soort_werk', 'gecontroleerd_op', 'gecontroleerd_door']);
+
+/** "Centraal Bureau voor de Statistiek (CBS)" → naam + wat tussen haakjes staat; anders null. */
+const ORG_HAAKJES = /^(.+?)\s*\(([^()]+)\)$/;
+/** Een afkorting van een organisatie: alleen hoofdletters (en cijfers), zoals CBS, SER, TNO, RIVM. */
+const ORG_AFKORTING = /^[A-Z][A-Z0-9&]{1,9}$/;
+const isCbs = (bron) => bron.afkorting === 'CBS' || normaliseer(bron.organisatie) === 'centraal bureau voor de statistiek';
+
+/**
+ * Betrouwbaarheid zoals het onderzoeksteam die levert: een soort bron, geen niveau. Besluit van het onderzoeksteam
+ * (BOUWPLAN P7):
+ * - 'peer-reviewed' → hoog (wetenschappelijk getoetst);
+ * - 'overheid' met als organisatie het CBS → hoog (officiële statistiek);
+ * - andere 'overheid' (Autoriteit Persoonsgegevens, SER, Nederlandse Arbeidsinspectie, Ministerie van SZW) → redelijk;
+ * - 'kennisinstituut' (TNO) → redelijk.
+ * De toelichting zegt in gewone woorden welke soort bron het is.
+ */
+const START_BETROUWBAARHEID = {
+  'peer-reviewed': () => ({ niveau: 'hoog', toelichting: 'Wetenschappelijk artikel, beoordeeld door andere onderzoekers (peer review).' }),
+  overheid: (bron) => (isCbs(bron)
+    ? { niveau: 'hoog', toelichting: 'Officiële statistiek van het CBS.' }
+    : { niveau: 'redelijk', toelichting: 'Informatie van een overheidsorganisatie.' }),
+  kennisinstituut: () => ({ niveau: 'redelijk', toelichting: 'Publicatie van een kennisinstituut.' }),
+};
+
+const MAAND_NAMEN = Object.keys(MAANDEN_NL).join('|');
+const DATUM_IN_TEKST = `(\\d{1,2}-\\d{1,2}-\\d{4}|\\d{1,2}\\s+(?:${MAAND_NAMEN})\\s+\\d{4})`;
+// "CBS-nieuwsbericht, 31-12-2025" · "Nieuwsbericht op TNO Monitor Arbeid, 22 januari 2024"
+const NIEUWSBERICHT = new RegExp(`^(?:[\\p{L}]+-)?nieuwsbericht(?:\\s+op\\s+([^,]+?))?,\\s*${DATUM_IN_TEKST}(?![\\d-])`, 'iu');
+// "Pagina bijgewerkt op 16 september 2026" (de datum staat op de pagina zelf)
+const BIJGEWERKT = new RegExp(`\\bpagina bijgewerkt op ${DATUM_IN_TEKST}(?![\\d-])`, 'iu');
+// "Webpagina op Arboportaal (…)" · "Themapagina op Arboportaal, …": de naam van de website
+const SITE_OP = /^(?:[\p{L}]*pagina|nieuwsbericht)\s+op\s+([^,(.]+?)\s*[,(.]/iu;
+// Alleen in de metadata van de pagina, niet zichtbaar: geen datum voor in de verwijzing
+const METADATA = /paginametadata|geen zichtbare datum/i;
+// "TNO-rapport TNO 2021 R11794 (…)" · "SER-advies 22/03, maart 2022"
+const RAPPORT_NR = /^(?:[\p{Lu}]+-)?(?:[Rr]apport|[Aa]dvies)\s+([A-Z0-9][A-Za-z0-9 /.-]*?\d[A-Za-z0-9/.-]*)\s*[,(]/u;
+
+/** '31-12-2025' of '22 januari 2024' → 'JJJJ-MM-DD' (alleen een bestaande datum), anders ''. */
+function datumUitTekst(t) {
+  const s = String(t).trim().toLowerCase();
+  let j; let m; let d;
+  const cijfers = /^(\d{1,2})-(\d{1,2})-(\d{4})$/.exec(s);
+  if (cijfers) [, d, m, j] = cijfers.map(Number);
+  else {
+    const woord = /^(\d{1,2})\s+([a-z]+)\s+(\d{4})$/.exec(s);
+    if (!woord || !MAANDEN_NL[woord[2]]) return '';
+    [d, m, j] = [Number(woord[1]), MAANDEN_NL[woord[2]], Number(woord[3])];
+  }
+  const dag = new Date(Date.UTC(j, m - 1, d));
+  if (dag.getUTCFullYear() !== j || dag.getUTCMonth() !== m - 1 || dag.getUTCDate() !== d) return '';
+  return `${j}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+
+/**
+ * Wat er ondubbelzinnig uit de vrije tekst bron_details van een bron die geen artikel is te halen is (besluit van het
+ * onderzoeksteam, P7: alleen als de tekst ondubbelzinnig is, nooit raden; de rest wordt gemeld):
+ * - webpagina: de datum van een nieuwsbericht ("CBS-nieuwsbericht, 31-12-2025") of de wijzigingsdatum die op de
+ *   pagina staat ("Pagina bijgewerkt op 16 september 2026"), alleen als het jaar gelijk is aan het jaar van de bron.
+ *   Een datum die alleen in de metadata van de pagina staat ("volgens de paginametadata") wordt niet gebruikt.
+ *   De naam van de website bij "Nieuwsbericht op …" of "Webpagina op …", als die anders is dan de organisatie.
+ * - rapport: het rapportnummer na "TNO-rapport" of "SER-advies" ("TNO 2021 R11794", "22/03").
+ * Bij andere soorten (bijv. cijfers) wordt niets gelezen.
+ * → { velden: { datum?, sitenaam?, rapportnummer? }, meldingen: [tekst] }
+ */
+export function leesStartDetails(tekst, { soort, jaar = null, organisatie = '' } = {}) {
+  const vrij = String(tekst ?? '').replace(/\s+/g, ' ').trim();
+  const velden = {};
+  const meldingen = [];
+  if (!vrij) return { velden, meldingen };
+  if (soort === 'website') {
+    const nieuws = NIEUWSBERICHT.exec(vrij);
+    const bijgewerkt = BIJGEWERKT.exec(vrij);
+    const gevonden = nieuws?.[2] || bijgewerkt?.[1] || '';
+    if (gevonden) {
+      const datum = datumUitTekst(gevonden);
+      if (datum && Number(datum.slice(0, 4)) === jaar) velden.datum = datum;
+      else meldingen.push(`De datum "${gevonden}" in bron_details past niet bij het jaar ${jaar ?? 'z.d.'}; niet overgenomen.`);
+    } else if (METADATA.test(vrij)) {
+      meldingen.push('De datum in bron_details staat alleen in de metadata van de pagina; niet overgenomen (het jaar blijft).');
+    }
+    const site = (nieuws?.[1] || SITE_OP.exec(vrij)?.[1] || '').trim();
+    if (site && normaliseer(site) !== normaliseer(organisatie)) velden.sitenaam = site;
+  } else if (soort === 'rapport') {
+    const nr = RAPPORT_NR.exec(vrij);
+    if (nr) velden.rapportnummer = nr[1].trim();
+  }
+  const genoemd = Object.entries(velden).map(([k, w]) => `${k} "${w}"`).join(', ');
+  const fragment = `"${kort(vrij, 80)}${vrij.length > 80 ? '…' : ''}"`;
+  meldingen.push(genoemd
+    ? `Uit bron_details overgenomen: ${genoemd}; de rest is niet overgenomen (${fragment}).`
+    : `Uit bron_details is niets overgenomen (${fragment}).`);
+  return { velden, meldingen };
+}
+
+/**
  * Zet één record van het onderzoeksteam (data/startcollectie.json, BOUWPLAN §3.9) om in de vorm van een bron.
  * → { bron, meldingen, fouten }. fouten (hard: geen titel, geen URL en geen DOI, onbekende soort, geen bekend
  * onderwerp) los je op door het onderzoeksteam te vragen, nooit door iets in te vullen. meldingen zijn zachte
- * waarschuwingen: onbekende onderwerpen naar de trefwoorden, http in plaats van https, ingekorte velden.
+ * waarschuwingen: onbekende onderwerpen naar de trefwoorden, http in plaats van https, ingekorte velden, wat er uit
+ * bron_details wel en niet is overgenomen.
+ * Uitleg van de velden van het onderzoeksteam (besluiten bij P7): een afkorting tussen haakjes achter de organisatie
+ * wordt de afkorting; de betrouwbaarheid volgt START_BETROUWBAARHEID; bron_details zie hierboven en
+ * leesStartDetails; 'geraadpleegd' alleen bij soorten met dat veld; 'relevantie' en 'open_access' worden niet gebruikt.
  * De echte controle (lengtes, DOI, URL) doet controleerBron in src/lib/bibliotheek.js.
  */
 export function normaliseerStartbron(record) {
@@ -1308,6 +1420,13 @@ export function normaliseerStartbron(record) {
       if (!bron.organisatie) bron.organisatie = gelezen.organisatie;
       else if (normaliseer(gelezen.organisatie) !== normaliseer(bron.organisatie)) meldingen.push(`Auteur "${gelezen.organisatie}" lijkt een organisatie; niet overgenomen.`);
     } else bron.auteurs.push(gelezen);
+  }
+  // "Centraal Bureau voor de Statistiek (CBS)": de afkorting apart, zodat de verwijzing in de tekst de eerste keer
+  // "(Centraal Bureau voor de Statistiek [CBS], 2025)" wordt en daarna "(CBS, 2025)", en de citeersleutel cbs2025.
+  const haakjes = ORG_HAAKJES.exec(bron.organisatie);
+  if (haakjes && ORG_AFKORTING.test(haakjes[2].trim()) && (!bron.afkorting || bron.afkorting === haakjes[2].trim())) {
+    bron.organisatie = haakjes[1].trim();
+    bron.afkorting = haakjes[2].trim();
   }
 
   if (r.jaar !== undefined && r.jaar !== null && r.jaar !== '') {
@@ -1359,9 +1478,15 @@ export function normaliseerStartbron(record) {
     return kort(k, LIMIETEN.kernpunt);
   });
 
-  // Betrouwbaarheid: een sleutel, een object { niveau, toelichting } of een tekst ("Hoog: peer-reviewed").
+  // Betrouwbaarheid: een sleutel, een soort bron van het onderzoeksteam (START_BETROUWBAARHEID), een object
+  // { niveau, toelichting } of een tekst ("Hoog: peer-reviewed").
   const b = r.betrouwbaarheid;
-  if (b && typeof b === 'object') {
+  const categorie = typeof b === 'string' ? START_BETROUWBAARHEID[b.trim().toLowerCase()] : null;
+  if (categorie) {
+    const { niveau, toelichting } = categorie(bron);
+    bron.betrouwbaarheid = niveau;
+    bron.betrouwbaarheid_toelichting = toelichting;
+  } else if (b && typeof b === 'object') {
     bron.betrouwbaarheid = BETROUWBAARHEID_ALIASSEN[tekst(b.niveau).toLowerCase()] || 'onbekend';
     bron.betrouwbaarheid_toelichting = tekst(b.toelichting);
   } else if (typeof b === 'string' && b.trim()) {
@@ -1384,7 +1509,8 @@ export function normaliseerStartbron(record) {
   for (const k of DETAIL_SLEUTELS) if (r[k] !== undefined && r[k] !== null && r[k] !== '') ruw[k] = r[k];
   // bron_details (vrije tekst, zoals het onderzoeksteam die levert): bij een artikel zonder losse tijdschriftvelden
   // staat daar "Tijdschrift, 22(3), 273–285", soms met een toelichting erachter. Dat deel lezen we; de rest wordt
-  // gemeld en niet overgenomen. Bij andere soorten heeft bron_details geen vast formaat: melden, niet overnemen.
+  // gemeld en niet overgenomen. Bij een webpagina of rapport lezen we alleen wat ondubbelzinnig is (datum, naam van
+  // de website, rapportnummer; leesStartDetails); losse velden in het record gaan altijd voor.
   const vrij = tekst(r.bron_details);
   if (vrij) {
     let gelezen = null;
@@ -1400,7 +1526,9 @@ export function normaliseerStartbron(record) {
       for (const [k, w] of Object.entries(gelezen)) if (ruw[k] === undefined || ruw[k] === null || ruw[k] === '') ruw[k] = w;
       if (rest) meldingen.push(`Uit bron_details is alleen het tijdschriftdeel overgenomen; niet overgenomen: "${kort(rest, 80)}${rest.length > 80 ? '…' : ''}".`);
     } else if (bron.soort !== 'artikel') {
-      meldingen.push('Veld "bron_details" is niet overgenomen: alleen bij een artikel worden daar tijdschrift, jaargang, nummer en pagina\'s uit gelezen.');
+      const uitTekst = leesStartDetails(vrij, bron);
+      for (const [k, w] of Object.entries(uitTekst.velden)) if (ruw[k] === undefined || ruw[k] === null || ruw[k] === '') ruw[k] = w;
+      meldingen.push(...uitTekst.meldingen);
     } else if (ruw.tijdschrift) {
       meldingen.push('Veld "bron_details" is niet gebruikt: het tijdschrift staat al in de losse velden.');
     } else {
@@ -1408,9 +1536,20 @@ export function normaliseerStartbron(record) {
     }
   }
   if (r.controle && !ruw.gecontroleerd_door) ruw.gecontroleerd_door = r.controle;
+  // "Ministerie van Sociale Zaken en Werkgelegenheid (Arboportaal)" bij een webpagina op Arboportaal: wat tussen
+  // haakjes staat is de naam van de website (APA: auteur, dan de website), niet een deel van de naam.
+  const siteHaakjes = ORG_HAAKJES.exec(bron.organisatie);
+  if (siteHaakjes && bron.soort === 'website' && ruw.sitenaam && normaliseer(siteHaakjes[2]) === normaliseer(ruw.sitenaam)) {
+    bron.organisatie = siteHaakjes[1].trim();
+  } else if (siteHaakjes) {
+    meldingen.push(`De organisatie "${bron.organisatie}" heeft iets tussen haakjes dat niet als afkorting of website is herkend; zo overgenomen.`);
+  }
   const toegestaan = new Set(detailveldenVan(bron.soort).map((v) => v.sleutel));
   for (const [k, w] of Object.entries(ruw)) {
     if (!toegestaan.has(k)) {
+      // Geraadpleegd op: alleen bij soorten met dat veld (webpagina, wet, richtlijn, cijfers: inhoud die verandert;
+      // APA 7). Bij een artikel of een gedateerde bron zonder dat veld laten we het stil weg (besluit onderzoeksteam, P7).
+      if (k === 'geraadpleegd' && (bron.soort === 'artikel' || Number.isInteger(bron.jaar))) continue;
       if (w !== '' && w !== null && w !== undefined) meldingen.push(`Veld "${k}" hoort niet bij de soort "${bron.soort}" en is weggelaten.`);
       continue;
     }

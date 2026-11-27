@@ -19,9 +19,12 @@
 //    bij een harde fout (geen titel, geen URL en geen DOI, onbekende soort, geen bekend onderwerp) stopt het,
 //    zonder iets te schrijven. Los die op door het onderzoeksteam te vragen; vul nooit zelf iets in;
 // 2. sleutel en citeersleutel per bron vastleggen in het sleutelbestand. Een bron die er al in staat (zelfde DOI,
-//    anders zelfde titel en jaar) houdt zijn sleutels; een nieuwe krijgt nieuwe;
+//    anders zelfde titel en jaar) houdt zijn sleutels; een nieuwe krijgt nieuwe. Heeft het record zelf een
+//    'sleutel' die past (SLEUTEL_PATROON) en maar één keer voorkomt, dan wordt dat de sleutel van een nieuwe bron;
+//    anders maakt het script er een (achternaam-jaar-titelwoorden);
 // 3. de migratie schrijven: per bron één INSERT die nooit iets overschrijft;
-// 4. de waarschuwingen tonen (onbekende onderwerpen naar de trefwoorden, http in plaats van https, ingekorte velden).
+// 4. de waarschuwingen tonen (onbekende onderwerpen naar de trefwoorden, http in plaats van https, ingekorte velden,
+//    wat er uit bron_details wel en niet is overgenomen) en één keer de velden die het script niet gebruikt.
 //
 // Hetzelfde invoerbestand en sleutelbestand geven altijd precies dezelfde migratie (geen tijdstempel van nu).
 
@@ -29,12 +32,16 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { normaliseerStartbron, citeersleutelBasis, vrijeCiteersleutel, normaliseer, kaleDoi, CITEERSLEUTEL } from '../public/js/beheer/bibliotheek-regels.js';
+import {
+  normaliseerStartbron, citeersleutelBasis, vrijeCiteersleutel, normaliseer, kaleDoi, CITEERSLEUTEL, STARTRECORD_VELDEN,
+} from '../public/js/beheer/bibliotheek-regels.js';
 import { controleerBron } from '../src/lib/bibliotheek.js';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 /** Grootte van één INSERT (bytes); ruim onder de 100 KB van D1 (BOUWPLAN FT-04). */
 export const MAX_STATEMENT = 18_000;
+/** Vaste sleutel van een bron in de startcollectie (bijv. bakker-demerouti-2007-jdr). */
+export const SLEUTEL_PATROON = /^[a-z][a-z0-9-]{2,79}$/;
 
 function leesOpties(argv) {
   const opties = { invoer: null, uit: null, sleutels: null, versie: 1, bestand: null, datum: null, controle: false };
@@ -70,23 +77,31 @@ function maakSleutel(bron, bezet) {
   return s;
 }
 
-/** Zet de records om; → { bronnen: [{ bron, meldingen }], fouten: [tekst] }. */
+/**
+ * Zet de records om; → { bronnen: [{ bron, meldingen, voorkeur }], fouten: [tekst], ongebruikt: Map<veld, aantal> }.
+ * voorkeur = de eigen 'sleutel' van het record (of ''); ongebruikt = velden die het script niet leest.
+ */
 export function controleerRecords(records) {
   const fouten = [];
   const bronnen = [];
+  const ongebruikt = new Map();
   records.forEach((record, i) => {
     const naam = `Record ${i + 1}${record?.titel ? ` ("${String(record.titel).slice(0, 60)}")` : ''}`;
+    for (const k of Object.keys(record && typeof record === 'object' ? record : {})) {
+      if (!STARTRECORD_VELDEN.has(k)) ongebruikt.set(k, (ongebruikt.get(k) || 0) + 1);
+    }
     const { bron, meldingen, fouten: harde } = normaliseerStartbron(record);
     for (const f of harde) fouten.push(`${naam}: ${f}`);
     if (harde.length) return;
     try {
       const schoon = controleerBron(bron);
-      bronnen.push({ bron: schoon, meldingen: meldingen.map((m) => `${naam}: ${m}`) });
+      const voorkeur = typeof record.sleutel === 'string' ? record.sleutel.trim() : '';
+      bronnen.push({ bron: schoon, meldingen: meldingen.map((m) => `${naam}: ${m}`), voorkeur });
     } catch (e) {
       fouten.push(`${naam}: ${e.message}`);
     }
   });
-  return { bronnen, fouten };
+  return { bronnen, fouten, ongebruikt };
 }
 
 /**
@@ -100,7 +115,10 @@ export function wijsSleutelsToe(bronnen, sleutelbestand, datum) {
   const sleutels = new Set(vorige.map((s) => s.sleutel));
   const citeer = new Set(vorige.map((s) => s.citeersleutel));
   const gebruikt = new Set();
-  const lijst = bronnen.map(({ bron }) => {
+  // Eigen sleutels uit de records: alleen bruikbaar als ze passen en maar één keer voorkomen.
+  const keren = new Map();
+  for (const { voorkeur } of bronnen) if (voorkeur) keren.set(voorkeur, (keren.get(voorkeur) || 0) + 1);
+  const lijst = bronnen.map(({ bron, voorkeur }) => {
     const doi = kaleDoi(bron.doi);
     let bekend = (doi && opDoi.get(doi)) || opTitel.get(titelJaar(bron));
     if (bekend && gebruikt.has(bekend.sleutel)) bekend = null; // twee records op dezelfde oude regel: de tweede is nieuw
@@ -110,7 +128,8 @@ export function wijsSleutelsToe(bronnen, sleutelbestand, datum) {
       bekend.titel_jaar = titelJaar(bron);
       return { bron, sleutel: bekend.sleutel, citeersleutel: bekend.citeersleutel, toegevoegd_op: bekend.toegevoegd_op || datum };
     }
-    const sleutel = maakSleutel(bron, sleutels);
+    const eigen = voorkeur && SLEUTEL_PATROON.test(voorkeur) && keren.get(voorkeur) === 1 && !sleutels.has(voorkeur);
+    const sleutel = eigen ? voorkeur : maakSleutel(bron, sleutels);
     sleutels.add(sleutel);
     const citeersleutel = vrijeCiteersleutel(citeersleutelBasis(bron), citeer);
     citeer.add(citeersleutel);
@@ -121,7 +140,7 @@ export function wijsSleutelsToe(bronnen, sleutelbestand, datum) {
   });
   for (const r of lijst) {
     if (!CITEERSLEUTEL.test(r.citeersleutel)) throw new Error(`Ongeldige citeersleutel "${r.citeersleutel}".`);
-    if (!/^[a-z][a-z0-9-]{2,79}$/.test(r.sleutel)) throw new Error(`Ongeldige sleutel "${r.sleutel}".`);
+    if (!SLEUTEL_PATROON.test(r.sleutel)) throw new Error(`Ongeldige sleutel "${r.sleutel}".`);
   }
   lijst.sort((a, b) => (a.sleutel < b.sleutel ? -1 : a.sleutel > b.sleutel ? 1 : 0));
   const bestand = {
@@ -186,7 +205,7 @@ export function main(argv) {
   const ruw = JSON.parse(readFileSync(resolve(o.invoer), 'utf8'));
   const records = Array.isArray(ruw) ? ruw : Array.isArray(ruw?.bronnen) ? ruw.bronnen : null;
   if (!records) throw new Error('Het invoerbestand moet een lijst met bronnen zijn (of { "bronnen": [...] }).');
-  const { bronnen, fouten } = controleerRecords(records);
+  const { bronnen, fouten, ongebruikt } = controleerRecords(records);
   if (fouten.length) {
     console.error(`Niet gemaakt: ${fouten.length} ${fouten.length === 1 ? 'fout' : 'fouten'}. Vraag het onderzoeksteam om deze gegevens; vul niets zelf in.`);
     for (const f of fouten) console.error(`  - ${f}`);
@@ -202,6 +221,9 @@ export function main(argv) {
   const migratiePad = join(uitMap, o.bestand || '0016_bibliotheek_start.sql');
   const sleutelTekst = `${JSON.stringify(sleutelbestand, null, 2)}\n`;
   for (const b of bronnen) for (const m of b.meldingen) console.warn(`Let op: ${m}`);
+  if (ongebruikt.size) {
+    console.warn(`Niet gebruikt (de bibliotheek heeft er geen veld voor): ${[...ongebruikt].map(([k, n]) => `${k} (${n}×)`).join(', ')}.`);
+  }
   if (o.controle) {
     const zelfde = existsSync(migratiePad) && readFileSync(migratiePad, 'utf8') === migratie
       && existsSync(sleutelPad) && readFileSync(sleutelPad, 'utf8') === sleutelTekst;

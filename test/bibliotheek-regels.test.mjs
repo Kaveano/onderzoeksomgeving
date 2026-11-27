@@ -8,7 +8,7 @@ import { performance } from 'node:perf_hooks';
 
 import {
   OPMAAK, apaVerwijzing, apaInTekst, apaKort, sorteerLiteratuur, citeersleutelBasis, vrijeCiteersleutel, leesAuteur, voorletters,
-  leesApaVerwijzing, normaliseerStartbron, normaliseer, paginaTekst, dubbeleVan, nlDatumKort, auteursRegel, CITEERSLEUTEL,
+  leesApaVerwijzing, normaliseerStartbron, leesStartDetails, normaliseer, paginaTekst, dubbeleVan, nlDatumKort, auteursRegel, CITEERSLEUTEL,
   BRONSOORTEN, DETAILVELDEN, ONDERWERPEN, onderwerpUitTekst, leesTijdschriftDeel, dubbelZoeker, reeksDelen, MAX_PER_REEKS, MAX_REEKS_BYTES, MAX_REEKS_VERZOEK, kaleDoi,
 } from '../public/js/beheer/bibliotheek-regels.js';
 import { planReeks, insertWaarden } from '../src/lib/bibliotheek.js';
@@ -276,14 +276,16 @@ test('startcollectie: de onderwerp-sleutels en bron_details van het onderzoekste
     bron_details: 'Human Relations, 75(8), 1560–1584',
   }));
   assert.deepEqual(r.fouten, []);
-  assert.deepEqual(r.bron.onderwerpen, ['methode', 'privacy', 'tevredenheid', 'vertrek', 'sociale-veiligheid', 'werkdruk']);
-  assert.deepEqual(r.bron.trefwoorden, ['wet-regelgeving'], 'geen vast onderwerp: trefwoord met een melding (P7 stap 3)');
-  assert.ok(r.meldingen.some((m) => m.includes('"wet-regelgeving"')));
+  // wet-regelgeving is sinds P7 een vast onderwerp (besluit van het onderzoeksteam): geen trefwoord meer
+  assert.deepEqual(r.bron.onderwerpen, ['methode', 'privacy', 'tevredenheid', 'vertrek', 'sociale-veiligheid', 'wetgeving', 'werkdruk']);
+  assert.deepEqual(r.bron.trefwoorden, []);
+  assert.ok(!r.meldingen.some((m) => m.includes('"wet-regelgeving"')));
+  assert.ok(!r.meldingen.some((m) => m.includes('geraadpleegd')), 'geraadpleegd valt bij een artikel stil weg');
   assert.deepEqual(r.bron.details, { tijdschrift: 'Human Relations', jaargang: '75', nummer: '8', paginas: '1560–1584' });
   assert.equal(apaVerwijzing(r.bron),
     'Holtom, B., & Baruch, Y. (2022). Survey response rates: Trends and a validity assessment framework. *Human Relations, 75*(8), 1560–1584. https://doi.org/10.1177/00187267211070769');
   // Een record met alleen een onbekend onderwerp blijft een harde fout (vraag het onderzoeksteam)
-  r = normaliseerStartbron(record({ onderwerpen: ['wet-regelgeving'], bron_details: 'Human Relations, 75(8), 1560–1584' }));
+  r = normaliseerStartbron(record({ onderwerpen: ['astrologie'], bron_details: 'Human Relations, 75(8), 1560–1584' }));
   assert.deepEqual(r.fouten, ['Geen onderwerp uit de vaste lijst.']);
   // Een toelichting na het tijdschriftdeel wordt gemeld, niet overgenomen
   r = normaliseerStartbron(record({ onderwerpen: ['statistiek'], bron_details: 'International Review of Social Psychology, 30(1), 92–101. In 2022 is een correctie verschenen.' }));
@@ -301,14 +303,19 @@ test('startcollectie: de onderwerp-sleutels en bron_details van het onderzoekste
   r = normaliseerStartbron({ titel: 'Cao-lonen 2025', organisatie: 'CBS', jaar: 2025, soort: 'website', url: 'https://www.cbs.nl/x', onderwerpen: ['arbeidsvoorwaarden'], bron_details: 'CBS-nieuwsbericht, 31-12-2025.' });
   assert.deepEqual(r.fouten, []);
   assert.equal(r.bron.details.tijdschrift, undefined);
-  assert.ok(r.meldingen.some((m) => m.startsWith('Veld "bron_details" is niet overgenomen')));
+  // Sinds P7: bij een webpagina wordt alleen de ondubbelzinnige datum gelezen (zie de tests van leesStartDetails)
+  assert.equal(r.bron.details.datum, '2025-12-31');
+  assert.ok(r.meldingen.some((m) => m.startsWith('Uit bron_details overgenomen: datum "2025-12-31"')));
   r = normaliseerStartbron(record({ onderwerpen: ['methode'], bron_details: 'Zonder jaargang' }));
   assert.deepEqual(r.bron.details, {});
   assert.ok(r.meldingen.some((m) => m.includes('geen tijdschrift met jaargang')));
   // Andere namen; niets raden
   assert.equal(onderwerpUitTekst('Onderzoeksmethode'), 'methode');
   assert.equal(onderwerpUitTekst('Tevredenheid en betrokkenheid'), 'tevredenheid');
-  assert.equal(onderwerpUitTekst('wet-regelgeving'), null);
+  assert.equal(onderwerpUitTekst('wet-regelgeving'), 'wetgeving');
+  assert.equal(onderwerpUitTekst('Wet- en regelgeving'), 'wetgeving');
+  assert.equal(onderwerpUitTekst('regelgeving'), 'wetgeving');
+  assert.equal(onderwerpUitTekst('wet'), null, 'te algemeen: niet raden');
   assert.equal(onderwerpUitTekst('toString'), null);
 });
 
@@ -321,6 +328,150 @@ test('leesTijdschriftDeel: pagina\'s, artikelnummers en geen tijdschrift', () =>
   assert.deepEqual(leesTijdschriftDeel('Behavioral Sciences, 13(3), 244'), { tijdschrift: 'Behavioral Sciences', jaargang: '13', nummer: '3', paginas: '244' });
   assert.equal(leesTijdschriftDeel('Boom'), null);
   assert.equal(leesTijdschriftDeel(''), null);
+});
+
+// ---------- Besluiten van het onderzoeksteam bij de startcollectie (BOUWPLAN P7, besluiten a–d) ----------
+
+const startWebpagina = (extra) => ({
+  titel: 'Cao-lonen stijgen in 2025 met 5,0 procent', auteurs: [], organisatie: 'Centraal Bureau voor de Statistiek (CBS)', jaar: 2025,
+  soort: 'website', taal: 'nl', url: 'https://www.cbs.nl/nl-nl/nieuws/2026/01/cao-lonen-stijgen-in-2025-met-5-0-procent', doi: '',
+  onderwerpen: ['arbeidsvoorwaarden'], betrouwbaarheid: 'overheid', geraadpleegd: '2026-11-27',
+  bron_details: 'CBS-nieuwsbericht, 31-12-2025. Cao-lonen per uur inclusief bijzondere beloningen.', relevantie: 'x', open_access: true, ...extra,
+});
+
+test('startcollectie (b): de betrouwbaarheid van het onderzoeksteam wordt een niveau', () => {
+  const art = { titel: 'T', auteurs: ['Bakker, A. B.'], jaar: 2017, soort: 'wetenschappelijk artikel', doi: '10.1037/ocp0000056', onderwerpen: ['werkdruk'] };
+  let r = normaliseerStartbron({ ...art, betrouwbaarheid: 'peer-reviewed' });
+  assert.equal(r.bron.betrouwbaarheid, 'hoog');
+  assert.match(r.bron.betrouwbaarheid_toelichting, /peer review/);
+  // overheid: het CBS is officiële statistiek (hoog), andere overheid redelijk
+  r = normaliseerStartbron(startWebpagina());
+  assert.equal(r.bron.betrouwbaarheid, 'hoog');
+  assert.equal(r.bron.betrouwbaarheid_toelichting, 'Officiële statistiek van het CBS.');
+  r = normaliseerStartbron(startWebpagina({ organisatie: 'Centraal Bureau voor de Statistiek' }));
+  assert.equal(r.bron.betrouwbaarheid, 'hoog', 'ook zonder afkorting');
+  for (const organisatie of ['Autoriteit Persoonsgegevens', 'Sociaal-Economische Raad (SER)', 'Nederlandse Arbeidsinspectie',
+    'Ministerie van Sociale Zaken en Werkgelegenheid (Arboportaal)', 'TNO en CBS']) {
+    r = normaliseerStartbron(startWebpagina({ organisatie }));
+    assert.equal(r.bron.betrouwbaarheid, 'redelijk', organisatie);
+    assert.equal(r.bron.betrouwbaarheid_toelichting, 'Informatie van een overheidsorganisatie.');
+  }
+  r = normaliseerStartbron(startWebpagina({ organisatie: 'TNO', betrouwbaarheid: 'Kennisinstituut' }));
+  assert.equal(r.bron.betrouwbaarheid, 'redelijk');
+  assert.equal(r.bron.betrouwbaarheid_toelichting, 'Publicatie van een kennisinstituut.');
+  r = normaliseerStartbron(startWebpagina({ organisatie: 'TNO en CBS', betrouwbaarheid: 'kennisinstituut' }));
+  assert.equal(r.bron.betrouwbaarheid, 'redelijk', 'kennisinstituut blijft redelijk, ook samen met het CBS');
+  // Een eigen toelichting in het record gaat voor; de oude vormen werken nog
+  r = normaliseerStartbron({ ...art, betrouwbaarheid: 'peer-reviewed', betrouwbaarheid_toelichting: 'Meta-analyse.' });
+  assert.equal(r.bron.betrouwbaarheid_toelichting, 'Meta-analyse.');
+  assert.equal(normaliseerStartbron({ ...art, betrouwbaarheid: 'hoog' }).bron.betrouwbaarheid, 'hoog');
+  r = normaliseerStartbron({ ...art, betrouwbaarheid: 'blog' });
+  assert.equal(r.bron.betrouwbaarheid, 'onbekend');
+  assert.equal(r.bron.betrouwbaarheid_toelichting, 'blog');
+});
+
+test('startcollectie: een afkorting tussen haakjes achter de organisatie wordt de afkorting (APA)', () => {
+  const { bron, fouten } = normaliseerStartbron(startWebpagina());
+  assert.deepEqual(fouten, []);
+  assert.equal(bron.organisatie, 'Centraal Bureau voor de Statistiek');
+  assert.equal(bron.afkorting, 'CBS');
+  assert.equal(citeersleutelBasis(bron), 'cbs2025');
+  const eerste = new Set();
+  assert.equal(apaInTekst([{ bron: { ...bron, citeersleutel: 'cbs2025' } }], { eersteKeer: eerste }), '(Centraal Bureau voor de Statistiek [CBS], 2025)');
+  assert.equal(apaInTekst([{ bron: { ...bron, citeersleutel: 'cbs2025' } }], { eersteKeer: eerste }), '(CBS, 2025)');
+  assert.equal(apaKort(bron), '(CBS, 2025)', 'zoals bij een vergelijkingswaarde: "Ter vergelijking: 5,0% (CBS, 2025)"');
+  assert.equal(normaliseerStartbron(startWebpagina({ organisatie: 'Sociaal-Economische Raad (SER)' })).bron.afkorting, 'SER');
+  // Een andere afkorting in het record: niets splitsen, wel melden
+  let r = normaliseerStartbron(startWebpagina({ afkorting: 'KCV' }));
+  assert.equal(r.bron.organisatie, 'Centraal Bureau voor de Statistiek (CBS)');
+  assert.equal(r.bron.afkorting, 'KCV');
+  assert.ok(r.meldingen.some((m) => m.includes('niet als afkorting of website is herkend')));
+  // Geen afkorting (kleine letters) en geen website met die naam: zo laten, met een melding
+  r = normaliseerStartbron(startWebpagina({ organisatie: 'Stichting Voorbeeld (Utrecht)', bron_details: '' }));
+  assert.equal(r.bron.organisatie, 'Stichting Voorbeeld (Utrecht)');
+  assert.equal(r.bron.afkorting, '');
+  assert.ok(r.meldingen.some((m) => m.includes('"Stichting Voorbeeld (Utrecht)"')));
+  // De naam van de website tussen haakjes, en bron_details noemt dezelfde website: auteur + website (APA)
+  r = normaliseerStartbron(startWebpagina({
+    titel: 'Psychosociale arbeidsbelasting (PSA)', organisatie: 'Ministerie van Sociale Zaken en Werkgelegenheid (Arboportaal)', jaar: 2026,
+    url: 'https://www.arboportaal.nl/onderwerpen/psychosociale-arbeidsbelasting',
+    bron_details: 'Themapagina op Arboportaal, de arbosite van het Ministerie van SZW. Laatst gewijzigd 12 augustus 2026 volgens de paginametadata (geen zichtbare datum).',
+  }));
+  assert.equal(r.bron.organisatie, 'Ministerie van Sociale Zaken en Werkgelegenheid');
+  assert.deepEqual(r.bron.details, { sitenaam: 'Arboportaal', geraadpleegd: '2026-11-27' });
+  assert.equal(apaVerwijzing(r.bron), 'Ministerie van Sociale Zaken en Werkgelegenheid. (2026). *Psychosociale arbeidsbelasting (PSA)*. Arboportaal. '
+    + 'Geraadpleegd op 27 november 2026, van https://www.arboportaal.nl/onderwerpen/psychosociale-arbeidsbelasting');
+  assert.ok(r.meldingen.some((m) => m.includes('alleen in de metadata')), 'een datum uit de metadata wordt niet gebruikt');
+});
+
+test('startcollectie (c): leesStartDetails leest alleen wat ondubbelzinnig in bron_details staat', () => {
+  const web = (tekst, jaar = 2025, organisatie = 'Centraal Bureau voor de Statistiek') => leesStartDetails(tekst, { soort: 'website', jaar, organisatie });
+  assert.deepEqual(web('CBS-nieuwsbericht, 31-12-2025. Cao-lonen per uur.').velden, { datum: '2025-12-31' });
+  assert.deepEqual(web('CBS-nieuwsbericht, 10-2-2026, op basis van de publicatie X.', 2026).velden, { datum: '2026-02-10' });
+  assert.deepEqual(web('Nieuwsbericht op TNO Monitor Arbeid, 22 januari 2024, over het rapport (publicatiepagina 13 december 2023).', 2024, 'TNO').velden,
+    { datum: '2024-01-22', sitenaam: 'TNO Monitor Arbeid' }, 'de eerste datum, direct na het nieuwsbericht');
+  assert.deepEqual(web('Webpagina van de Autoriteit Persoonsgegevens, thema Basis AVG. Pagina bijgewerkt op 16 september 2026. Artikel 4 AVG.', 2026, 'Autoriteit Persoonsgegevens').velden,
+    { datum: '2026-09-16' });
+  // Niet: een datum die alleen in de metadata staat, een datum in een ander jaar, een datum die niet bestaat, geen datum
+  let r = web('Webpagina van de Nederlandse Arbeidsinspectie. Laatst gewijzigd 9 september 2026 volgens de paginametadata (geen zichtbare datum op de pagina).', 2026);
+  assert.deepEqual(r.velden, {});
+  assert.ok(r.meldingen.some((m) => m.includes('alleen in de metadata')));
+  r = web('CBS-nieuwsbericht, 31-12-2025.', 2026);
+  assert.deepEqual(r.velden, {});
+  assert.ok(r.meldingen.some((m) => m.includes('past niet bij het jaar 2026')));
+  assert.deepEqual(web('CBS-nieuwsbericht, 31-2-2025.').velden, {});
+  assert.deepEqual(web('CBS-nieuwsbericht, 1-1-20251.').velden, {}, 'geen half getal');
+  r = web('Webpagina van de SER, thema Medezeggenschap. Geen publicatiedatum vermeld (z.d.; geraadpleegd 27-11-2026).', null, 'Sociaal-Economische Raad');
+  assert.deepEqual(r.velden, {});
+  assert.ok(r.meldingen.some((m) => m.startsWith('Uit bron_details is niets overgenomen')));
+  assert.deepEqual(web('Webpagina op Arboportaal (Ministerie van SZW), onderdeel RI&E.', 2026, 'Ministerie').velden, { sitenaam: 'Arboportaal' });
+  assert.deepEqual(web('Nieuwsbericht op CBS, 14-8-2025.', 2025, 'CBS').velden, { datum: '2025-08-14' }, 'website = auteur: geen aparte naam');
+  // Rapporten: alleen het rapportnummer
+  const rapport = (tekst) => leesStartDetails(tekst, { soort: 'rapport', jaar: 2021, organisatie: 'TNO' }).velden;
+  assert.deepEqual(rapport('TNO-rapport TNO 2021 R11794 (publicatiepagina 29 november 2021), 156 pagina\'s.'), { rapportnummer: 'TNO 2021 R11794' });
+  assert.deepEqual(rapport('TNO-rapport TNO 2025 R11108, mei 2025 (publicatiepagina 28 mei 2025), Leiden.'), { rapportnummer: 'TNO 2025 R11108' });
+  assert.deepEqual(rapport('SER-advies 22/03, maart 2022, aan de minister van Sociale Zaken en Werkgelegenheid, Den Haag.'), { rapportnummer: '22/03' });
+  assert.deepEqual(rapport('Rapport 2021-07, juni 2021.'), { rapportnummer: '2021-07' });
+  assert.deepEqual(rapport('TNO-rapport over werkdruk in 2021, juni.'), {}, 'geen nummer: niets raden');
+  assert.deepEqual(rapport('TNO-factsheet bij de Week van de werkstress 2026 (publicatiepagina 9 november 2026), 3 pagina\'s.'), {});
+  assert.deepEqual(rapport('TNO en CBS, april 2026 (publicatiepagina 15 april 2026), Leiden/Heerlen.'), {});
+  assert.deepEqual(rapport('Statistische Trends, CBS, publicatiedatum 21-10-2025 (online longread).'), {}, 'geen datum bij een rapport');
+  // Andere soorten: niets
+  r = leesStartDetails('CBS StatLine-tabel 80072NED, gewijzigd op 17-11-2026.', { soort: 'cijfers', jaar: 2026 });
+  assert.deepEqual(r.velden, {});
+  assert.equal(r.meldingen.length, 1);
+  assert.deepEqual(leesStartDetails('', { soort: 'website' }), { velden: {}, meldingen: [] });
+});
+
+test('startcollectie (c, d): bron_details en geraadpleegd in de omgezette bron', () => {
+  // Webpagina: datum en geraadpleegd (APA 7: inhoud die verandert); de rest van bron_details wordt gemeld
+  let r = normaliseerStartbron(startWebpagina());
+  assert.deepEqual(r.fouten, []);
+  assert.deepEqual(r.bron.details, { geraadpleegd: '2026-11-27', datum: '2025-12-31' });
+  assert.equal(apaVerwijzing(r.bron), 'Centraal Bureau voor de Statistiek. (2025, 31 december). *Cao-lonen stijgen in 2025 met 5,0 procent*. '
+    + 'Geraadpleegd op 27 november 2026, van https://www.cbs.nl/nl-nl/nieuws/2026/01/cao-lonen-stijgen-in-2025-met-5-0-procent');
+  assert.ok(r.meldingen.some((m) => m.includes('de rest is niet overgenomen ("CBS-nieuwsbericht, 31-12-2025. Cao-lonen')));
+  // Een datum in het record zelf gaat voor
+  r = normaliseerStartbron(startWebpagina({ datum: '2025-12' }));
+  assert.equal(r.bron.details.datum, '2025-12');
+  // Rapport: rapportnummer; geraadpleegd valt stil weg (er is een jaar en geen veld)
+  r = normaliseerStartbron({
+    titel: 'Arbobalans 2024', auteurs: ['van den Heuvel, S. G.', 'Bouwens, L.', 'de Vroome, E. M. M.'], organisatie: 'TNO', jaar: 2025, soort: 'rapport', taal: 'nl',
+    url: 'https://monitorarbeid.tno.nl/publicaties/arbobalans-2024/', onderwerpen: ['werkdruk-werkstress'], betrouwbaarheid: 'kennisinstituut', geraadpleegd: '2026-11-27',
+    bron_details: 'TNO-rapport TNO 2025 R11108, mei 2025 (publicatiepagina 28 mei 2025), Leiden.',
+  });
+  assert.deepEqual(r.fouten, []);
+  assert.deepEqual(r.bron.details, { rapportnummer: 'TNO 2025 R11108' });
+  assert.ok(!r.meldingen.some((m) => m.includes('geraadpleegd')));
+  assert.equal(apaVerwijzing(r.bron),
+    'Heuvel, S. G. van den, Bouwens, L., & Vroome, E. M. M. de (2025). *Arbobalans 2024* (Rapportnr. TNO 2025 R11108). TNO. https://monitorarbeid.tno.nl/publicaties/arbobalans-2024/');
+  // Een rapport zonder jaar: geraadpleegd kan nergens heen; dat wordt gemeld
+  r = normaliseerStartbron({ titel: 'R', organisatie: 'TNO', soort: 'rapport', url: 'https://x.nl', onderwerpen: ['methode'], geraadpleegd: '2026-11-27' });
+  assert.ok(r.meldingen.some((m) => m.includes('"geraadpleegd" hoort niet bij de soort "rapport"')));
+  // Cijfers (dataset): geraadpleegd blijft
+  r = normaliseerStartbron(startWebpagina({ soort: 'dataset', titel: 'Ziekteverzuimpercentage', bron_details: 'CBS StatLine-tabel 80072NED, gewijzigd op 17-11-2026.' }));
+  assert.equal(r.bron.soort, 'cijfers');
+  assert.deepEqual(r.bron.details, { geraadpleegd: '2026-11-27' });
 });
 
 test('Plak een verwijzing: een titel met ? en een ondertitel; "Geraadpleegd op … van" is een webpagina', () => {
@@ -348,7 +499,8 @@ test('Plak een verwijzing: een titel met ? en een ondertitel; "Geraadpleegd op �
 
 test('vaste lijsten', () => {
   assert.equal(Object.keys(BRONSOORTEN).length, 11);
-  assert.equal(Object.keys(ONDERWERPEN).length, 16);
+  assert.equal(Object.keys(ONDERWERPEN).length, 17, '12 sjablonen + 5 vakgebieden (wetgeving sinds P7)');
+  assert.deepEqual(ONDERWERPEN.wetgeving, { naam: 'Wet- en regelgeving', sjablonen: [] });
   for (const soort of Object.keys(BRONSOORTEN)) assert.ok(Array.isArray(DETAILVELDEN[soort]), soort);
 });
 
