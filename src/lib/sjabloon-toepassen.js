@@ -314,7 +314,7 @@ export async function pasSjablonenToe(env, onderzoek, inhouden, { meetmomentId =
     const kenmerkGebruikt = new Set(samen.vragen.map((v) => v.kenmerk).filter(Boolean));
     const kenmerkVan = (v) => {
       if (v.kenmerk) return v.kenmerk;
-      const k = kenmerkVoorTekst(v.tekst);
+      const k = kenmerkVoorTekst(v.tekst, Array.isArray(v.opties) ? v.opties : []);
       if (!k || !magKenmerkHebben(v.type, v.meerdere_antwoorden) || (!KENMERKEN[k].meerdere && kenmerkGebruikt.has(k))) return '';
       kenmerkGebruikt.add(k);
       return k;

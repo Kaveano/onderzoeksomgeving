@@ -150,13 +150,31 @@ function normaal(tekst) {
   return String(tekst ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
-// Bekende teksten van achtergrondvragen (genormaliseerd). {bedrijf} mag elke naam zijn.
+/**
+ * Als normaal(), maar een komma of punt tussen twee cijfers blijft een decimaalteken: "1,5 jaar" → "1.5 jaar".
+ * Een punt voor precies drie cijfers scheidt duizendtallen: "1.000 uur" → "1000 uur".
+ */
+function normaalMetDecimalen(tekst) {
+  return String(tekst ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+    .replace(/(\d)\.(\d{3})(?!\d)/g, '$1$2').replace(/(\d)[.,](?=\d)/g, '$1~').replace(/[^a-z0-9~]+/g, ' ').trim().replace(/~/g, '.');
+}
+
+// Bekende teksten van achtergrondvragen (genormaliseerd). {bedrijf} mag elke naam zijn. Bij de diensttijd (derde
+// waarde true) moet na "bij" een organisatie staan, geen afdeling, team of "voorkeur" ("Hoe lang werk je bij voorkeur
+// thuis?" is geen diensttijd), en moeten de antwoordmogelijkheden, als die bekend zijn, op duurklassen lijken.
 const TEKST_PATRONEN = [
   ['afdeling', /^op welke afdeling (werk|werkte) je$/],
-  ['diensttijd', /^hoe lang (werk je al|werk je) bij .+$/],
-  ['diensttijd', /^hoe lang heb je bij .+ gewerkt$/],
+  ['diensttijd', /^hoe lang werk je (?:al )?bij (.+)$/, true],
+  ['diensttijd', /^hoe lang heb je bij (.+) gewerkt$/, true],
   ['leidinggevend', /^geef je zelf leiding aan een of meer medewerkers$/],
 ];
+const GEEN_ORGANISATIE = /\b(?:voorkeur|afdeling|team|functie|leidinggevende|manager|locatie|vestiging|project|thuis)\b/;
+
+/** Lijken de antwoordmogelijkheden (teksten of { label }) op duurklassen? Minstens twee in jaren of maanden. */
+function lijktOpDuur(opties) {
+  const labels = opties.map((o) => (typeof o === 'string' ? o : o?.label));
+  return labels.filter((l) => ['jaar', 'maand'].includes(klasseVan(l)?.eenheid)).length >= 2;
+}
 const TEKST_EXACT = new Map(Object.entries(KENMERKVRAGEN)
   .filter(([, v]) => !v.tekst.includes('{bedrijf}'))
   .map(([sleutel, v]) => [normaal(v.tekst), sleutel]));
@@ -164,13 +182,20 @@ const TEKST_EXACT = new Map(Object.entries(KENMERKVRAGEN)
 /**
  * Het kenmerk van een bekende achtergrondvraag, herkend aan de tekst: de vragen uit "Achtergrondvragen toevoegen"
  * en de achtergrondvragen uit de standaardsjablonen (dezelfde teksten als migratie 0011). Anders ''.
+ * opties (optioneel): de antwoordmogelijkheden (teksten of { label }). Geef ze mee als ze bekend zijn: een vraag
+ * "Hoe lang werk je al bij …?" is alleen diensttijd als de mogelijkheden op duurklassen lijken.
  * Of de vraag het kenmerk mag hebben (soort vraag, één per vragenlijst), controleert de aanroeper.
  */
-export function kenmerkVoorTekst(tekst) {
+export function kenmerkVoorTekst(tekst, opties = null) {
   const t = normaal(tekst);
   if (!t) return '';
   if (TEKST_EXACT.has(t)) return TEKST_EXACT.get(t);
-  for (const [sleutel, patroon] of TEKST_PATRONEN) if (patroon.test(t)) return sleutel;
+  for (const [sleutel, patroon, duur] of TEKST_PATRONEN) {
+    const m = patroon.exec(t);
+    if (!m) continue;
+    if (duur && (GEEN_ORGANISATIE.test(m[1]) || (Array.isArray(opties) && !lijktOpDuur(opties)))) return '';
+    return sleutel;
+  }
   return '';
 }
 
@@ -181,16 +206,19 @@ export function magKenmerk(q) {
 
 const KLASSEN_NORMAAL = new Map(Object.entries(KLASSEGRENZEN).map(([label, k]) => [normaal(label), k]));
 const EENHEID = { jaar: 'jaar', jaren: 'jaar', maand: 'maand', maanden: 'maand', uur: 'uur', uren: 'uur' };
-const GETAL = '(\\d+(?:[.,]\\d+)?|een)';
+const GETAL = '(\\d+(?:\\.\\d+)?|een)';
 const EENHEDEN = '(jaar|jaren|maand|maanden|uur|uren)';
-const getal = (t) => (t === 'een' ? 1 : Number(t.replace(',', '.')));
+const getal = (t) => (t === 'een' ? 1 : Number(t));
+/** Bovengrens inbegrepen ("t/m 34"): bij hele getallen is de grens 35 (niet inbegrepen); anders geen klasse. */
+const totNa = (t) => (Number.isInteger(getal(t)) ? getal(t) + 1 : NaN);
 const KLASSE_PATRONEN = [
   // Jonger dan 35 jaar, Korter dan 3 maanden, Minder dan 20 uur → tot X
   [new RegExp(`^(?:jonger|korter|minder) dan ${GETAL} ${EENHEDEN}$`), (m) => ({ van: null, tot: getal(m[1]), eenheid: EENHEID[m[2]] })],
-  // 35 tot 55 jaar, 1 tot 5 jaar, 20 tot 35 uur → van X tot Y
-  [new RegExp(`^${GETAL} (?:tot|tot en met|t m) ${GETAL} ${EENHEDEN}$`), (m) => ({ van: getal(m[1]), tot: getal(m[2]), eenheid: EENHEID[m[3]] })],
-  // 35 55 jaar (met een streepje geschreven)
-  [new RegExp(`^${GETAL} ${GETAL} ${EENHEDEN}$`), (m) => ({ van: getal(m[1]), tot: getal(m[2]), eenheid: EENHEID[m[3]] })],
+  // 35 tot 55 jaar, 1 tot 5 jaar, 20 tot 35 uur → van X tot Y (Y niet inbegrepen, zoals "55 jaar of ouder" bij 55 begint)
+  [new RegExp(`^${GETAL} tot ${GETAL} ${EENHEDEN}$`), (m) => ({ van: getal(m[1]), tot: getal(m[2]), eenheid: EENHEID[m[3]] })],
+  // 25 tot en met 34 jaar, 25 t/m 34 jaar → van 25 tot 35 (34 is inbegrepen)
+  [new RegExp(`^${GETAL} (?:tot en met|t m) ${GETAL} ${EENHEDEN}$`), (m) => ({ van: getal(m[1]), tot: totNa(m[2]), eenheid: EENHEID[m[3]] })],
+  // Met een streepje ("18-24 jaar", "25-35 jaar") is niet te zeggen of de bovengrens erbij hoort: geen klasse.
   // Een jaar of langer = 12 maanden of langer
   [/^een jaar of langer$/, () => ({ van: 12, tot: null, eenheid: 'maand' })],
   // 55 jaar of ouder, 10 jaar of langer, 35 uur of meer → vanaf X
@@ -203,6 +231,9 @@ const KLASSE_PATRONEN = [
  * Klassegrenzen van een antwoordmogelijkheid (BOUWPLAN B12): { van, tot, eenheid: 'jaar'|'maand'|'uur' }, met
  * van inbegrepen en tot niet inbegrepen (null = geen grens). Eerst exact opzoeken in de vaste tabel
  * KLASSEGRENZEN, daarna een paar vaste patronen ("Jonger dan X jaar", "X tot Y jaar", "X jaar of ouder", …).
+ * "X tot en met Y" en "X t/m Y" nemen Y mee (tot = Y + 1, alleen bij hele getallen). Een streepje ("18-24 jaar")
+ * geeft geen klasse: daar is niet te zien of 24 erbij hoort, en een verkeerde klasse geeft ongemerkt een verkeerde
+ * respons per groep (K S7). Een decimaal mag ("Korter dan 1,5 jaar").
  * null als het label geen klasse is (bijvoorbeeld "Dat zeg ik liever niet"); dan koppel je het met de hand.
  */
 export function klasseVan(label) {
@@ -210,8 +241,9 @@ export function klasseVan(label) {
   if (!t) return null;
   const vast = KLASSEN_NORMAAL.get(t);
   if (vast) return { ...vast };
+  const tk = normaalMetDecimalen(label);
   for (const [patroon, maak] of KLASSE_PATRONEN) {
-    const m = patroon.exec(t);
+    const m = patroon.exec(tk);
     if (!m) continue;
     const k = maak(m);
     if ((k.van === null || Number.isFinite(k.van)) && (k.tot === null || Number.isFinite(k.tot)) && (k.van === null || k.tot === null || k.van < k.tot)) return k;

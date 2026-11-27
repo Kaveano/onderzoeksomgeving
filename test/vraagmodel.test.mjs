@@ -106,12 +106,15 @@ test('kenmerkVoorTekst herkent elke achtergrondvraag uit de sjablonen en de bibl
   for (const [sleutel, v] of Object.entries(KENMERKVRAGEN)) {
     assert.equal(kenmerkVoorTekst(v.tekst), sleutel, v.tekst);
     assert.equal(kenmerkVoorTekst(v.tekst.replace('{bedrijf}', 'Bakkerij De Korenschoof B.V.')), sleutel);
+    // Met de eigen antwoordmogelijkheden erbij (zo roepen het toepassen van een sjabloon en Vragen inlezen het aan).
+    assert.equal(kenmerkVoorTekst(v.tekst.replace('{bedrijf}', 'Gemeente Utrecht'), v.opties), sleutel, `${v.tekst} met opties`);
   }
   // Elke vraag in elk standaardsjabloon: het herkende kenmerk is precies het kenmerk in het sjabloon (of geen).
   let getagd = 0;
   for (const s of INGEBOUWD) {
     for (const q of s.inhoud.vragen) {
       assert.equal(kenmerkVoorTekst(q.tekst), q.kenmerk || '', `${s.id}: ${q.tekst}`);
+      assert.equal(kenmerkVoorTekst(q.tekst.replace('{bedrijf}', 'De Korenschoof'), q.opties || []), q.kenmerk || '', `${s.id}: ${q.tekst} met opties`);
       if (q.kenmerk) getagd++;
     }
   }
@@ -121,6 +124,19 @@ test('kenmerkVoorTekst herkent elke achtergrondvraag uit de sjablonen en de bibl
   assert.equal(kenmerkVoorTekst('Hoe lang heb je bij Voorbeeld B.V. gewerkt?'), 'diensttijd');
   assert.equal(kenmerkVoorTekst('  op welke AFDELING werk je  '), 'afdeling');
   for (const t of ['Hoe tevreden ben je over je werk?', 'Op welke afdeling zou je willen werken?', '', null]) assert.equal(kenmerkVoorTekst(t), '');
+  // Geen diensttijd: na "bij" staat geen organisatie, of de antwoorden zijn geen duurklassen (review P2, bevinding 6).
+  const duur = ['Korter dan 1 jaar', '1 tot 5 jaar', '5 jaar of langer'];
+  for (const t of ['Hoe lang werk je bij voorkeur thuis?', 'Hoe lang werk je al bij deze afdeling?', 'Hoe lang werk je al bij je huidige team?', 'Hoe lang heb je bij deze leidinggevende gewerkt?']) {
+    assert.equal(kenmerkVoorTekst(t), '', t);
+    assert.equal(kenmerkVoorTekst(t, duur), '', `${t} (met duurklassen)`);
+  }
+  assert.equal(kenmerkVoorTekst('Hoe lang werk je al bij De Korenschoof?', ['Ochtend', 'Middag', 'Hele dag']), '', 'antwoorden zonder duur');
+  assert.equal(kenmerkVoorTekst('Hoe lang werk je al bij De Korenschoof?', []), '', 'ja/nee of geen antwoorden');
+  assert.equal(kenmerkVoorTekst('Hoe lang werk je al bij De Korenschoof?', duur), 'diensttijd');
+  assert.equal(kenmerkVoorTekst('Hoe lang werk je al bij De Korenschoof?', [{ label: 'Korter dan 6 maanden' }, { label: '6 tot 12 maanden' }, { label: LIEVER_NIET }]), 'diensttijd');
+  // De andere kenmerken kijken niet naar de antwoorden.
+  assert.equal(kenmerkVoorTekst('Op welke afdeling werk je?', ['Kantoor', 'Productie']), 'afdeling');
+  assert.equal(kenmerkVoorTekst('Geef je zelf leiding aan een of meer medewerkers?', []), 'leidinggevend');
 });
 
 test('klasseVan: elke antwoordmogelijkheid uit de bibliotheek met vaste grenzen, en de patronen van D1 §3.1', () => {
@@ -145,7 +161,18 @@ test('klasseVan: elke antwoordmogelijkheid uit de bibliotheek met vaste grenzen,
     ['30 tot 40 jaar', { van: 30, tot: 40, eenheid: 'jaar' }],
     ['3 tot 9 maanden', { van: 3, tot: 9, eenheid: 'maand' }],
     ['24 tot 32 uur', { van: 24, tot: 32, eenheid: 'uur' }],
-    ['45–55 jaar', { van: 45, tot: 55, eenheid: 'jaar' }],
+    // "tot en met" en "t/m": de bovengrens hoort erbij, dus een 34-jarige valt in 25 t/m 34 (review P2, bevinding 4).
+    ['25 tot en met 34 jaar', { van: 25, tot: 35, eenheid: 'jaar' }],
+    ['25 t/m 34 jaar', { van: 25, tot: 35, eenheid: 'jaar' }],
+    ['1 t/m 4 jaar', { van: 1, tot: 5, eenheid: 'jaar' }],
+    ['3 t/m 5 maanden', { van: 3, tot: 6, eenheid: 'maand' }],
+    ['32 tot en met 40 uur', { van: 32, tot: 41, eenheid: 'uur' }],
+    ['5 t/m 5 jaar', { van: 5, tot: 6, eenheid: 'jaar' }],
+    // Decimalen (een komma of een punt) en een punt als duizendtal.
+    ['1,5 tot 3 jaar', { van: 1.5, tot: 3, eenheid: 'jaar' }],
+    ['Korter dan 1,5 jaar', { van: null, tot: 1.5, eenheid: 'jaar' }],
+    ['2.5 jaar of langer', { van: 2.5, tot: null, eenheid: 'jaar' }],
+    ['1.000 uur of meer', { van: 1000, tot: null, eenheid: 'uur' }],
     ['60 jaar of ouder', { van: 60, tot: null, eenheid: 'jaar' }],
     ['15 jaar of langer', { van: 15, tot: null, eenheid: 'jaar' }],
     ['32 uur of meer', { van: 32, tot: null, eenheid: 'uur' }],
@@ -154,6 +181,9 @@ test('klasseVan: elke antwoordmogelijkheid uit de bibliotheek met vaste grenzen,
   ];
   for (const [label, k] of gevallen) assert.deepEqual(klasseVan(label), k, label);
   for (const label of [LIEVER_NIET, 'Afdeling A', 'Man', '55 tot 35 jaar', 'Ongeveer tien jaar', '', null]) assert.equal(klasseVan(label), null, String(label));
+  // Met een streepje is niet te zien of de bovengrens erbij hoort ("18-24" of "25-35"): met de hand koppelen. Ook geen
+  // klasse uit één getal met een decimaal, en geen "t/m" met een decimaal.
+  for (const label of ['18-24 jaar', '45–55 jaar', '25 - 35 jaar', '1,5 jaar', '0 t/m 2,5 jaar', '5 t/m 4 jaar']) assert.equal(klasseVan(label), null, label);
 });
 
 test('isLieverNiet en magKenmerk', () => {

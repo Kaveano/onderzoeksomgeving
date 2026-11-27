@@ -308,7 +308,7 @@ export function verwerkVragen(rijen, koppeling, context) {
     }
     const item = { tekst, type, opties: type === 'meerkeuze' ? opties : [], verplicht: alsJaNee(cel(rij, 'verplicht')) === 'ja', thema };
     if (type === 'cijfer') item.schaal_soort = NPS_PATROON.test(`${soortTekst} ${normaal(tekst)}`) ? 'nps' : 'rapport';
-    const kenmerk = type === 'meerkeuze' || type === 'janee' ? kenmerkVoorTekst(tekst) : '';
+    const kenmerk = type === 'meerkeuze' || type === 'janee' ? kenmerkVoorTekst(tekst, item.opties) : '';
     if (kenmerk && (kenmerk === 'overig' || !kenmerkBezet.has(kenmerk))) {
       item.kenmerk = kenmerk;
       kenmerkBezet.add(kenmerk);
