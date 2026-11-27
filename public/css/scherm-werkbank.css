@@ -1,2 +1,222 @@
 /* Scherm Analyse · Werkbank: zelf analyses kiezen en uitvoeren, zoals in SPSS.
-   Gebruikt de variabelen uit app.css. Voorvoegsel: wb-. Wordt gevuld in pakket P4. */
+   Gebruikt de variabelen uit app.css. Voorvoegsel: wb-. Breedtes van staven via element.style.width (CSSOM). */
+
+.werkbank { display: grid; gap: var(--ruimte-4); }
+.werkbank > .kaart, .wb-panelen > .wb-paneel > .kaart { margin: 0; }
+.wb-intro summary { cursor: pointer; font-weight: 650; }
+.wb-intro p { margin: var(--ruimte-2) 0 0; max-width: 72ch; }
+
+/* Werkbalk */
+.wb-werkbalk { display: grid; gap: var(--ruimte-2); }
+.wb-werkbalk-velden { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1.4fr) minmax(0, 1fr); gap: var(--ruimte-3); }
+.wb-werkbalk-velden .veld { margin: 0; min-width: 0; }
+.wb-werkbalk-velden select { width: 100%; }
+.wb-werkbalk-rij { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--ruimte-2); }
+.wb-telling { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; }
+.wb-selectie-tekst { margin: 0; }
+
+/* Tabbladen */
+.wb-tabs { display: flex; gap: var(--ruimte-2); border-bottom: 1px solid var(--rand); overflow-x: auto; scrollbar-width: thin; }
+.wb-tab {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: var(--ruimte-2) var(--ruimte-3);
+  border: 0;
+  border-bottom: 3px solid transparent;
+  background: none;
+  color: var(--tekst-zacht);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+.wb-tab:hover { color: var(--tekst); border-bottom-color: var(--rand-sterk); }
+.wb-tab[aria-selected='true'] { color: var(--tekst); font-weight: 650; border-bottom-color: var(--oker); }
+.wb-tab-aantal { color: var(--tekst-zacht); font-weight: 400; }
+.wb-bezig { display: flex; align-items: center; gap: var(--ruimte-3); padding: var(--ruimte-2) var(--ruimte-3); background: var(--primair-zacht); border-radius: var(--radius); }
+.wb-bezig[hidden] { display: none; }
+.wb-bezig .laden { padding: 0; min-height: 0; }
+
+.wb-panelen { display: grid; gap: var(--ruimte-4); min-width: 0; }
+.wb-paneel { min-width: 0; display: grid; gap: var(--ruimte-4); align-content: start; }
+.wb-paneel[hidden] { display: none; }
+/* Op een smaller scherm staat de uitvoer niet naast het formulier (alleen op het tabblad Uitvoer). */
+.wb-paneel-naast { display: none; }
+@media (min-width: 1200px) {
+  .werkbank[data-tab='analyseren'] .wb-panelen { grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); align-items: start; }
+  .werkbank[data-tab='analyseren'] .wb-paneel-naast { display: grid; }
+}
+
+.wb-kaart h2 { margin-top: 0; }
+.wb-noot { font-size: 0.92rem; margin: var(--ruimte-3) 0 0; }
+.wb-klein { display: block; font-size: 0.85rem; margin-top: 2px; }
+.wb-waarschuwing { color: var(--waarschuwing); }
+.wb-melding-privacy { border-left: 3px solid var(--oker); background: var(--vlak-2); }
+.wb-melding-info { background: var(--vlak-licht); }
+.wb-fouten { margin: 0; padding-left: var(--ruimte-5); }
+
+/* Variabelen */
+.wb-nieuw { align-items: center; margin-bottom: var(--ruimte-3); }
+.wb-nieuw-kop { font-weight: 650; margin-right: var(--ruimte-1); }
+.wb-zoekbalk { display: flex; flex-wrap: wrap; gap: var(--ruimte-3); align-items: flex-end; margin-bottom: var(--ruimte-3); }
+.wb-zoekbalk .veld { margin: 0; flex: 1 1 16rem; }
+.wb-chips { display: flex; flex-wrap: wrap; gap: var(--ruimte-1); }
+.wb-chip {
+  min-height: 36px;
+  padding: 0 var(--ruimte-3);
+  border: 1px solid var(--rand);
+  border-radius: 999px;
+  background: var(--vlak-licht);
+  color: var(--tekst-zacht);
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.wb-chip[aria-pressed='true'] { background: var(--primair); border-color: var(--primair); color: var(--tekst-omgekeerd); }
+.wb-variabelen td, .wb-variabelen th { vertical-align: top; }
+.wb-variabelen select { min-width: 11rem; font-size: 0.9rem; }
+.wb-waarden { max-width: 18rem; font-size: 0.88rem; color: var(--tekst-zacht); }
+.wb-rij-acties { white-space: nowrap; }
+.wb-rij-acties .knop { margin: 0 var(--ruimte-1) var(--ruimte-1) 0; }
+.wb-kenmerk-label { margin-left: var(--ruimte-2); }
+tr.wb-zacht th, tr.wb-zacht td { color: var(--tekst-zacht); }
+.wb-selecties h3 { margin-top: 0; }
+.wb-weg { margin-top: var(--ruimte-3); }
+.wb-weg summary { cursor: pointer; }
+
+/* Analyseren: menu en formulieren */
+.wb-menu-groep h3 { margin: var(--ruimte-4) 0 var(--ruimte-2); font-size: 1rem; }
+.wb-menu { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--ruimte-2); grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr)); }
+.wb-menu-knop {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  min-height: 44px;
+  padding: var(--ruimte-3);
+  border: 1px solid var(--rand);
+  border-radius: var(--radius);
+  background: var(--vlak-licht);
+  color: var(--tekst);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.wb-menu-knop:hover { border-color: var(--rand-sterk); background: var(--vlak); }
+.wb-menu-vraag { font-weight: 650; }
+.wb-menu-naam { font-size: 0.9rem; color: var(--accent); }
+.wb-menu-gebruik { font-size: 0.88rem; }
+.wb-terug { margin-bottom: var(--ruimte-2); }
+.wb-form-naam { margin: 0; color: var(--accent); font-weight: 600; }
+.wb-formulier { display: grid; gap: var(--ruimte-3); margin-top: var(--ruimte-3); }
+.wb-slot { min-width: 0; margin: 0; }
+fieldset.wb-slot { border: 1px solid var(--rand); border-radius: var(--radius); padding: var(--ruimte-2) var(--ruimte-3) var(--ruimte-3); }
+fieldset.wb-slot legend { font-weight: 650; padding: 0 var(--ruimte-1); }
+.wb-slot select { width: 100%; }
+.wb-slot-balk { display: flex; flex-wrap: wrap; gap: var(--ruimte-2); align-items: center; margin-bottom: var(--ruimte-2); }
+.wb-slot-balk input[type='search'] { flex: 1 1 12rem; min-width: 0; }
+.wb-slot-balk select { flex: 1 1 12rem; width: auto; min-width: 0; }
+.wb-teller { font-size: 0.88rem; }
+.wb-kieslijst { max-height: 18rem; overflow-y: auto; border: 1px solid var(--rand); border-radius: var(--radius-klein); padding: var(--ruimte-2); background: var(--vlak-licht); }
+.wb-kiesgroep + .wb-kiesgroep { margin-top: var(--ruimte-2); }
+.wb-kiesgroep-kop { margin: 0 0 var(--ruimte-1); font-size: 0.82rem; font-weight: 700; color: var(--tekst-zacht); }
+.wb-kies-item { display: flex; gap: var(--ruimte-2); align-items: flex-start; min-height: 32px; overflow-wrap: anywhere; }
+.wb-kies-item .wb-om { margin-left: auto; white-space: nowrap; font-size: 0.88rem; }
+.wb-meer summary { cursor: pointer; font-weight: 600; min-height: 32px; }
+.wb-opties { display: grid; gap: var(--ruimte-3); margin-top: var(--ruimte-2); }
+.wb-groepen-invoer { display: grid; gap: var(--ruimte-2); grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); }
+.wb-groep-rij { margin: 0; }
+.wb-groep-nr { display: block; font-size: 0.85rem; color: var(--tekst-zacht); }
+/* Gepaard vergelijken: welke vragen samen een paar vormen. */
+.wb-paren-voorbeeld { margin: 0; padding-left: var(--ruimte-5); display: grid; gap: 2px; font-size: 0.92rem; overflow-wrap: anywhere; }
+
+/* Vensters voor variabelen en selecties */
+.wb-dialoog { width: min(46rem, calc(100vw - 2 * var(--ruimte-4))); }
+.wb-voorbeeld-kop { font-size: 1rem; margin: var(--ruimte-4) 0 var(--ruimte-2); }
+.wb-voorbeeld { min-height: 2rem; }
+.wb-voorbeeld-lijst { margin: 0; padding-left: var(--ruimte-5); }
+.wb-voorwaarden { display: grid; gap: var(--ruimte-3); }
+fieldset.wb-voorwaarde { border: 1px solid var(--rand); border-radius: var(--radius); padding: var(--ruimte-2) var(--ruimte-3) var(--ruimte-3); margin: 0; min-width: 0; }
+fieldset.wb-voorwaarde legend { font-weight: 650; padding: 0 var(--ruimte-1); }
+.wb-vinkjes { display: flex; flex-wrap: wrap; gap: var(--ruimte-1) var(--ruimte-4); }
+.wb-pct { width: 5rem; display: inline-block; margin: 0 var(--ruimte-1); }
+
+/* Uitvoer */
+.wb-uitvoer-balk { display: grid; gap: var(--ruimte-1); }
+.wb-uitvoer-balk .knoppen { align-items: center; }
+.wb-uitvoer-item { display: grid; gap: var(--ruimte-2); min-width: 0; }
+.wb-uitvoer-item h3 { margin: 0; }
+.wb-uitvoer-item h3:focus { outline: 2px solid var(--focus); outline-offset: 3px; }
+.wb-meta { margin: 0; font-size: 0.9rem; }
+.wb-blok { min-width: 0; }
+.wb-tabel-titel { margin: var(--ruimte-3) 0 var(--ruimte-1); font-size: 0.98rem; }
+.wb-tabel-uitleg { margin: 0 0 var(--ruimte-1); font-size: 0.9rem; }
+.wb-tabel-wrapper { margin-bottom: var(--ruimte-1); }
+.wb-tabel { font-size: 0.92rem; }
+.wb-tabel td.getal, .wb-tabel td.rechts { white-space: nowrap; }
+.wb-tabel th[scope='row'] { font-weight: 600; color: var(--tekst); font-size: 0.92rem; }
+.wb-tabel tr.wb-zacht th, .wb-tabel tr.wb-zacht td { color: var(--tekst-zacht); font-size: 0.86rem; }
+.wb-nadruk { font-weight: 700; }
+.wb-verborgen { color: var(--tekst-zacht); cursor: help; }
+.wb-breed { color: var(--tekst-zacht); font-style: italic; white-space: normal; }
+.wb-voetnoot { margin: 0; font-size: 0.86rem; color: var(--tekst-zacht); }
+.wb-extra summary { cursor: pointer; font-weight: 600; min-height: 32px; }
+.wb-duiding { background: var(--vlak-2); border-radius: var(--radius); padding: var(--ruimte-2) var(--ruimte-3); }
+.wb-duiding summary { cursor: pointer; font-weight: 650; }
+.wb-duiding p { margin: var(--ruimte-2) 0 0; max-width: 78ch; }
+.wb-apa { display: flex; flex-wrap: wrap; gap: var(--ruimte-2); align-items: center; border-left: 3px solid var(--oker); padding-left: var(--ruimte-3); }
+.wb-apa-zin { margin: 0; flex: 1 1 20rem; }
+.wb-acties { margin-top: var(--ruimte-1); }
+.wb-geweigerd { border-left: 3px solid var(--oker); }
+.wb-notitie { margin: var(--ruimte-1) 0 0; white-space: pre-wrap; }
+
+/* Staafjes bij frequenties (het verborgen deel gearceerd met ×) */
+.wb-grafiek { margin: var(--ruimte-2) 0 0; }
+.wb-staven { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.wb-staven li { display: grid; grid-template-columns: minmax(6rem, 14rem) minmax(0, 1fr) 4rem; gap: var(--ruimte-2); align-items: center; font-size: 0.88rem; }
+.wb-staaf-label { overflow-wrap: anywhere; }
+.wb-staaf-baan { height: 12px; background: var(--vlak-2); border-radius: 2px; overflow: hidden; }
+.wb-staaf { display: block; height: 100%; background: var(--reeks-1); }
+.wb-staaf-verborgen {
+  width: 8px;
+  background: repeating-linear-gradient(45deg, var(--rand-sterk) 0 2px, transparent 2px 5px);
+}
+.wb-staaf-waarde { text-align: right; }
+
+/* Correlatiematrix: op een breed scherm de matrix, op een telefoon een lijst met paren. */
+.wb-paren { display: none; list-style: none; margin: 0; padding: 0; }
+.wb-paren li { display: grid; gap: 2px; padding: var(--ruimte-2) 0; border-bottom: 1px solid var(--rand); }
+.wb-paar { font-weight: 600; overflow-wrap: anywhere; }
+.wb-paar-waarde { font-size: 0.9rem; }
+
+@media (max-width: 820px) {
+  .wb-werkbalk-velden { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 640px) {
+  .wb-blok-matrix .tabel-wrapper { display: none; }
+  .wb-paren { display: block; }
+  /* Variabelenlijst: elke variabele een blokje met kopjes. */
+  table.wb-variabelen, .wb-variabelen tbody, .wb-variabelen tr, .wb-variabelen td, .wb-variabelen th { display: block; }
+  .wb-variabelen thead { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
+  .wb-variabelen tr { border-bottom: 1px solid var(--rand); padding: var(--ruimte-2) 0; }
+  .wb-variabelen td, .wb-variabelen th { border: 0; padding: 2px 0; text-align: left; }
+  .wb-variabelen td[data-label]:not([data-label=''])::before { content: attr(data-label) ': '; color: var(--tekst-zacht); font-size: 0.85rem; }
+  .wb-variabelen td.rechts { text-align: left; }
+  .wb-variabelen select { width: 100%; }
+  .wb-waarden { max-width: none; }
+  .wb-rij-acties { white-space: normal; }
+  .wb-staven li { grid-template-columns: minmax(0, 1fr) 4rem; }
+  .wb-staven .wb-staaf-baan { grid-column: 1 / -1; grid-row: 2; }
+  .wb-kies-item .wb-om { margin-left: 0; }
+  .wb-tab { padding: var(--ruimte-2); }
+}
+
+@media (min-width: 641px) {
+  .wb-variabelen td:nth-child(2) { min-width: 14rem; }
+  .wb-variabelen .wb-waarden { max-width: 12rem; }
+}
+.wb-minb { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ruimte-1) var(--ruimte-2); margin-top: var(--ruimte-2); }
+.wb-minb input[type='number'] { width: 5rem; margin: 0; }
+.wb-minb input[type='checkbox'] { width: auto; }
+@media (max-width: 640px) {
+  .wb-tabs { flex-wrap: wrap; overflow-x: visible; }
+}

@@ -1186,6 +1186,7 @@ export async function toon(container, ctx) {
     h('h2', { id: 'an-intro-kop' }, 'Wat kun je hier?'),
     h('p', { class: 'an-uitleg' },
       'Op het dashboard zie je wát de uitkomsten zijn. Hier toets je of een verschil of verband ook echt is, of dat het net zo goed toeval kan zijn. Bij elke uitkomst staat in gewone taal wat hij betekent.'),
+    h('p', { class: 'an-uitleg' }, 'Wil je zelf kiezen welke analyse je doet, zoals in SPSS? Gebruik de ', h('a', { href: `${basis}/analyse/werkbank` }, 'Werkbank'), '.'),
     h('ol', { class: 'an-vragen' }, VRAGEN.map(([kaart, vraag]) => h('li', {},
       lijstenMetData.length || kaart === datasetKaart
         ? h('button', { type: 'button', class: 'an-vraag-knop', onclick: () => scrollNaar(kaart.el) }, vraag)

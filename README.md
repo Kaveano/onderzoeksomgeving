@@ -3,6 +3,7 @@
 Webapp voor HR-onderzoek bij één bedrijf tegelijk, bijvoorbeeld naar medewerkerstevredenheid, HR-processen of arbeidsvoorwaarden. Je kunt:
 - vragenlijsten uitzetten en mensen uitnodigen (e-mailtekst, QR-code);
 - de resultaten volgen op een dashboard en toetsen of verschillen echt zijn (Analyse, "SPSS in het klein");
+- in de Werkbank zelf analyses doen zoals in SPSS (eigen variabelen, selecties, t-toets, ANOVA, kruistabel, correlaties, betrouwbaarheid, factoranalyse, gepaard vergelijken, lineaire en logistische regressie), met bewaarde analyses voor het rapport;
 - eigen bevindingen vastleggen, ook door gegevens uit Excel in te lezen;
 - je stukken schrijven en een tussen- of eindrapport maken (feiten uit de gegevens, eigen tekst gescheiden);
 - anderen alleen-lezen laten meekijken met een deellink en toegangscode;
