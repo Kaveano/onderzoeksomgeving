@@ -3,28 +3,45 @@
 import { api, downloadUrl } from '../api.js';
 import { h, vervang, laden, melding, meld, meldFout, bevestig, download, aantal, datum } from '../ui.js';
 import * as exp from '../export.js';
+import { haalGegevens, voortgangTekst } from '../gegevens.js';
+
+// Waarschuwing bij ruwe exports (BOUWPLAN B30, K S10): deze bestanden bevatten alle losse antwoorden.
+export const RUW_WAARSCHUWING = 'Dit bestand bevat alle losse antwoorden en is niet anoniem genoeg om te delen met de opdrachtgever.';
+
+/** Vraagt vóór een ruwe export of je weet dat het bestand niet om te delen is. */
+export function bevestigRuweExport() {
+  return bevestig({
+    titel: 'Dit bestand is niet om te delen',
+    tekst: [
+      RUW_WAARSCHUWING,
+      'Bewaar het op een veilige plek. Wil je resultaten delen? Gebruik dan een rapport of een deellink: daarin worden kleine groepen niet getoond.',
+    ],
+    knop: 'Downloaden',
+  });
+}
 
 export async function toon(container, ctx) {
   const o = ctx.onderzoek.onderzoek;
   const onderzoekId = o.id;
   ctx.zetTitel(`Afronden – ${o.titel}`);
 
-  // Bij elke download de actuele gegevens ophalen (er kunnen intussen nieuwe antwoorden zijn).
-  async function haalGegevens() {
-    return api.get(`/onderzoeken/${onderzoekId}/export/data`);
-  }
-
-  /** Knop die een exportbestand maakt; toont "Bezig…" en meldt het resultaat. */
-  function exportKnop(label, maak) {
+  /**
+   * Knop die een exportbestand maakt; toont "Bezig…" en meldt het resultaat.
+   * Bij elke download de actuele gegevens (gegevens.js haalt alleen op wat er sinds de vorige keer veranderd is).
+   * ruw: het bestand bevat alle losse antwoorden; dan eerst de waarschuwing.
+   */
+  function exportKnop(label, maak, { ruw = false } = {}) {
     const knop = h('button', {
       type: 'button',
       class: 'knop',
       onclick: async () => {
+        if (ruw && !(await bevestigRuweExport())) return;
         const oud = knop.textContent;
         knop.disabled = true;
         knop.textContent = 'Bezig met maken…';
         try {
-          const d = await haalGegevens();
+          const d = await haalGegevens(onderzoekId, { voortgang: (geladen, totaal) => { knop.textContent = voortgangTekst(geladen, totaal); } });
+          knop.textContent = 'Bezig met maken…';
           const [inhoud, naam, type] = await maak(d);
           exp.bewaar(inhoud, naam, type);
           meld(`${naam} is gedownload.`, 'succes');
@@ -75,7 +92,7 @@ export async function toon(container, ctx) {
   const kantoor = groep('Excel en Word', null, [
     exportRegel('Excel-werkboek (.xlsx)',
       'Alles in één Excel-bestand met tabbladen: de antwoorden per vragenlijst, scores per thema, het codeboek, eigen invoer, acties en meetmomenten.',
-      exportKnop('Downloaden', metBestanden((b, d) => [b.excelWerkboek(d), exp.bestandsnaam(d, 'werkboek', 'xlsx'), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']))),
+      exportKnop('Downloaden', metBestanden((b, d) => [b.excelWerkboek(d), exp.bestandsnaam(d, 'werkboek', 'xlsx'), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']), { ruw: true })),
     exportRegel('Stukken als Word-bestanden (.zip)',
       'Elk stuk (notities, bevindingen, rapport) als los Word-bestand, samen in één zip-bestand. Een rapport uit het tabblad Rapport download je daar als Word.',
       exportKnop('Downloaden', metBestanden((b, d) => {
@@ -92,7 +109,7 @@ export async function toon(container, ctx) {
         if (!d.inzendingen.length) throw new Error('Er zijn nog geen antwoorden om naar SPSS te exporteren.');
         const z = b.spssPakket(d);
         return [z.inhoud, z.naam, 'application/zip'];
-      }))),
+      }), { ruw: true })),
   ]);
 
   const agenda = groep('Agenda (Outlook)', null, [
@@ -107,11 +124,11 @@ export async function toon(container, ctx) {
   const overig = groep('Losse bestanden (CSV, tekst en JSON)', 'CSV-bestanden openen in Excel en in bijna elk ander programma.', [
     exportRegel('Alle antwoorden (CSV)',
       'Alle vragenlijsten samen, één regel per antwoord. Handig voor een draaitabel in Excel.',
-      exportKnop('Downloaden', (d) => [exp.alleAntwoordenCsv(d), exp.bestandsnaam(d, 'alle-antwoorden', 'csv'), csv])),
+      exportKnop('Downloaden', (d) => [exp.alleAntwoordenCsv(d), exp.bestandsnaam(d, 'alle-antwoorden', 'csv'), csv], { ruw: true })),
     ...vragenlijsten.map((l) => exportRegel(
       `Antwoorden: ${l.titel} (CSV)`,
       `${l.meetmoment_naam ? `${l.meetmoment_naam} · ` : ''}${aantal(l.aantal_inzendingen, 'respondent', 'respondenten')}, één regel per respondent.`,
-      exportKnop('Downloaden', (d) => [exp.antwoordenVragenlijstCsv(d, l.id), exp.bestandsnaam(d, `antwoorden-${l.titel}`, 'csv'), csv]),
+      exportKnop('Downloaden', (d) => [exp.antwoordenVragenlijstCsv(d, l.id), exp.bestandsnaam(d, `antwoorden-${l.titel}`, 'csv'), csv], { ruw: true }),
     )),
     exportRegel('Eigen invoer (CSV)',
       'Interviews, observaties en cijfers die je zelf hebt ingevoerd.',
@@ -127,7 +144,7 @@ export async function toon(container, ctx) {
         d.datasets = [];
         for (const ds of datasets) d.datasets.push((await api.get(`/datasets/${ds.id}`)).dataset);
         return [exp.volledigeJson(d), exp.bestandsnaam(d, 'volledig', 'json'), 'application/json;charset=utf-8'];
-      })),
+      }, { ruw: true })),
   ]);
 
   const exportKaart = h('section', { class: 'kaart' },
@@ -135,6 +152,10 @@ export async function toon(container, ctx) {
     h('p', {}, 'Download de resultaten en je stukken om ze te bewaren of in een ander programma verder te gebruiken.'),
     h('p', { class: 'klein zacht' },
       'Let op: exportbestanden bevatten alle losse antwoorden, ook van kleine groepen. Bewaar ze op een veilige plek en deel ze niet zomaar.'),
+    h('p', { class: 'klein zacht' },
+      'Wil je iets delen met de opdrachtgever? Een rapport uit het tabblad Rapport (als Word of pdf) is ',
+      h('span', { class: 'label label-succes' }, 'geschikt om te delen'),
+      ': daarin staan geen uitkomsten van minder dan 5 respondenten.'),
     kantoor, spss, agenda, overig,
   );
 

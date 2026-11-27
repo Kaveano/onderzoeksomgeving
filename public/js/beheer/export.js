@@ -1,5 +1,6 @@
 // Exportbestanden maken in de browser (CSV voor Excel en een volledige JSON-kopie).
-// De gegevens komen in één keer van GET /api/beheer/onderzoeken/<id>/export/data.
+// De gegevens komen van GET /api/beheer/onderzoeken/<id>/export/data, of (in de schermen) van gegevens.js, dat
+// dezelfde inhoud geeft plus het id van elke inzending.
 // De functies hieronder gebruiken geen DOM (behalve bewaar()), zodat ze ook te testen zijn.
 
 const WEET_NIET = 'weet_niet';
@@ -126,9 +127,40 @@ export function eigenInvoerCsv(data) {
   return maakCsv([kop, ...rijen]);
 }
 
+/** JSON-tekst uit de database als object; anders de tekst zelf (zoals bij rapporten). */
+function alsObject(tekst) {
+  if (typeof tekst !== 'string') return tekst;
+  try {
+    return JSON.parse(tekst);
+  } catch {
+    return tekst;
+  }
+}
+
+/**
+ * Coderingen en citaten verwijzen naar een inzending via het willekeurige id. In de volledige kopie staat in plaats
+ * daarvan de vragenlijst en het respondentnummer (zoals bij de inzendingen hieronder), zodat het bestand op zichzelf
+ * te lezen is. Zonder id's in de gegevens (oude export) blijven die velden leeg.
+ */
+function respondentVerwijzing(data) {
+  const per = new Map();
+  const teller = new Map();
+  for (const i of data.inzendingen || []) {
+    const n = (teller.get(i.vragenlijst_id) || 0) + 1;
+    teller.set(i.vragenlijst_id, n);
+    if (i.id !== undefined) per.set(i.id, { vragenlijst_id: i.vragenlijst_id, respondent: n });
+  }
+  return ({ inzending_id: id, ...rest }) => {
+    if (id === null || id === undefined) return { ...rest, vragenlijst_id: null, respondent: null };
+    const v = per.get(id) || { vragenlijst_id: null, respondent: null };
+    return { ...rest, vragenlijst_id: v.vragenlijst_id, respondent: v.respondent };
+  };
+}
+
 /** Volledige, overzichtelijk geordende kopie van het onderzoek (JSON-tekst). */
 export function volledigeJson(data) {
   const vlag = (x) => !!x;
+  const verwijs = respondentVerwijzing(data);
   const uit = {
     export: {
       ...data.export,
@@ -165,6 +197,19 @@ export function volledigeJson(data) {
     }),
     acties: data.acties,
     datasets: data.datasets || [],
+    // Uitbreidingen (BOUWPLAN §3.2); leeg zolang die onderdelen niet gebruikt zijn.
+    hr_instellingen: data.hr_instellingen || {},
+    personeelscijfers: data.personeelscijfers || [],
+    werkbank: {
+      definities: (data.werkbank_definities || []).map((d) => ({ ...d, definitie: alsObject(d.definitie) })),
+      analyses: (data.werkbank_analyses || []).map((a) => ({ ...a, spec: alsObject(a.spec) })),
+    },
+    codering: {
+      codes: data.codes || [],
+      coderingen: (data.coderingen || []).map(verwijs),
+      citaten: (data.citaten || []).map(verwijs),
+    },
+    bronnen_gekoppeld: data.bronnen_gekoppeld || [],
   };
   return JSON.stringify(uit, null, 2);
 }
