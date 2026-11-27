@@ -6,6 +6,10 @@
 // - vraagscore: het antwoord zelf (1 tot 5); bij een ja/nee-vraag telt ja als 1 en nee als 0; bij een cijfervraag het
 //   cijfer zelf (0 tot 10 of 1 tot 10, het bereik uit data.lijsten.cijferschalen).
 // Een cijfervraag telt nooit mee in een thema- of meetpuntscore (t: en m: zijn alleen schaalvragen).
+// Dezelfde vraag in een gekopieerde vragenlijst heeft dezelfde stam (zie bouwModel), behalve als het soort vraag in de
+// kopie later is veranderd: dan is het een andere variabele.
+
+import { vraagSoort } from './dashboard-rekenen.js';
 
 /** Zet de export om in een handzame opbouw: per vragenlijst de vragen en de antwoorden per respondent. */
 export function bouwModel(data) {
@@ -14,9 +18,11 @@ export function bouwModel(data) {
   for (const l of data.vragenlijsten || []) {
     lijsten.set(l.id, { id: l.id, titel: l.titel, meetmoment_id: l.meetmoment_id || null, vragen: [], inz: [] });
   }
+  const soortVan = new Map(); // vraag-id → vraagSoort (type, cijferschaal, één of meer antwoorden)
   for (const q of data.vragen || []) {
     const l = lijsten.get(q.vragenlijst_id);
     if (!l) continue;
+    soortVan.set(q.id, vraagSoort(q));
     let opties = [];
     if (q.type === 'meerkeuze') {
       try {
@@ -42,6 +48,26 @@ export function bouwModel(data) {
       // Bereik van een cijfervraag; zonder cijferschalen in de export blijft het leeg (dan telt geen enkel cijfer).
       bereik: q.type === 'cijfer' ? cijferschalen[q.schaal_soort] || cijferschalen.rapport || null : null,
     });
+  }
+  // De stam: de stamvraag (bron_vraag_id, anders het eigen id), zodat dezelfde vraag op meer meetmomenten één variabele
+  // is (verloop, SPSS, werkbank). Kreeg een kopie daarna een ander soort (bijvoorbeeld schaal 1–5 → rapportcijfer, toegestaan
+  // zolang die kopie geen antwoorden had), dan is die kopie een eigen variabele, met als stam het id van de eerste vraag
+  // (in de volgorde van de vragenlijsten) met dat soort. Het soort van de stamvraag zelf houdt het stam-id. Een kopie wijst
+  // altijd naar de stamvraag (vragenlijsten.js kopie), dus zo'n id is nooit de stam van een andere vraag.
+  const soortenPerStam = new Map(); // stam → Map<soort, stam van dat soort>
+  for (const l of lijsten.values()) {
+    for (const q of l.vragen) {
+      const wortel = q.stam;
+      let soorten = soortenPerStam.get(wortel);
+      if (!soorten) {
+        soorten = new Map();
+        if (soortVan.has(wortel)) soorten.set(soortVan.get(wortel), wortel);
+        soortenPerStam.set(wortel, soorten);
+      }
+      const soort = soortVan.get(q.id);
+      if (!soorten.has(soort)) soorten.set(soort, soorten.size ? q.id : wortel);
+      q.stam = soorten.get(soort);
+    }
   }
   for (const i of data.inzendingen || []) {
     const l = lijsten.get(i.vragenlijst_id);

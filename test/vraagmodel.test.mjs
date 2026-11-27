@@ -257,6 +257,72 @@ test('dashboard: verloop van een cijfervraag per meetmoment (gemiddelde en eNPS)
   assert.equal(zonderKopie.verloop, undefined, 'maar één meetmoment met dezelfde schaal: geen verloop');
 });
 
+/**
+ * Een kopie waarvan het type daarna veranderde (mag zolang de kopie geen antwoorden heeft): vraag 201, de kopie van de
+ * schaalvraag 101, werd een rapportcijfer; vraag 204, de kopie van de ja/nee-vraag 104, een meerkeuzevraag.
+ * In de vervolgmeting staat bij 201 een 3: een geldig cijfer én een geldige score op 1 tot 5.
+ */
+function maakTypeKopie() {
+  const data = maakExport();
+  Object.assign(data.vragen.find((q) => q.id === 201), { type: 'cijfer', schaal_soort: 'rapport' });
+  Object.assign(data.vragen.find((q) => q.id === 204), { type: 'meerkeuze', opties: opties('Ja', 'Nee', 'Soms') });
+  for (const i of data.inzendingen.filter((x) => x.vragenlijst_id === 20)) Object.assign(i.antwoorden, { 201: 3, 204: 'o1' });
+  return data;
+}
+
+test('kopie met een ander type (schaal → rapportcijfer, ja/nee → meerkeuze): nergens samengeteld (dashboard, SPSS, Analyse)', () => {
+  const data = maakTypeKopie();
+  // Dashboard (ook de bron van de rapportfeiten): geen verloop meer over twee verschillende soorten vragen.
+  const nul = dashboardVan(data, { vragenlijst: 10 });
+  const vervolg = dashboardVan(data, { vragenlijst: 20 });
+  assert.equal(vraagIn(nul, 101).verloop, undefined, 'de schaalvraag staat maar op één meetmoment');
+  assert.equal(vraagIn(vervolg, 201).verloop, undefined, 'het rapportcijfer staat maar op één meetmoment');
+  assert.equal(vraagIn(nul, 104).verloop, undefined, 'de ja/nee-vraag telt niet samen met de meerkeuzevraag');
+  assert.deepEqual([vraagIn(vervolg, 201).gemiddelde, vraagIn(vervolg, 201).n_score], [3, 10], 'het cijfer zelf staat er gewoon');
+  // Zonder typewijziging is er wel een verloop (controle van de opzet).
+  assert.deepEqual(vraagIn(dashboardVan(maakExport(), { vragenlijst: 10 }), 101).verloop.map((p) => p.gemiddelde), [4, 5]);
+
+  // SPSS: de kopie is een eigen variabele (v08, SCALE) en de schaalvraag v01 heeft bij de vervolgmeting geen waarde.
+  const { variabelen, rijen } = spssGegevens(data);
+  const namen = variabelen.map((v) => v.naam);
+  assert.deepEqual(namen, ['respondent', 'vragenlijst', 'meetmoment', 'datum', 'v01', 'v02', 'afdeling', 'v04', 'v05', 'v06', 'v07', 'v07_enps', 'v08', 'v09', 'thema01']);
+  const k = (naam) => namen.indexOf(naam);
+  assert.deepEqual([...new Set(rijen.slice(0, 20).map((r) => r[k('v01')]))], [4]);
+  assert.ok(rijen.slice(20).every((r) => r[k('v01')] === null), 'een rapportcijfer staat nooit in de kolom van een schaalvraag');
+  assert.ok(rijen.slice(20).every((r) => r[k('v08')] === 3));
+  assert.ok(rijen.slice(0, 20).every((r) => r[k('v08')] === null));
+  assert.equal(variabelen[k('v08')].meetniveau, 'SCALE');
+  assert.deepEqual(variabelen[k('v08')].waardelabels, { 1: 'Zeer slecht', 10: 'Uitstekend', 99: 'Weet niet / n.v.t.' });
+  assert.ok(rijen.slice(20).every((r) => r[k('v04')] === null && r[k('v09')] === 1), 'een meerkeuzeantwoord staat niet in de ja/nee-kolom');
+  const nm = spssVariabeleNamen(data);
+  assert.deepEqual([nm.vraag.get(101), nm.vraag.get(201), nm.vraag.get(104)], ['v01', 'v08', 'v04']);
+
+  // Analyse (stap voor stap) en werkbank: per stam één soort vraag; v:101 bestaat in de vervolgmeting niet.
+  const model = bouwModel(data);
+  const soorten = new Map();
+  for (const l of model.lijsten) for (const q of l.vragen) soorten.set(q.stam, new Set([...(soorten.get(q.stam) || []), `${q.type}:${q.type === 'cijfer' ? q.schaal_soort : ''}`]));
+  assert.ok([...soorten.values()].every((s) => s.size === 1), 'elke stam heeft één soort vraag');
+  const [l10, l20] = [10, 20].map((id) => model.lijsten.find((l) => l.id === id));
+  assert.deepEqual([l10.vragen[0].stam, l20.vragen[0].stam, l20.vragen[1].stam], [101, 201, 102], 'een gewone kopie houdt de stam');
+  assert.deepEqual(waardenVan(l10, 'v:101'), Array(20).fill(4));
+  assert.equal(waardenVan(l20, 'v:101'), null, 'de schaalvraag is in de vervolgmeting niet gevraagd');
+  assert.deepEqual(waardenVan(l20, 'v:201'), Array(10).fill(3));
+  assert.deepEqual(vragenVan(l10, 'v:201'), []);
+  // Een themascore blijft schaal-only: in de vervolgmeting telt alleen vraag 202 mee.
+  assert.deepEqual(vragenVan(l20, 't:1').map((q) => q.id), [202]);
+
+  // De stamvraag houdt zijn stam, ook als zijn vragenlijst later in de export staat; zonder stamvraag krijgt de
+  // eerste kopie de stam.
+  const omgekeerd = maakTypeKopie();
+  omgekeerd.vragenlijsten.reverse();
+  const m2 = bouwModel(omgekeerd);
+  assert.deepEqual([m2.lijsten[0].vragen[0].stam, m2.lijsten[1].vragen[0].stam], [201, 101]);
+  const zonderStam = maakTypeKopie();
+  zonderStam.vragenlijsten = zonderStam.vragenlijsten.filter((l) => l.id === 20);
+  zonderStam.vragen = zonderStam.vragen.filter((q) => q.vragenlijst_id === 20);
+  assert.equal(bouwModel(zonderStam).lijsten[0].vragen[0].stam, 101);
+});
+
 test('dashboard: uitsplitsing met een kolom per cijfervraag, elke kolom apart onderdrukt', () => {
   const data = maakExport();
   // Productie en Logistiek: alleen 4 van de 8 geven een rapportcijfer.

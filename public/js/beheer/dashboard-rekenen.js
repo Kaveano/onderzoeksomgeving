@@ -80,6 +80,19 @@ export function isBeschermd(q) {
 }
 
 /**
+ * Het soort antwoord van een vraag (een rij uit de tabel vragen): het type, bij een cijfervraag met de cijferschaal en
+ * bij meerkeuze één of meer antwoorden. Vragen met dezelfde stamvraag (een gekopieerde vragenlijst) tellen alleen samen
+ * als dit gelijk is: het type van een kopie kan nog veranderen zolang die geen antwoorden heeft, en een 9 als
+ * rapportcijfer is geen 9 op een schaal van 1 tot 5 (BOUWPLAN §1.1: liever een ontbrekend getal dan een verkeerd).
+ * De schaalsoort van een schaalvraag (eens, tevreden …) telt niet: het blijft 1 tot 5.
+ */
+export function vraagSoort(q) {
+  if (q.type === 'cijfer') return `cijfer:${q.schaal_soort || ''}`;
+  if (q.type === 'meerkeuze') return q.meerdere_antwoorden ? 'meerkeuze:meer' : 'meerkeuze:een';
+  return String(q.type);
+}
+
+/**
  * Telt in één doorloop alles wat het dashboard nodig heeft voor een set vragen en inzendingen.
  * Geeft per vraag tellingen en per thema/meetpunt (schaalvragen) som, aantal antwoorden en respondenten.
  */
@@ -436,8 +449,9 @@ export function dashboardUitRijen(rijen, keuze = { vragenlijst: null, uitsplitse
           const info = lijstInfo.get(ander.vragenlijst_id);
           const mmId = info?.meetmoment_id;
           if (!mmId) continue;
-          // Een cijfervraag alleen samentellen met dezelfde cijferschaal (0–10 en 1–10 lezen anders).
-          if (s.q.type === 'cijfer' && (ander.type !== 'cijfer' || ander.schaal_soort !== s.q.schaal_soort)) continue;
+          // Alleen samentellen met een kopie van hetzelfde soort (type, en bij een cijfervraag dezelfde cijferschaal):
+          // een kopie die daarna een ander type kreeg, telt niet mee in dit verloop.
+          if (vraagSoort(ander) !== vraagSoort(s.q)) continue;
           const a = vraagAgg.get(ander.id);
           const p = perMm.get(mmId) || { som: 0, n: 0, ja: 0, janee: 0, klein: false, open: false, lijstN: 0, deelVerborgen: false, tellingen: Array(11).fill(0) };
           const lijstN = inzPerLijst.get(ander.vragenlijst_id).length;
