@@ -25,6 +25,7 @@ import * as inlezen from './routes/inlezen.js';
 // [P2] Vraagmodel (cijfervraag, achtergrondkenmerken)
 // [P3] HR-analytics (instellingen, personeelscijfers)
 // [P4] Werkbank (definities, analyses)
+import * as werkbank from './routes/werkbank.js';
 // [P5] Bibliotheek, bronnen bij een onderzoek en coderen
 // [P6] Rapporten v2
 
@@ -128,6 +129,13 @@ const BEHEER_ROUTES = [
   // [P2] Vraagmodel: kenmerkvragen en kenmerk per vraag
   // [P3] HR-analytics: instellingen en personeelscijfers
   // [P4] Werkbank: definities en analyses
+  ['GET', `${B}/onderzoeken/:id/werkbank`, werkbank.overzicht],
+  ['POST', `${B}/onderzoeken/:id/werkbank/definities`, werkbank.definitieNieuw],
+  ['PUT', `${B}/werkbank/definities/:id`, werkbank.definitieWijzig],
+  ['DELETE', `${B}/werkbank/definities/:id`, werkbank.definitieVerwijder],
+  ['POST', `${B}/onderzoeken/:id/werkbank/analyses`, werkbank.analyseNieuw],
+  ['PUT', `${B}/werkbank/analyses/:id`, werkbank.analyseWijzig],
+  ['DELETE', `${B}/werkbank/analyses/:id`, werkbank.analyseVerwijder],
   // [P5] Bibliotheek, bronnen bij een onderzoek en coderen
   // [P6] Rapporten v2
 ];
