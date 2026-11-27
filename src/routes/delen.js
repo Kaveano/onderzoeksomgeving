@@ -26,9 +26,13 @@ const MAX_POGINGEN = 5; // per afzender per link
 const MAX_POGINGEN_LINK = 50; // alle afzenders samen per link (remt raden vanaf veel adressen)
 const MAX_LINKS_PER_ONDERZOEK = 20;
 const CODE_PATROON = /^[A-Za-z0-9_-]{16,40}$/;
-// Boven dit aantal inzendingen (alle vragenlijsten van het onderzoek samen) rekent de server het dashboard niet
-// live uit voor een kijker: dat kost te veel rekentijd op de gratis laag. Instelbaar met de variabele
-// KIJK_MAX_INZENDINGEN (alleen hoger of lager, nooit uit). Zie docs/beheer.md (belastingtest).
+// Boven deze grenzen rekent de server het dashboard niet live uit voor een kijker: dat kost te veel rekentijd op
+// de gratis laag (10 ms per verzoek). De rekentijd groeit met het aantal antwoordcellen: per vragenlijst het aantal
+// inzendingen × het aantal vragen, opgeteld over alle vragenlijsten van het onderzoek (het dashboard telt ze
+// allemaal, ook als de kijker er één bekijkt). Gemeten (docs/beheer.md, "Rekentijd voor meelezers"): warm ongeveer
+// 5 ms bij 50.000 cellen, 7 ms bij 80.000 en 9 ms bij 100.000. Daarom 60.000, met ruimte voor het inlezen van de
+// databaserijen. Instelbaar met de variabelen KIJK_MAX_CELLEN en KIJK_MAX_INZENDINGEN (hoger of lager, nooit uit).
+export const KIJK_MAX_CELLEN = 60_000;
 export const KIJK_MAX_INZENDINGEN = 3000;
 export const TE_GROOT = 'Deze resultaten zijn te groot om hier live te tonen. Vraag de onderzoeker om een rapport.';
 // Zonder tekens die op elkaar lijken (0/O, 1/I/L).
@@ -336,9 +340,19 @@ export async function dashboard({ request, env, params }) {
   await vereisSessie(request, env, link);
   if (!link.mag.dashboard) throw new Fout(403, 'De resultaten zijn niet gedeeld via deze link.');
   const o = await haalOnderzoek(env, link.onderzoek_id);
-  const grens = Number(env.KIJK_MAX_INZENDINGEN) > 0 ? Number(env.KIJK_MAX_INZENDINGEN) : KIJK_MAX_INZENDINGEN;
-  const tel = await een(env, 'SELECT COUNT(*) AS n FROM inzendingen i JOIN vragenlijsten vl ON vl.id = i.vragenlijst_id WHERE vl.onderzoek_id = ?', o.id);
-  if (tel.n > grens) throw new Fout(413, TE_GROOT, { te_groot: true });
+  const grens = (naam, standaard) => (Number(env[naam]) > 0 ? Number(env[naam]) : standaard);
+  // Eén query: per vragenlijst inzendingen en vragen geteld via hun index, zonder antwoorden te lezen.
+  const tel = await een(
+    env,
+    `SELECT COALESCE(SUM(t.n), 0) AS n, COALESCE(SUM(t.n * t.v), 0) AS cellen FROM (
+       SELECT (SELECT COUNT(*) FROM inzendingen i WHERE i.vragenlijst_id = vl.id) AS n,
+              (SELECT COUNT(*) FROM vragen q WHERE q.vragenlijst_id = vl.id) AS v
+       FROM vragenlijsten vl WHERE vl.onderzoek_id = ?) t`,
+    o.id,
+  );
+  if (tel.n > grens('KIJK_MAX_INZENDINGEN', KIJK_MAX_INZENDINGEN) || tel.cellen > grens('KIJK_MAX_CELLEN', KIJK_MAX_CELLEN)) {
+    throw new Fout(413, TE_GROOT, { te_groot: true });
+  }
   const url = new URL(request.url);
   const d = await berekenDashboard(env, o, {
     vragenlijst: url.searchParams.get('vragenlijst'),

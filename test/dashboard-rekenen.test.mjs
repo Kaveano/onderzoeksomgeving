@@ -382,7 +382,7 @@ test('criterium 5: een deellink met alleen een rapport en de tussenstand bewaart
   assert.deepEqual(na.onderdelen, { dashboard: false, open_antwoorden: false, tussenstand: true, stukken: [], rapporten: [70] });
 });
 
-test('meelezer: boven KIJK_MAX_INZENDINGEN geen live dashboard, met een duidelijke melding', async () => {
+test('meelezer: boven KIJK_MAX_INZENDINGEN of KIJK_MAX_CELLEN geen live dashboard, met een duidelijke melding', async () => {
   const r = await delen.nieuw({ request: jsonVerzoek('http://lokaal/x', { naam: 'OR', onderdelen: { dashboard: true } }), env, params: { id: '2' } });
   const { deellink, toegangscode } = JSON.parse(await r.text());
   const binnen = await delen.toegang({ request: jsonVerzoek(`http://lokaal/api/kijk/${deellink.code}/toegang`, { toegangscode }, { 'CF-Connecting-IP': '192.0.2.7' }), env, params: { code: deellink.code } });
@@ -394,6 +394,15 @@ test('meelezer: boven KIJK_MAX_INZENDINGEN geen live dashboard, met een duidelij
   assert.equal(ok.status, 200, 'onderzoek 2 heeft 30 inzendingen');
   await assert.rejects(vraag({ ...env, KIJK_MAX_INZENDINGEN: '29' }), (e) => e.status === 413 && e.message === 'Deze resultaten zijn te groot om hier live te tonen. Vraag de onderzoeker om een rapport.');
   assert.equal((await vraag({ ...env, KIJK_MAX_INZENDINGEN: '30' })).status, 200, 'precies op de grens mag nog');
+  // Antwoordcellen: per vragenlijst inzendingen × vragen, opgeteld (de rekentijd groeit daarmee, niet met inzendingen alleen).
+  assert.equal(delen.KIJK_MAX_CELLEN, 60_000);
+  const { cellen } = await env.DB.prepare(`SELECT SUM((SELECT COUNT(*) FROM inzendingen i WHERE i.vragenlijst_id = vl.id) * (SELECT COUNT(*) FROM vragen q WHERE q.vragenlijst_id = vl.id)) AS cellen
+    FROM vragenlijsten vl WHERE vl.onderzoek_id = 2`).first();
+  assert.ok(cellen > 30, `onderzoek 2 heeft ${cellen} cellen`);
+  await assert.rejects(vraag({ ...env, KIJK_MAX_CELLEN: String(cellen - 1) }), (e) => e.status === 413 && e.message === delen.TE_GROOT);
+  assert.equal((await vraag({ ...env, KIJK_MAX_CELLEN: String(cellen) })).status, 200, 'precies op de celgrens mag nog');
+  // Een onzinnige waarde valt terug op de standaard (nooit uit).
+  assert.equal((await vraag({ ...env, KIJK_MAX_CELLEN: 'uit', KIJK_MAX_INZENDINGEN: '0' })).status, 200);
 });
 
 // ---------- Verloop van een ja/nee-achtergrondvraag: elke bijdragende vragenlijst moet op zich veilig zijn ----------

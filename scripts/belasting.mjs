@@ -158,7 +158,7 @@ async function meten({ onderzoekId, vragenlijstId, vragen }) {
   try {
     meet('meelezer: dashboard', await roep(`/api/kijk/${link.deellink.code}/dashboard?vragenlijst=${vragenlijstId}`, { cookie: kijkKoekje }));
   } catch (e) {
-    metingen.push({ naam: 'meelezer: dashboard', ms: null, grootte: '', extra: /413/.test(e.message) ? 'geweigerd: te groot (KIJK_MAX_INZENDINGEN)' : e.message });
+    metingen.push({ naam: 'meelezer: dashboard', ms: null, grootte: '', extra: /413/.test(e.message) ? 'geweigerd: te groot (KIJK_MAX_CELLEN of KIJK_MAX_INZENDINGEN)' : e.message });
   }
   // 4. In de browser: zelf rekenen uit de gedeelde gegevens (hier in Node gemeten).
   rijen.sort((a, b) => (a.datum < b.datum ? -1 : a.datum > b.datum ? 1 : a.id - b.id));

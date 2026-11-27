@@ -66,7 +66,7 @@ Het zware werk zit in het doorgeven en uitrekenen van alle antwoorden. Daarom:
 - **Eén kopie in de browser.** `gegevens.js` bewaart de antwoorden in het geheugen van het tabblad (hooguit 3 onderzoeken; weg bij vernieuwen). Een volgend scherm haalt alleen de kop opnieuw op en daarna alleen de vragenlijsten waarvan het aantal of het controlegetal veranderd is.
 - **Rapporten rekenen in de browser.** *Cijfers bijwerken* rekent de dashboards per vragenlijst zelf uit met `dashboardUitRijen`, dus zonder een verzoek per vragenlijst.
 - **Alle resultaten** rekent boven 1.500 inzendingen (`GROOT_ONDERZOEK` in `gegevens.js`) in de browser, met dezelfde code als de server. Daaronder rekent de server, zoals altijd.
-- **Meelezers** krijgen boven `KIJK_MAX_INZENDINGEN` (standaard 3.000) geen live dashboard; zie "Deellinks".
+- **Meelezers** krijgen boven `KIJK_MAX_CELLEN` antwoordcellen (standaard 60.000: per vragenlijst inzendingen × vragen, opgeteld) of boven `KIJK_MAX_INZENDINGEN` inzendingen (standaard 3.000) geen live dashboard; zie "Rekentijd voor meelezers" en "Deellinks".
 
 ### Belastingtest
 
@@ -85,8 +85,10 @@ Gemeten op 27 november 2026 met een lokale testserver (`npx wrangler dev`, lapto
 | `export/inzendingen`, alle delen samen | 57 ms (1 deel) | 128 ms (3 delen, langste 44 ms) | 211 ms (5 delen, langste 46 ms) |
 | `dashboard` (alle resultaten) | 49 ms | 75 ms | 78 ms |
 | `dashboard` met uitsplitsing | 37 ms | 51 ms | 78 ms |
-| meelezer: `dashboard` | 37 ms | 45 ms | geweigerd (boven 3.000) |
+| meelezer: `dashboard` | 37 ms¹ | 45 ms¹ | geweigerd (boven 3.000) |
 | browser: `dashboardUitRijen` (gemeten in Node) | 24 ms | 33 ms | 34 ms |
+
+¹ Gemeten met de oude grens (alleen 3.000 inzendingen). Met de grens op antwoordcellen (60.000) weigert de server de meelezer bij 100 vragen al boven 600 inzendingen; zie hieronder.
 
 Wat dit zegt: één deel van de antwoorden kost ongeveer evenveel als een export van 1.000 respondenten, ongeacht de grootte van het onderzoek. De oude export en het dashboard groeien mee met het aantal respondenten; boven 1.500 inzendingen rekent *Alle resultaten* daarom in de browser. Getest tot 5.000 respondenten × 100 vragen (lokaal).
 
@@ -102,6 +104,21 @@ Wat dit zegt: één deel van de antwoorden kost ongeveer evenveel als een export
 8. Ruim op: `npx wrangler delete --config wrangler.proef.jsonc` en `npx wrangler d1 delete onderzoeksomgeving-proef`.
 
 Die meting op Cloudflare is nog niet gedaan; tot dan geldt de lokale meting hierboven als indicatie.
+
+### Rekentijd voor meelezers
+
+De doorlooptijden hierboven zeggen niets over de CPU-tijd. Die groeit met het aantal **antwoordcellen**: per vragenlijst het aantal inzendingen × het aantal vragen, opgeteld over alle vragenlijsten van het onderzoek (het dashboard rekent ze allemaal, ook als de meelezer er één bekijkt). `scripts/rekentijd-meelezer.mjs` meet in Node (dezelfde V8 als de Worker) wat de server per verzoek doet: elke inzending inlezen, `dashboardUitRijen`, `kijkerDashboard` en het antwoord als JSON. Gemeten op 27 november 2026 (Node 22, laptop), elke vorm in een eigen proces; het 2e en 3e verzoek:
+
+| Vorm (lijsten × inzendingen × vragen) | Cellen | Zonder uitsplitsing | Met uitsplitsing |
+|---|---:|---:|---:|
+| 1 × 300 × 100 | 30.000 | 3 ms | 5 ms |
+| 1 × 400 × 100 | 40.000 | 4 ms | 5 ms |
+| 1 × 500 × 100 | 50.000 | 4–11 ms | 7–8 ms |
+| 3 × 300 × 60 | 54.000 | 3 ms | 7–8 ms |
+| 1 × 800 × 100 | 80.000 | 7–12 ms | 7 ms |
+| 1 × 1.000 × 100 | 100.000 | 9–17 ms | 9 ms |
+
+Het eerste verzoek in een vers proces kost 12 tot 30 ms, bij elke grootte vanaf 30.000 cellen: V8 vertaalt de code dan nog. Daar helpt geen grens tegen; het geldt ook voor het gewone dashboard. Het inlezen van de databaserijen komt er in de Worker nog bij. Daarom staat `KIJK_MAX_CELLEN` op **60.000** (ruim binnen 10 ms als de Worker warm is). Bij 100 vragen per vragenlijst is dat 600 inzendingen; bij 30 vragen 2.000. `KIJK_MAX_INZENDINGEN` (3.000) blijft als extra grens. Pas beide aan na de meting op de proef-Worker (stap 7 hierboven; zet ze als variabelen bij de Worker).
 
 
 ## Privacy en beveiliging (technisch)
@@ -125,7 +142,7 @@ Die meting op Cloudflare is nog niet gedaan; tot dan geldt de lokale meting hier
 - Een meelezer krijgt een eigen sessiecookie per link (`__Host-kijk-…`, HttpOnly, Secure, SameSite=Strict, 8 uur). Intrekken, een nieuwe code, verlopen of verwijderen beëindigt lopende sessies direct.
 - De server geeft een meelezer alleen wat is aangevinkt. Uitkomsten van een vragenlijst, vraag, thema of meetmoment met minder dan 5 respondenten worden aan de serverkant weggelaten, net als open antwoorden (tenzij aangevinkt) en links naar vragenlijsten. Een thema of meetmoment met een vraag van minder dan 5 respondenten valt ook weg, net als punten in het verloop die op een kleine of nog open vragenlijst berusten.
 - Vragenlijsten die nog openstaan, krijgt een meelezer alleen als "tussenstand" is aangevinkt (anders is het antwoord van een nieuwe respondent af te leiden door twee keer te kijken). `tussenstand` staat los van `dashboard` en wordt ook bewaard bij een link die alleen rapporten deelt.
-- Boven `KIJK_MAX_INZENDINGEN` inzendingen (standaard 3.000, alle vragenlijsten van het onderzoek samen) rekent de server het dashboard niet live uit voor een meelezer (413, met de melding om een rapport te vragen). Dat kost anders te veel rekentijd. De grens is aan te passen met de variabele `KIJK_MAX_INZENDINGEN` bij de Worker.
+- Boven `KIJK_MAX_CELLEN` antwoordcellen (standaard 60.000: per vragenlijst inzendingen × vragen, alle vragenlijsten van het onderzoek samen) of boven `KIJK_MAX_INZENDINGEN` inzendingen (standaard 3.000) rekent de server het dashboard niet live uit voor een meelezer (413, met de melding om een rapport te vragen). Dat kost anders te veel rekentijd. Beide grenzen zijn aan te passen met een variabele met dezelfde naam bij de Worker; een waarde van 0 of geen getal geeft de standaard.
 - Een rapport wordt voor een meelezer aan de serverkant opgebouwd uit de vastgelegde feiten, alleen met de hoofdstukken die aanstaan. Zonder tussenstand gebruikt `rapportVoorKijker` de optie `verbergOpen` (standaard aan): van een vragenlijst die op de peildatum openstond (`feiten.lijsten[].status`) komen Resultaten, de bijlagen, de responszin, de verlooppunten van dat meetmoment en de toetsen van of naar dat meetmoment niet mee; de responstabel wel. Dat werkt ook voor oude rapporten.
 - Van meelezers wordt alleen de datum van het laatste bezoek per link bewaard, plus bij verkeerde toegangscodes de afzendercode (een dag).
 
