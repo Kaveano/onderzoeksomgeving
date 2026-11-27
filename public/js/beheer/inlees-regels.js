@@ -3,6 +3,8 @@
 // cijfers, vragen, antwoorden of een dataset van, en melden per regel wat niet te gebruiken is.
 // Er wordt nooit iets geraden: wat niet herkend wordt, blijft leeg en staat in de lijst met opmerkingen.
 
+import { kenmerkVoorTekst } from './kenmerken.js';
+
 const leeg = (w) => w === null || w === undefined || (typeof w === 'string' && w.trim() === '');
 const tekstVan = (w) => (leeg(w) ? '' : String(w).trim());
 const gelijk = (a, b) => tekstVan(a).toLowerCase() === tekstVan(b).toLowerCase();
@@ -227,22 +229,33 @@ export function verwerkCijfers(rijen, koppeling, context) {
 export const VRAAG_VELDEN = [
   { sleutel: 'tekst', label: 'Vraag of stelling', verplicht: true, herken: [/^(vraag|stelling|vraagtekst|tekst|item)\b/] },
   { sleutel: 'thema', label: 'Thema', herken: [/^thema\b/], hulp: 'Naam van het thema. Bestaat het thema nog niet, dan wordt het aangemaakt. Zonder kolom komt alles bij het thema dat je hieronder kiest.' },
-  { sleutel: 'soort', label: 'Soort vraag', herken: [/^(soort|type|vraagtype|vraagsoort)\b/], hulp: 'schaal, ja/nee, meerkeuze of open. Leeg: meerkeuze als er antwoordmogelijkheden staan, anders schaal.' },
+  { sleutel: 'soort', label: 'Soort vraag', herken: [/^(soort|type|vraagtype|vraagsoort)\b/], hulp: 'schaal, cijfer (0 tot 10 of rapportcijfer 1 tot 10), ja/nee, meerkeuze of open. Leeg: meerkeuze als er antwoordmogelijkheden staan, anders schaal.' },
   { sleutel: 'opties', label: 'Antwoordmogelijkheden', herken: [/^(antwoord|optie|keuze)/], hulp: 'Alleen voor meerkeuze: de mogelijkheden in één cel, gescheiden door een puntkomma (;).' },
   { sleutel: 'verplicht', label: 'Verplicht', herken: [/^verplicht\b/], hulp: 'ja of nee. Leeg telt als nee.' },
 ];
 
 const SOORT_PATRONEN = [
   ['schaal', /^(schaal|stelling|likert|score|1 5|1 tot 5|schaalvraag|schaal 1 5)/],
+  ['cijfer', /^(cijfer|rapportcijfer|nps|enps|0 10|0 tot 10|1 10|1 tot 10)/],
   ['janee', /^(ja nee|janee|ja of nee|ja nee vraag)/],
   ['meerkeuze', /^(meerkeuze|keuze|multiple choice|keuzevraag|meerdere)/],
   ['open', /^(open|tekst|vrij|open vraag|toelichting)/],
 ];
 
-/** context: { themas: [{id, naam}], standaardThema: id, bestaand: aantal vragen dat er al is, max: 100 }. */
+/** Een cijfervraag van 0 tot 10 (aanbevelen, eNPS) of anders een rapportcijfer van 1 tot 10. */
+const NPS_PATROON = /nps|enps|aanbevel|0 (tot )?10/;
+
+/**
+ * context: { themas: [{id, naam}], standaardThema: id, bestaand: aantal vragen dat er al is, max: 100,
+ *            kenmerken: kenmerken die al in de vragenlijst staan (optioneel) }.
+ * Een cijfervraag krijgt schaal_soort ('nps' of 'rapport'); een bekende achtergrondvraag (zoals "Op welke afdeling
+ * werk je?") krijgt zijn kenmerk, als de soort klopt en het kenmerk nog niet in de vragenlijst of eerder in het
+ * bestand staat.
+ */
 export function verwerkVragen(rijen, koppeling, context) {
   const items = [];
   const problemen = [];
+  const kenmerkBezet = new Set(context.kenmerken || []);
   const nieuweThemas = [];
   const cel = (rij, sleutel) => (koppeling[sleutel] >= 0 ? rij[koppeling[sleutel]] : null);
   problemen.push(...totaalMeldingen(context.totaalrijen));
@@ -263,7 +276,7 @@ export function verwerkVragen(rijen, koppeling, context) {
     if (soortTekst) {
       const gevonden = SOORT_PATRONEN.find(([, p]) => p.test(soortTekst));
       if (!gevonden) {
-        problemen.push(`Regel ${regel}: soort "${tekstVan(cel(rij, 'soort'))}" niet herkend (kies schaal, ja/nee, meerkeuze of open). Deze regel wordt overgeslagen.`);
+        problemen.push(`Regel ${regel}: soort "${tekstVan(cel(rij, 'soort'))}" niet herkend (kies schaal, cijfer, ja/nee, meerkeuze of open). Deze regel wordt overgeslagen.`);
         return;
       }
       type = gevonden[0];
@@ -293,7 +306,14 @@ export function verwerkVragen(rijen, koppeling, context) {
       problemen.push(`Regel ${regel}: geen thema. Deze regel wordt overgeslagen.`);
       return;
     }
-    items.push({ tekst, type, opties: type === 'meerkeuze' ? opties : [], verplicht: alsJaNee(cel(rij, 'verplicht')) === 'ja', thema });
+    const item = { tekst, type, opties: type === 'meerkeuze' ? opties : [], verplicht: alsJaNee(cel(rij, 'verplicht')) === 'ja', thema };
+    if (type === 'cijfer') item.schaal_soort = NPS_PATROON.test(`${soortTekst} ${normaal(tekst)}`) ? 'nps' : 'rapport';
+    const kenmerk = type === 'meerkeuze' || type === 'janee' ? kenmerkVoorTekst(tekst, item.opties) : '';
+    if (kenmerk && (kenmerk === 'overig' || !kenmerkBezet.has(kenmerk))) {
+      item.kenmerk = kenmerk;
+      kenmerkBezet.add(kenmerk);
+    }
+    items.push(item);
   });
   const ruimte = Math.max(0, (context.max ?? 100) - (context.bestaand || 0));
   if (items.length > ruimte) {
@@ -339,10 +359,24 @@ function optiesVan(q) {
 
 const WEET_NIET = /^(weet niet|wn|n v t|nvt|geen mening|weet niet n v t|weet ik niet|niet van toepassing)$/;
 
+/** Bereik van een cijfervraag: uit de cijferschalen, of anders 0 tot 10 (nps) en 1 tot 10 (rapportcijfer). */
+function cijferBereik(q, cijferschalen) {
+  const c = cijferschalen && (cijferschalen[q.schaal_soort] || cijferschalen.rapport);
+  if (c) return c;
+  return q.schaal_soort === 'nps' ? { min: 0, max: 10 } : { min: 1, max: 10 };
+}
+
 /** Zet één cel om in een antwoord. Geeft { waarde } (undefined = leeg) of { fout: uitleg }. */
-export function leesAntwoord(q, cel, schalen) {
+export function leesAntwoord(q, cel, schalen, cijferschalen = null) {
   if (leeg(cel)) return { waarde: undefined };
   const t = tekstVan(cel);
+  if (q.type === 'cijfer') {
+    const { min, max } = cijferBereik(q, cijferschalen);
+    const n = alsGetal(cel);
+    if (n !== null) return Number.isInteger(n) && n >= min && n <= max ? { waarde: n } : { fout: `"${t}" is geen cijfer van ${min} tot ${max}` };
+    if (WEET_NIET.test(normaal(t))) return q.weet_niet ? { waarde: 'weet_niet' } : { waarde: undefined, opmerking: 'weet niet telt hier als leeg' };
+    return { fout: `"${t}" is geen cijfer van ${min} tot ${max}` };
+  }
   if (q.type === 'schaal') {
     const n = alsGetal(cel);
     if (n !== null) return Number.isInteger(n) && n >= 1 && n <= 5 ? { waarde: n } : { fout: `"${t}" is geen score van 1 tot 5` };
@@ -388,7 +422,7 @@ export function leesAntwoord(q, cel, schalen) {
  * koppeling: { vraagId: kolomindex }; datumKolom: index of -1.
  * Geeft { items: [{ datum, antwoorden }], problemen, overgeslagen }. Een cel die niet te lezen is, blijft leeg.
  */
-export function verwerkAntwoorden(rijen, koppeling, datumKolom, vragen, schalen, vandaag, { nummers = null, totaalrijen = [] } = {}) {
+export function verwerkAntwoorden(rijen, koppeling, datumKolom, vragen, schalen, vandaag, { nummers = null, totaalrijen = [], cijferschalen = null } = {}) {
   const items = [];
   const problemen = [...totaalMeldingen(totaalrijen)];
   let legeRijen = 0;
@@ -399,7 +433,7 @@ export function verwerkAntwoorden(rijen, koppeling, datumKolom, vragen, schalen,
     for (const q of vragen) {
       const k = koppeling[q.id];
       if (k === undefined || k < 0) continue;
-      const r = leesAntwoord(q, rij[k], schalen);
+      const r = leesAntwoord(q, rij[k], schalen, cijferschalen);
       if (r.fout) {
         const lijst = perVraag.get(q.id) || { q, regels: [], voorbeeld: r.fout };
         lijst.regels.push(regel);

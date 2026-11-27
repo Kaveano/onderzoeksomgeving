@@ -101,9 +101,11 @@ Je kunt alles toevoegen, wijzigen, verwijderen en in een andere volgorde zetten.
    - **Schaal 1 tot 5**, bijvoorbeeld van "helemaal oneens" tot "helemaal eens". Desgewenst met "weet niet".
    - **Meerkeuze**, met één of meerdere antwoorden.
    - **Ja / nee**.
+   - **Cijfer (0–10 of 1–10)**: een cijfer van 0 tot 10 (bijvoorbeeld "Hoe waarschijnlijk is het dat je … aanbeveelt?") of een rapportcijfer van 1 tot 10. Zie "Cijfervraag" hieronder.
    - **Open tekst**.
 4. Zet bij een achtergrondvraag zoals **"Op welke afdeling werk je?"** het vinkje **uitsplitsing** aan. Dan kun je op het dashboard de resultaten per afdeling bekijken.
    - Pas eerst de afdelingen aan; in het sjabloon staan voorbeeldnamen.
+   - Kies bij **Achtergrondkenmerk** wat de vraag meet, zoals *Afdeling* of *Leeftijd*. Zie "Achtergrondvragen (kenmerken)" hieronder.
 5. Bekijk het resultaat met **Voorbeeld** of **Bekijk als respondent**.
 6. Klik op **Vragenlijst openzetten**.
 7. Klik op **Link kopiëren** en stuur de link naar de medewerkers, bijvoorbeeld per e-mail of intranet. Een kant-en-klare uitnodiging, een herinnering en een QR-code vind je op het tabblad **Delen** (hoofdstuk 10).
@@ -123,6 +125,38 @@ Je kunt alles toevoegen, wijzigen, verwijderen en in een andere volgorde zetten.
 3. Zet de kopie open en deel de nieuwe link.
 
 De vragen blijven gekoppeld. Het dashboard laat daardoor per thema en per vraag zien hoe de scores veranderen.
+
+### Cijfervraag (0–10 en rapportcijfer)
+
+Met het vraagtype **Cijfer** stel je een vraag waarop respondenten een cijfer geven. Er zijn twee soorten:
+
+- **Aanbevelen (0 tot 10)**, bijvoorbeeld *"Hoe waarschijnlijk is het dat je [organisatie] als werkgever aanbeveelt aan vrienden of bekenden?"*. Op het dashboard zie je dan ook de **eNPS**: het percentage *promotors* (9 of 10) min het percentage *criticasters* (0 tot en met 6). De eNPS loopt van −100 tot +100. Wie 7 of 8 geeft, telt als *passief*.
+- **Rapportcijfer (1 tot 10)**, bijvoorbeeld *"Welk rapportcijfer geef je [organisatie] als werkgever?"*. Op het dashboard zie je het gemiddelde en welk deel een onvoldoende gaf (5 of lager).
+
+Goed om te weten:
+- Een cijfervraag telt **nooit** mee in de gemiddelde score van een thema of meetpunt. Die blijven gemiddelden van de schaalvragen van 1 tot 5. Zo worden een cijfer en een score op een schaal van 5 nooit door elkaar opgeteld.
+- Op een telefoon staan de cijfers in twee rijen (0 tot 5 en 6 tot 10). Onder elke rij staat wat het uiterste betekent, bijvoorbeeld "0 = Zeer onwaarschijnlijk".
+- Je kunt "weet niet / n.v.t." toestaan, bijvoorbeeld bij een rapportcijfer voor iets waar niet iedereen mee te maken heeft. Dat antwoord telt niet mee in het gemiddelde of de eNPS.
+- Zijn er al antwoorden, dan kun je de soort (0–10 of 1–10) niet meer veranderen. Een 0 zou anders opeens ongeldig zijn.
+- Op het dashboard staat een cijfervraag bij zijn thema, met een staafje per cijfer. Bij de uitsplitsing krijgt elke cijfervraag een eigen kolom; een groep met minder dan 5 cijfers zie je daar als "<5".
+- In de standaardsjablonen **Medewerkerstevredenheid**, **Onboarding** en **Vertrekonderzoek** is de ja/nee-vraag "Zou je [organisatie] aanbevelen als werkgever aan vrienden of kennissen?" vervangen door de cijfervraag van 0 tot 10. Medewerkerstevredenheid heeft er ook een rapportcijfer bij. **Een eerdere meting met de ja/nee-vraag over aanbevelen is niet te vergelijken met de nieuwe vraag van 0 tot 10.** Heb je een nulmeting met de oude vraag, houd dan in de vervolgmeting de oude vraag aan (kopieer de vragenlijst) of zet beide vragen erin.
+
+### Achtergrondvragen (kenmerken)
+
+Een achtergrondvraag gaat over wie de respondent is: afdeling, leeftijd, diensttijd, geslacht, dienstverband, arbeidsuren, functieniveau, of iemand leiding geeft, locatie of opleiding. Geef zo'n vraag bij **Achtergrondkenmerk** het juiste kenmerk. Dan weet de app wat de vraag meet en kun je straks zien wie er hebben meegedaan en groepen vergelijken.
+
+- Een kenmerk kan alleen bij een **meerkeuzevraag met één antwoord** of bij een **ja/nee-vraag**.
+- Per vragenlijst kan elk kenmerk één keer voorkomen. Alleen **Ander kenmerk** mag vaker.
+- Kies je een kenmerk, dan wordt ook **uitsplitsing** aangevinkt. Je kunt dat weer uitzetten. Bij een vertrekonderzoek staat uitsplitsing bewust uit: per afdeling zijn er bijna altijd minder dan 5 vertrekkers.
+- Een kenmerk mag je ook nog veranderen als er al antwoorden zijn. **Let op:** haal je het kenmerk weg bij een vraag zonder uitsplitsing, dan worden kleine aantallen bij die vraag niet meer verborgen, ook niet voor meelezers. De editor waarschuwt je dan.
+
+**Achtergrondvragen toevoegen.** Met de knop **Achtergrondvragen toevoegen** (naast **+ Vraag toevoegen**) kies je uit kant-en-klare vragen met passende antwoorden. Ze komen in het thema *Achtergrond*, aan het eind van de vragenlijst. Kenmerken die er al in staan, kun je niet nog eens kiezen. Bij leeftijd kies je tussen 3 groepen (aangeraden bij minder dan 100 medewerkers) en 5 groepen. Dezelfde knop staat in de sjablooneditor.
+
+**Vraag niet meer dan nodig.** Hoe meer achtergrondvragen, hoe makkelijker iemand herkenbaar wordt, en hoe minder mensen eerlijk antwoorden. In een kleine organisatie zijn twee of drie achtergrondvragen meestal genoeg. **Minder dan 50 medewerkers: kies hooguit twee achtergrondvragen.** Leeftijd staat daarom niet standaard in de sjablonen.
+
+Voeg je achtergrondvragen toe aan een vragenlijst die al is ingevuld, dan hebben de eerdere respondenten die vragen niet gezien. Bij hen telt het antwoord als "niet ingevuld".
+
+De vragen over afdeling en diensttijd in de standaardsjablonen (en de vraag of je leiding geeft) hebben hun kenmerk al. Bestaande vragenlijsten met die vragen hebben het kenmerk bij de update automatisch gekregen.
 
 ## 4. Resultaten volgen: het dashboard
 
@@ -369,14 +403,18 @@ De onderzoeksomgeving werkt met bestanden; er is geen directe koppeling met Micr
 
 Goed om te weten:
 - Alle vragenlijsten staan onder elkaar. De variabelen *vragenlijst* en *meetmoment* geven aan bij welke meting een rij hoort. Dezelfde vraag op verschillende meetmomenten staat in dezelfde kolom, zodat je metingen direct kunt vergelijken.
-- Bij schaalvragen is **99** "weet niet / n.v.t."; die waarde telt niet mee in gemiddelden.
-- *thema01*, *thema02* … zijn de scores per thema per respondent, berekend zoals op het tabblad Analyse.
+- Bij schaalvragen en cijfervragen is **99** "weet niet / n.v.t."; die waarde telt niet mee in gemiddelden.
+- *thema01*, *thema02* … zijn de scores per thema per respondent, berekend zoals op het tabblad Analyse. Een cijfervraag telt daarin niet mee.
+- **Achtergrondvragen heten naar hun kenmerk**, bijvoorbeeld *afdeling*, *leeftijd* of *diensttijd* (in plaats van *v03*). Let op: in exports van vóór deze versie hadden die vragen nog een nummer als naam. Een vraag met het kenmerk *Ander kenmerk* houdt zijn nummer.
+- Een **cijfervraag** is een getal (meetniveau *Scale*). Bij een cijfervraag van 0 tot 10 staat er een extra variabele die eindigt op **_enps**, bijvoorbeeld *v07_enps*: 1 = criticaster (0–6), 2 = passief (7–8), 3 = promotor (9–10).
+- In het Excel-werkboek heeft het **Codeboek** een laatste kolom **Kenmerk**: welk achtergrondkenmerk een vraag meet. In de CSV met alle antwoorden onder elkaar staat het cijfer van een cijfervraag in de laatste kolom, *Cijfer (0-10)*.
 - Het pakket is getest met PSPP, de gratis variant van SPSS.
 
 ## 13. Privacy in het kort
 
 - Van respondenten wordt **geen naam, e-mailadres, IP-adres of tijdstip** opgeslagen. Alleen de datum en de antwoorden worden bewaard.
 - Ingevulde vragenlijsten krijgen een willekeurig nummer, zodat de volgorde van invullen niet te herleiden is.
+- Het **achtergrondkenmerk** van een vraag (afdeling, leeftijd …) is alleen voor jou: het gaat nooit mee naar de vragenlijst die respondenten zien. Groepen met minder dan 5 respondenten worden nergens getoond, ook niet bij een cijfervraag.
 - De database staat in de **EU** (Cloudflare D1 met jurisdictie "eu").
 - Cloudflare houdt voor deze app geen logboek bij.
 - Van **meelezers** met een deellink wordt niets bewaard, behalve de datum waarop de link het laatst is bekeken. Van de toegangscode wordt alleen een onleesbare versie (hash) bewaard.

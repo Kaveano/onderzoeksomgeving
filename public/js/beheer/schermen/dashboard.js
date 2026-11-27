@@ -1,6 +1,9 @@
 // Scherm: Dashboard – de resultaten van een onderzoek in één overzicht:
 // respons, gemiddelde score per thema, antwoorden per vraag, verloop over meetmomenten,
 // eigen cijfers, open antwoorden en uitsplitsing per groep.
+// Cijfervragen (0–10 aanbevelen/eNPS of rapportcijfer 1–10) hebben een eigen blok: de cijfers als staafjes, bij 0–10
+// de eNPS (promotors min criticasters) als gestapelde balk, bij een rapportcijfer het gemiddelde en het deel
+// onvoldoendes. Ze tellen nooit mee in de themagemiddelden.
 //
 // Grafieken zijn gewone HTML-balken (breedte via element.style) en kleine SVG-lijngrafieken
 // (via document.createElementNS). Elke grafiek heeft zichtbare getallen of een tabel ernaast.
@@ -11,8 +14,8 @@ import {
   h, vervang, leeg, laden, melding, meld, meldFout, getal, procent, datum, aantal, kopieer, statusLabel, bevestig, tabSubnav,
 } from '../ui.js';
 import { VERBORGEN, VERBORGEN_UITLEG } from '../privacy.js';
-import { haalGegevens, voortgangTekst, bekendAantal, GROOT_ONDERZOEK } from '../gegevens.js';
-import { dashboardUitRijen, rijenUitExport } from '../dashboard-rekenen.js';
+import { haalGegevens, voortgangTekst, GROOT_ONDERZOEK } from '../gegevens.js';
+import { dashboardUitRijen, rijenUitExport, rekenInBrowser } from '../dashboard-rekenen.js';
 
 /** Basis van het percentage ja bij een achtergrondvraag (de tabel ernaast is van alle respondenten). */
 const JA_BASIS = 'van wie de vraag beantwoordde';
@@ -204,20 +207,17 @@ export async function toon(container, ctx) {
 
   // ---------- Gegevens ophalen ----------
 
-  // Een groot onderzoek (meer dan GROOT_ONDERZOEK inzendingen) rekent de browser zelf uit, met dezelfde code als de
-  // server (dashboard-rekenen.js) en de gedeelde kopie van de gegevens (gegevens.js). Zo blijft de server binnen
-  // de gratis rekentijd. Bij een gewoon onderzoek rekent de server, zoals altijd.
+  // Een groot onderzoek rekent de browser zelf uit, met dezelfde code als de server (dashboard-rekenen.js) en de
+  // gedeelde kopie van de gegevens (gegevens.js). Groot = meer dan GROOT_ONDERZOEK inzendingen, of meer dan
+  // 60.000 antwoordcellen (inzendingen × vragen, opgeteld over de vragenlijsten): daarmee groeit de rekentijd van
+  // de server. Zo blijft de server binnen de gratis rekentijd. Bij een gewoon onderzoek rekent de server, zoals altijd.
   let groot = null; // per bezoek aan dit scherm één keer bepaald
   let lokaleRijen = null; // de rijen van een groot onderzoek, één keer per bezoek opgehaald
 
   async function isGroot() {
     if (groot !== null) return groot;
-    let n = bekendAantal(onderzoekId);
-    if (n === null) {
-      const { vragenlijsten } = await api.get(`/onderzoeken/${onderzoekId}/vragenlijsten`);
-      n = vragenlijsten.reduce((som, l) => som + (Number(l.aantal_inzendingen) || 0), 0);
-    }
-    groot = n > GROOT_ONDERZOEK;
+    const { vragenlijsten } = await api.get(`/onderzoeken/${onderzoekId}/vragenlijsten`);
+    groot = rekenInBrowser(vragenlijsten, { maxInzendingen: GROOT_ONDERZOEK });
     return groot;
   }
 
@@ -707,6 +707,7 @@ export async function toon(container, ctx) {
 
   function verloopRegel(q) {
     if (!q.verloop) return null;
+    if (q.type === 'cijfer') return verloopCijfer(q);
     const isJaNee = q.type === 'janee';
     const label = isJaNee && q.beschermd ? `Verloop (% ja ${JA_BASIS}): ` : 'Verloop: ';
     const punten = q.verloop.filter((p) => heeft(isJaNee ? p.percentage_ja : p.gemiddelde));
@@ -724,6 +725,29 @@ export async function toon(container, ctx) {
         h('span', { class: 'db-verloop-label' }, label),
         h('span', {}, tekst), ' ',
         isJaNee ? verschilEl(dlt, 0, ' procentpunt') : verschilEl(dlt, 1)),
+    };
+  }
+
+  /** Verloop van een cijfervraag: bij 0–10 de eNPS per meetmoment, bij een rapportcijfer het gemiddelde. */
+  function verloopCijfer(q) {
+    const nps = q.schaal_soort === 'nps';
+    const w = (p) => (nps ? p.enps_score : p.gemiddelde);
+    const punten = q.verloop.filter((p) => heeft(w(p)));
+    if (punten.length < 2) return null;
+    const label = nps ? 'Verloop (eNPS): ' : 'Verloop (gemiddeld cijfer): ';
+    const tekst = punten.map((p) => `${p.naam} ${nps ? metTeken(w(p), 0) : getal(w(p), 1)}`).join(' → ');
+    const dlt = nps
+      ? Math.round(w(punten[punten.length - 1])) - Math.round(w(punten[0]))
+      : r1(w(punten[punten.length - 1])) - r1(w(punten[0]));
+    return {
+      tekst,
+      label,
+      verschil: dlt,
+      eenheid: nps ? ' punten' : '',
+      el: h('div', { class: 'db-vraag-verloop' },
+        h('span', { class: 'db-verloop-label' }, label),
+        h('span', {}, tekst), ' ',
+        nps ? verschilEl(dlt, 0, ' punten') : verschilEl(dlt, 1)),
     };
   }
 
@@ -823,6 +847,66 @@ export async function toon(container, ctx) {
     ];
   }
 
+  /** Een cijfervraag: staafjes per cijfer, de eindteksten, en de eNPS of het gemiddelde met het deel onvoldoendes. */
+  function cijferBlok(q) {
+    if (!q.n) return [h('p', { class: 'zacht klein' }, 'Nog geen antwoorden op deze vraag.')];
+    const nps = q.schaal_soort === 'nps';
+    const schaal = q.cijferschaal || { min: 0, max: 10, laag: '', hoog: '' };
+    const cijfers = q.verdeling.filter((v) => v.waarde !== 'weet_niet');
+    const hoogste = Math.max(1, ...cijfers.map((v) => v.aantal || 0));
+    const kleur = (w) => (nps ? (w >= 9 ? 'db-s5' : w <= 6 ? 'db-s1' : 'db-s3') : (w <= 5 ? 'db-s2' : 'db-s4'));
+    const groepNaam = (w) => (nps ? (w >= 9 ? 'promotor' : w <= 6 ? 'criticaster' : 'passief') : (w <= 5 ? 'onvoldoende' : 'voldoende'));
+    const staven = h('div', {
+      class: 'db-cijfer db-grafiek',
+      role: 'img',
+      'aria-label': `Verdeling van de cijfers: ${cijfers.map((v) => `${v.label}: ${nl(v.aantal)}`).join(', ')}`,
+    }, cijfers.map((v) => {
+      const staaf = h('div', { class: `db-cijfer-staaf ${kleur(v.waarde)}` });
+      staaf.style.height = `${Math.max(v.aantal ? 4 : 0, ((v.aantal || 0) / hoogste) * 100)}%`;
+      return h('div', { class: 'db-cijfer-kolom', title: `${v.label} (${groepNaam(v.waarde)}): ${nl(v.aantal)} (${procent(v.percentage)})` },
+        h('span', { class: 'db-cijfer-aantal' }, v.aantal ? nl(v.aantal) : ''),
+        h('div', { class: 'db-cijfer-baan' }, staaf),
+        h('span', { class: 'db-cijfer-waarde' }, v.label));
+    }));
+    const eind = h('div', { class: 'db-cijfer-eind db-grafiek', 'aria-hidden': 'true' },
+      h('span', {}, `${schaal.min} = ${schaal.laag}`), h('span', {}, `${schaal.max} = ${schaal.hoog}`));
+    const wn = q.verdeling.find((v) => v.waarde === 'weet_niet');
+    const n = q.n_score ?? q.n;
+    const delen = [staven, eind];
+    if (nps && q.enps) {
+      const e = q.enps;
+      const segmenten = [
+        ['Criticasters (0–6)', e.criticasters, e.pct_criticasters, 'db-s1'],
+        ['Passief (7–8)', e.passief, e.pct_passief, 'db-s3'],
+        ['Promotors (9–10)', e.promotors, e.pct_promotors, 'db-s5'],
+      ];
+      const balk = h('div', {
+        class: 'db-stapel db-enps-balk db-grafiek',
+        role: 'img',
+        'aria-label': `eNPS ${metTeken(e.score, 0)}: ${segmenten.map(([l, a, pc]) => `${l} ${procent(pc)} (${nl(a)})`).join(', ')}`,
+      }, segmenten.filter(([, a]) => a > 0).map(([l, a, pc, k]) => {
+        const seg = h('div', { class: `db-seg ${k}`, title: `${l}: ${procent(pc)} (${nl(a)})` }, h('span', { class: 'db-seg-tekst' }, procent(pc)));
+        seg.style.flexGrow = String(pc || 0.0001);
+        return seg;
+      }));
+      delen.push(h('div', { class: 'db-enps' },
+        h('p', { class: 'db-enps-kop' }, h('strong', { class: 'db-enps-waarde' }, `eNPS ${metTeken(e.score, 0)}`),
+          h('span', { class: 'zacht klein' }, ' (percentage promotors min percentage criticasters, van −100 tot +100)')),
+        balk,
+        h('ul', { class: 'db-legenda db-grafiek', 'aria-label': 'Legenda' }, segmenten.map(([l, a, pc, k]) => h('li', {},
+          h('span', { class: `db-swatch ${k}`, 'aria-hidden': 'true' }), `${l}: ${procent(pc)} (${nl(a)})`)))));
+    }
+    delen.push(
+      telTabel(q),
+      h('div', { class: 'db-vraag-meta' },
+        h('span', {}, 'Gemiddeld cijfer ', h('strong', {}, getal(q.gemiddelde, 1))),
+        !nps && heeft(q.pct_onvoldoende) ? h('span', {}, 'Onvoldoende (5 of lager): ', h('strong', {}, procent(q.pct_onvoldoende))) : null,
+        h('span', {}, nTekst(n), wn && wn.aantal ? ` (en ${nl(wn.aantal)} weet niet)` : ''),
+        h('span', {}, 'Telt niet mee in de themascores.')),
+    );
+    return delen;
+  }
+
   function meerkeuzeBlok(q) {
     if (!heeftAntwoorden(q)) return [h('p', { class: 'zacht klein' }, 'Nog geen antwoorden op deze vraag.')];
     return [
@@ -853,6 +937,10 @@ export async function toon(container, ctx) {
       if (q.type === 'schaal') {
         const sv = schaalSamenvatting(q);
         r += `: gemiddeld ${getal(q.gemiddelde, 1)}${sv ? `; ${sv.hoogLabel.toLowerCase()} ${procent(sv.hoog)}` : ''}`;
+      } else if (q.type === 'cijfer') {
+        r += q.schaal_soort === 'nps' && q.enps
+          ? `: eNPS ${metTeken(q.enps.score, 0)}; gemiddeld ${getal(q.gemiddelde, 1)} (0 tot 10)`
+          : `: gemiddeld ${getal(q.gemiddelde, 1)} (1 tot 10)${heeft(q.pct_onvoldoende) ? `; onvoldoende ${procent(q.pct_onvoldoende)}` : ''}`;
       } else if (q.type === 'janee' && !isVerborgen(q.percentage_ja)) {
         r += `: ${procent(q.percentage_ja)} ja${q.beschermd ? ` (${JA_BASIS})` : ''}`;
       } else if (q.type === 'meerkeuze' || q.type === 'janee') {
@@ -873,9 +961,24 @@ export async function toon(container, ctx) {
       if (q.beschermd) regels.push('Percentages van alle respondenten van de vragenlijst, ook wie de vraag oversloeg.');
       if (q.beschermd && ietsVerborgen(q)) regels.push(VERBORGEN_UITLEG);
       if (q.type === 'schaal') regels.push(`Gemiddelde score: ${getal(q.gemiddelde, 1)} (schaal 1–5)`);
+      if (q.type === 'cijfer') {
+        const sch = q.cijferschaal || {};
+        regels.push(`Gemiddeld cijfer: ${getal(q.gemiddelde, 1)} (${sch.min} tot ${sch.max})`);
+        if (q.schaal_soort === 'nps' && q.enps) {
+          const e = q.enps;
+          regels.push(`eNPS: ${metTeken(e.score, 0)} (${nl(e.promotors)} promotors, ${nl(e.passief)} passief, ${nl(e.criticasters)} criticasters)`);
+        } else if (heeft(q.pct_onvoldoende)) {
+          regels.push(`Onvoldoende (5 of lager): ${procent(q.pct_onvoldoende)}`);
+        }
+        regels.push('Een cijfervraag telt niet mee in de themascores.');
+      }
       if (q.type === 'meerkeuze' && q.meerdere_antwoorden) regels.push('Meerdere antwoorden mogelijk; percentages tellen op tot meer dan 100%.');
     }
-    if (vl) regels.push(`${vl.label}${vl.tekst} (${q.type === 'janee' ? `${metTeken(vl.verschil, 0)} procentpunt` : metTeken(vl.verschil, 1)})`);
+    if (vl) {
+      const verschil = q.type === 'janee' ? `${metTeken(vl.verschil, 0)} procentpunt`
+        : q.type === 'cijfer' && q.schaal_soort === 'nps' ? `${metTeken(vl.verschil, 0)} punten` : metTeken(vl.verschil, 1);
+      regels.push(`${vl.label}${vl.tekst} (${verschil})`);
+    }
     return regels.join('\n');
   }
 
@@ -887,6 +990,7 @@ export async function toon(container, ctx) {
         h('p', { class: 'zacht klein' }, `Niet getoond: minder dan ${data.drempel} antwoorden op deze vraag.`));
     }
     if (q.type === 'schaal') delen = schaalBlok(q);
+    else if (q.type === 'cijfer') delen = cijferBlok(q);
     else if (q.type === 'janee') delen = janeeBlok(q);
     else if (q.type === 'meerkeuze') delen = meerkeuzeBlok(q);
     else {
@@ -1338,6 +1442,12 @@ export async function toon(container, ctx) {
       for (const t of g.themas) {
         regels.push(`- ${t.naam}: ${t.verborgen ? `niet getoond (minder dan ${u.drempel} respondenten)` : getal(t.gemiddelde, 1)}`);
       }
+      for (const cv of u.cijfervragen || []) {
+        const c = (g.cijfers || []).find((x) => x.vraag_id === cv.vraag_id);
+        const waarde = !c || c.verborgen ? `niet getoond (minder dan ${u.drempel} respondenten)`
+          : cv.schaal_soort === 'nps' ? `eNPS ${metTeken(c.enps, 0)}` : `gemiddeld ${getal(c.gemiddelde, 1)}`;
+        regels.push(`- ${cijferKolomNaam(cv)}: ${waarde}`);
+      }
     }
     regels.push('', `Groepen en scores met minder dan ${u.drempel} respondenten worden niet apart getoond, zodat niemand herkenbaar is.`);
     return regels.join('\n');
@@ -1349,6 +1459,18 @@ export async function toon(container, ctx) {
       g.samengevoegd && g.samengevoegd.length ? h('span', { class: 'db-th-sub' }, g.samengevoegd.join(', ')) : null,
       reden ? h('span', { class: 'db-th-sub db-reden' }, reden) : null,
       !reden && g.toelichting ? h('span', { class: 'db-th-sub' }, g.toelichting) : null);
+  }
+
+  /** Kopje van een cijferkolom in de uitsplitsing. */
+  function cijferKolomNaam(cv) {
+    return cv.schaal_soort === 'nps' ? `eNPS: ${kort(cv.tekst, 50)}` : `Cijfer: ${kort(cv.tekst, 50)}`;
+  }
+
+  /** Cel van een cijferkolom: eNPS (0–10) of het gemiddelde cijfer (1–10), of "<5". */
+  function cijferCel(c, cv, drempel) {
+    if (c && c.verborgen) return groepCel(c, drempel);
+    if (cv.schaal_soort === 'nps') return h('td', { class: 'rechts getal' }, c && heeft(c.enps) ? metTeken(c.enps, 0) : '–');
+    return h('td', { class: 'rechts getal' }, c && heeft(c.gemiddelde) ? getal(c.gemiddelde, 1) : '–');
   }
 
   /** Cel in de uitsplitsing: getal, of "<5" als het om te weinig respondenten gaat. */
@@ -1371,33 +1493,48 @@ export async function toon(container, ctx) {
       return;
     }
     const themas = s.themas;
+    const cijferKolommen = u.cijfervragen || [];
     const zichtbaar = u.groepen.filter((g) => !g.verborgen);
     const kop = h('div', { class: 'db-uitsplits-kop' },
       h('h3', { class: 'db-subkop' }, `Gemiddelde score per thema, per antwoord op “${u.tekst}”`),
-      themas.length ? stukKnop(snippetUitsplitsing, 'uitsplitsing') : null);
+      themas.length || cijferKolommen.length ? stukKnop(snippetUitsplitsing, 'uitsplitsing') : null);
 
-    if (!themas.length) {
+    if (!themas.length && !cijferKolommen.length) {
       vervang(el, kop, h('p', { class: 'zacht' }, 'Deze vragenlijst heeft geen schaalvragen, dus er zijn geen scores om per groep te vergelijken.'));
       return;
     }
 
-    const themaKop = themas.map((t) => h('th', { scope: 'col', class: 'rechts' }, t.naam));
+    const vraagStat = new Map(s.vragen.map((q) => [q.id, q]));
+    const themaKop = [
+      ...themas.map((t) => h('th', { scope: 'col', class: 'rechts' }, t.naam)),
+      ...cijferKolommen.map((cv) => h('th', { scope: 'col', class: 'rechts db-cijfer-kolomkop', title: cv.tekst }, cijferKolomNaam(cv))),
+    ];
+    const iedereenCijfer = (cv) => {
+      const q = vraagStat.get(cv.vraag_id);
+      if (!q || q.verborgen) return h('td', { class: 'rechts getal' }, '–');
+      return cv.schaal_soort === 'nps'
+        ? h('td', { class: 'rechts getal' }, q.enps ? metTeken(q.enps.score, 0) : '–')
+        : h('td', { class: 'rechts getal' }, getal(q.gemiddelde, 1));
+    };
     const rijIedereen = h('tr', { class: 'db-rij-totaal' },
       h('th', { scope: 'row', class: 'db-groep-naam' }, 'Iedereen'),
       h('td', { class: 'rechts getal' }, nl(s.n)),
-      themas.map((t) => h('td', { class: 'rechts getal' }, getal(t.gemiddelde, 1))));
+      themas.map((t) => h('td', { class: 'rechts getal' }, getal(t.gemiddelde, 1))),
+      cijferKolommen.map(iedereenCijfer));
     const rijen = u.groepen.map((g) => {
       if (g.verborgen) {
         // De reden staat bij de groepsnaam (blijft zichtbaar bij schuiven op een telefoon); nooit getallen.
         return h('tr', { class: 'db-rij-verborgen' },
           groepNaamCel(g, g.reden || `Minder dan ${u.drempel} respondenten per groep; niet getoond om anonimiteit te beschermen.`),
-          h('td', { colspan: themas.length + 1, class: 'db-reden' }, 'Niet getoond'));
+          h('td', { colspan: themas.length + cijferKolommen.length + 1, class: 'db-reden' }, 'Niet getoond'));
       }
       const perThema = new Map(g.themas.map((t) => [t.thema_id, t]));
+      const perCijfer = new Map((g.cijfers || []).map((c) => [c.vraag_id, c]));
       return h('tr', {},
         groepNaamCel(g),
         h('td', { class: 'rechts getal' }, nl(g.n)),
-        themas.map((t) => groepCel(perThema.get(t.thema_id), u.drempel)));
+        themas.map((t) => groepCel(perThema.get(t.thema_id), u.drempel)),
+        cijferKolommen.map((cv) => cijferCel(perCijfer.get(cv.vraag_id), cv, u.drempel)));
     });
 
     // Per vraag (alleen zichtbare groepen)
@@ -1434,6 +1571,9 @@ export async function toon(container, ctx) {
         ? melding((u.groepen.find((g) => g.verborgen) || {}).reden || `Geen enkele groep heeft ${u.drempel} of meer respondenten, dus er zijn geen resultaten per groep te tonen.`)
         : null,
       zichtbaar.length && u.uitleg_cel ? h('p', { class: 'klein zacht' }, u.uitleg_cel) : null,
+      zichtbaar.length && cijferKolommen.length
+        ? h('p', { class: 'klein zacht' }, 'eNPS: percentage promotors (9–10) min percentage criticasters (0–6), van −100 tot +100. Een cijfervraag telt niet mee in de themascores.')
+        : null,
       perVraag,
     );
   }

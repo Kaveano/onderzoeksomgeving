@@ -369,7 +369,7 @@ export async function dashboard({ request, env, params }) {
  * - een vragenlijst met minder dan DREMPEL respondenten: geen uitkomsten;
  * - een vragenlijst die nog openstaat: geen uitkomsten (tenzij de tussenstand is gedeeld), omdat een kijker
  *   anders door twee keer te kijken de antwoorden van één nieuwe respondent kan zien;
- * - een vraag met minder dan DREMPEL scores: geen verdeling, gemiddelde of aantal;
+ * - een vraag met minder dan DREMPEL scores: geen verdeling, gemiddelde of aantal (bij een cijfervraag ook geen eNPS);
  * - een thema of meetpunt met zo'n vraag: geen gemiddelde (het zou de verborgen vraag verraden);
  * - een punt in het verloop waar een kleine of nog open vragenlijst aan bijdraagt: geen gemiddelde;
  * - geen open antwoorden (tenzij gedeeld), geen links, geen aantallen eigen invoer;
@@ -420,14 +420,20 @@ export function kijkerDashboard(d, mag) {
       const verborgenThemas = new Set();
       const verborgenMeetpunten = new Set();
       for (const q of s.vragen) {
-        const scores = q.type === 'schaal' ? q.n_score : q.n;
-        const klein = (q.n > 0 && q.n < DREMPEL) || (q.type === 'schaal' && scores > 0 && scores < DREMPEL);
+        // Schaal- en cijfervragen: het aantal scores telt (weet niet / n.v.t. niet).
+        const metScore = q.type === 'schaal' || q.type === 'cijfer';
+        const scores = metScore ? q.n_score : q.n;
+        const klein = (q.n > 0 && q.n < DREMPEL) || (metScore && scores > 0 && scores < DREMPEL);
         if (klein) {
           q.verdeling = [];
           q.gemiddelde = null;
           q.percentage_ja = null;
           q.n = null;
           delete q.n_score;
+          if (q.type === 'cijfer') {
+            q.enps = null;
+            if ('pct_onvoldoende' in q) q.pct_onvoldoende = null;
+          }
           q.verborgen = true;
           if (q.type === 'schaal') {
             verborgenThemas.add(q.thema_id);
@@ -436,8 +442,14 @@ export function kijkerDashboard(d, mag) {
         } else {
           q.gemiddelde = rond(q.gemiddelde);
           q.percentage_ja = rond(q.percentage_ja);
+          if (q.type === 'cijfer') {
+            if (q.enps) {
+              for (const k of ['pct_promotors', 'pct_passief', 'pct_criticasters', 'score']) q.enps[k] = rond(q.enps[k]);
+            }
+            if ('pct_onvoldoende' in q) q.pct_onvoldoende = rond(q.pct_onvoldoende);
+          }
         }
-        if (q.verloop) q.verloop = q.verloop.map((p) => schoonPunt(p, ['gemiddelde', 'percentage_ja']));
+        if (q.verloop) q.verloop = q.verloop.map((p) => schoonPunt(p, q.type === 'cijfer' ? ['gemiddelde', 'enps_score'] : ['gemiddelde', 'percentage_ja']));
       }
       const verberg = (t, extra) => {
         if ((t.n > 0 && t.n < DREMPEL) || extra) {
@@ -452,6 +464,7 @@ export function kijkerDashboard(d, mag) {
       for (const t of s.themas) verberg(t, verborgenThemas.has(t.thema_id));
       for (const m of s.meetpunten) verberg(m, verborgenMeetpunten.has(m.meetpunt_id));
       // In de uitsplitsing per groep geldt hetzelfde: geen themagemiddelde als er een verborgen vraag in zit.
+      // De cijferkolommen (g.cijfers) zijn al per kolom onderdrukt in dashboardUitRijen.
       for (const g of (s.uitsplitsing && s.uitsplitsing.groepen) || []) {
         for (const c of g.themas || []) {
           if (verborgenThemas.has(c.thema_id)) {

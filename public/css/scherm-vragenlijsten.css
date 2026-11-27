@@ -600,3 +600,82 @@ dialog.vl-voorbeelddialoog { width: min(780px, calc(100vw - 24px)); }
 @media print {
   .vl-snelnaar, .vl-meer, .vl-vraag-acties { display: none !important; }
 }
+
+/* ----- Cijfervraag en achtergrondkenmerk (BOUWPLAN P2) ----- */
+
+/* Voorbeeld van de cijferschaal in de vraagdialoog en in het voorbeeld voor respondenten */
+.vl-cijfer-vb {
+  list-style: none;
+  margin: var(--ruimte-2) 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(11, minmax(0, 1fr));
+  gap: 2px;
+}
+.vl-cijfer-vb-10 { grid-template-columns: repeat(10, minmax(0, 1fr)); }
+.vl-cijfer-vb li {
+  padding: 4px 0;
+  border: 1px solid var(--rand);
+  border-radius: var(--radius-klein);
+  background: var(--vlak-2);
+  text-align: center;
+  font-size: 0.8rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  min-width: 0;
+}
+.vl-cijfer-vb-eind {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--ruimte-3);
+  margin: 4px 0 0;
+  font-size: 0.8rem;
+  color: var(--tekst-zacht);
+}
+.vl-cijfer-vb-eind span:last-child { text-align: right; }
+.vl-vb-cijfer {
+  display: grid;
+  grid-template-columns: repeat(11, minmax(0, 1fr));
+  gap: var(--ruimte-1);
+  clear: both;
+}
+.vl-vb-cijfer-10 { grid-template-columns: repeat(10, minmax(0, 1fr)); }
+.vl-vb-cijfer .vl-vb-schaalknop { padding: var(--ruimte-1) 0; }
+.vl-vb-cijfer .vl-vb-weetniet { grid-column: 1 / -1; }
+@media (max-width: 519.98px) {
+  .vl-vb-cijfer { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .vl-vb-cijfer-10 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+}
+
+/* Dialoog "Achtergrondvragen toevoegen" */
+.km-dialoog { width: min(44rem, calc(100vw - 24px)); }
+.km-lijst-veld { margin-top: var(--ruimte-3); }
+.km-lijst {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--ruimte-2);
+}
+.km-item {
+  border: 1px solid var(--rand);
+  border-radius: var(--radius-klein);
+  padding: var(--ruimte-2) var(--ruimte-3);
+  background: var(--vlak-licht);
+}
+.km-item.km-bezet { opacity: 0.7; }
+.km-keuze { min-height: 44px; align-items: flex-start; }
+.km-tekst { display: flex; flex-direction: column; min-width: 0; }
+.km-naam { font-weight: 600; }
+.km-al { font-weight: 400; color: var(--tekst-zacht); }
+.km-uitleg { font-size: 0.85rem; color: var(--tekst-zacht); line-height: 1.35; overflow-wrap: anywhere; }
+.km-vraag { color: var(--tekst); }
+.km-variant {
+  margin: var(--ruimte-2) 0 0 28px;
+  padding: 0;
+  border: 0;
+  display: grid;
+  gap: 2px;
+}
+.km-variant .keuze { min-height: 36px; font-weight: 400; }
+.vl-kenmerk-blok select { max-width: 24rem; }

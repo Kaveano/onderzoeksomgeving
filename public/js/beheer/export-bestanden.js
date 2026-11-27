@@ -18,11 +18,16 @@ function optiesVan(q) {
 }
 
 const schaalLabels = (data, q) => data.lijsten?.schalen?.[q.schaal_soort] || data.lijsten?.schalen?.eens || ['1', '2', '3', '4', '5'];
+/** Bereik van een cijfervraag ({ min, max, laag, hoog }) uit de export; null als het ontbreekt. */
+const cijferschaal = (data, q) => data.lijsten?.cijferschalen?.[q.schaal_soort] || data.lijsten?.cijferschalen?.rapport || null;
+const isCijfer = (b, a) => !!b && Number.isInteger(a) && a >= b.min && a <= b.max;
+/** eNPS-groep van een cijfer 0 tot 10: 1 = criticaster (0–6), 2 = passief (7–8), 3 = promotor (9–10). */
+const enpsGroep = (w) => (w >= 9 ? 3 : w >= 7 ? 2 : 1);
 
 /** Leesbaar antwoord voor Excel: schaal als getal, keuzes als tekst. */
 function antwoordVoorExcel(q, a) {
   if (a === undefined || a === null) return null;
-  if (q.type === 'schaal') return a === WEET_NIET ? 'weet niet / n.v.t.' : Number.isInteger(a) ? a : null;
+  if (q.type === 'schaal' || q.type === 'cijfer') return a === WEET_NIET ? 'weet niet / n.v.t.' : Number.isInteger(a) ? a : null;
   if (q.type === 'meerkeuze') {
     const labels = new Map(optiesVan(q).map((o) => [o.id, o.label]));
     return (Array.isArray(a) ? a : [a]).map((k) => labels.get(k) || '(verwijderde optie)').join(' | ');
@@ -108,17 +113,22 @@ export function excelBladen(data) {
   }
   bladen.push({ naam: 'Scores per thema', kolombreedtes: [34, 18, 34, 14, 18, 14], rijen: scoreRijen });
 
-  const codeboek = [['Vragenlijst', 'Tabblad', 'Nr', 'Thema', 'Meetpunt', 'Vraag', 'Soort', 'Antwoordmogelijkheden', 'Verplicht']];
+  // De laatste kolom zegt welk achtergrondkenmerk een vraag meet (afdeling, leeftijd …), leeg bij een gewone vraag.
+  const codeboek = [['Vragenlijst', 'Tabblad', 'Nr', 'Thema', 'Meetpunt', 'Vraag', 'Soort', 'Antwoordmogelijkheden', 'Verplicht', 'Kenmerk']];
   for (const { vl, naam } of antwoordBladen) {
     data.vragen.filter((q) => q.vragenlijst_id === vl.id).forEach((q, i) => {
       let mogelijkheden = '';
       if (q.type === 'schaal') mogelijkheden = `${schaalLabels(data, q).map((l, k) => `${k + 1} = ${l}`).join('; ')}${q.weet_niet ? '; weet niet / n.v.t.' : ''}`;
-      else if (q.type === 'janee') mogelijkheden = 'ja; nee';
+      else if (q.type === 'cijfer') {
+        const c = cijferschaal(data, q);
+        mogelijkheden = c ? `${c.min} = ${c.laag} … ${c.max} = ${c.hoog}${q.weet_niet ? '; weet niet / n.v.t.' : ''}` : '';
+      } else if (q.type === 'janee') mogelijkheden = 'ja; nee';
       else if (q.type === 'meerkeuze') mogelijkheden = `${optiesVan(q).map((x) => x.label).join('; ')}${q.meerdere_antwoorden ? ' (meerdere antwoorden mogelijk)' : ''}`;
-      codeboek.push([vl.titel, naam, `V${i + 1}`, themaNaam.get(q.thema_id) || '', meetpuntNaam.get(q.meetpunt_id) || '', q.tekst, data.lijsten?.vraagtypen?.[q.type] || q.type, mogelijkheden, q.verplicht ? 'ja' : 'nee']);
+      const kenmerk = q.kenmerk ? data.lijsten?.kenmerken?.[q.kenmerk]?.naam || q.kenmerk : '';
+      codeboek.push([vl.titel, naam, `V${i + 1}`, themaNaam.get(q.thema_id) || '', meetpuntNaam.get(q.meetpunt_id) || '', q.tekst, data.lijsten?.vraagtypen?.[q.type] || q.type, mogelijkheden, q.verplicht ? 'ja' : 'nee', kenmerk]);
     });
   }
-  bladen.push({ naam: 'Codeboek', kolombreedtes: [30, 16, 6, 28, 24, 60, 16, 60, 10], rijen: codeboek });
+  bladen.push({ naam: 'Codeboek', kolombreedtes: [30, 16, 6, 28, 24, 60, 16, 60, 10, 18], rijen: codeboek });
 
   bladen.push({
     naam: 'Eigen invoer',
@@ -171,6 +181,7 @@ function spssIndeling(data, model) {
   const vraag = new Map();
   const optie = new Map();
   const thema = new Map();
+  const enps = new Map();
 
   const stammen = [];
   const gezien = new Map();
@@ -188,6 +199,8 @@ function spssIndeling(data, model) {
   stammen.forEach((s, i) => {
     const q = s.eerste;
     const basis = `v${String(i + 1).padStart(2, '0')}`;
+    // Een achtergrondvraag krijgt een leesbare naam (afdeling, leeftijd …; BOUWPLAN B14); 'Ander kenmerk' niet.
+    const kenmerk = [...s.perLijst.values()].map((v) => v.kenmerk).find(Boolean) || '';
     if (q.type === 'meerkeuze') {
       // Antwoordmogelijkheden herkennen aan hun id: een kopie voor een volgend meetmoment houdt dezelfde id's,
       // ook als een mogelijkheid daarna is hernoemd. Heeft een mogelijkheid een ander id maar dezelfde tekst
@@ -220,13 +233,15 @@ function spssIndeling(data, model) {
         return;
       }
     }
-    vraag.set(s.stam, spssNaam(basis, gebruikt));
+    vraag.set(s.stam, spssNaam(kenmerk && kenmerk !== 'overig' ? kenmerk : basis, gebruikt));
+    // Aanbevelen (0 tot 10): ook de eNPS-groep als eigen variabele, vNN_enps.
+    if (q.type === 'cijfer' && q.schaal_soort === 'nps') enps.set(s.stam, spssNaam(`${basis}_enps`, gebruikt));
   });
   model.themas.forEach((t, i) => {
     if (!model.lijsten.some((l) => l.vragen.some((q) => q.type === 'schaal' && q.thema_id === t.id))) return;
     thema.set(t.id, spssNaam(`thema${String(i + 1).padStart(2, '0')}`, gebruikt));
   });
-  return { namen: { vraag, optie, thema, meetpunt: new Map(), enps: new Map(), systeem, gebruikt }, stammen };
+  return { namen: { vraag, optie, thema, meetpunt: new Map(), enps, systeem, gebruikt }, stammen };
 }
 
 /**
@@ -234,7 +249,9 @@ function spssIndeling(data, model) {
  * werkbank, zodat een variabele overal dezelfde naam heeft.
  * - vraag: stamvraag → naam (schaal, ja/nee, meerkeuze met één antwoord, open); een meerkeuzevraag met meerdere
  *   antwoorden heeft geen eigen naam, alleen een naam per antwoordmogelijkheid in optie (`${stam}:${optieId}`);
- * - thema: thema-id → naam van de themascore; meetpunt en enps zijn (nog) leeg;
+ * - een achtergrondvraag (kenmerk) heet naar het kenmerk (afdeling, leeftijd …), behalve 'Ander kenmerk';
+ * - enps: stamvraag → naam van de eNPS-groep (vNN_enps) bij een cijfervraag van 0 tot 10;
+ * - thema: thema-id → naam van de themascore; meetpunt is (nog) leeg;
  * - systeem: de vaste variabelen (meetmoment is null zonder meetmomenten); gebruikt: alle uitgedeelde namen.
  */
 export function spssVariabeleNamen(data) {
@@ -248,6 +265,8 @@ export function spssVariabeleNamen(data) {
  * - schaalvraag: 1 tot 5, 99 = weet niet (ingesteld als ontbrekende waarde);
  * - ja/nee: 1 = ja, 0 = nee;  meerkeuze met één antwoord: 1, 2, 3 … met labels;
  * - meerkeuze met meerdere antwoorden: per antwoordmogelijkheid een kolom met 1 (gekozen) of 0;
+ * - cijfervraag: het cijfer (SCALE), 99 = weet niet; bij 0 tot 10 ook vNN_enps (1 = criticaster, 2 = passief,
+ *   3 = promotor; ORDINAL);
  * - open vraag: tekst;  themascore: gemiddelde van de schaalvragen van het thema (zoals bij Analyse).
  * De namen komen uit spssVariabeleNamen.
  */
@@ -310,6 +329,38 @@ export function spssGegevens(data) {
         const w = a[v.id];
         return w === WEET_NIET ? SPSS_WEET_NIET : Number.isInteger(w) && w >= 1 && w <= 5 ? w : null;
       });
+    } else if (q.type === 'cijfer') {
+      const c = cijferschaal(data, ruw);
+      const cijfer = (l, a) => {
+        const v = vraagIn(l);
+        if (!v) return null;
+        const w = a[v.id];
+        if (w === WEET_NIET) return SPSS_WEET_NIET;
+        const cv = cijferschaal(data, ruweVraag.get(v.id) || ruw);
+        return isCijfer(cv, w) ? w : null;
+      };
+      voeg({
+        naam,
+        soort: 'getal',
+        decimalen: 0,
+        label,
+        waardelabels: { ...(c ? { [c.min]: c.laag, [c.max]: c.hoog } : {}), [SPSS_WEET_NIET]: 'Weet niet / n.v.t.' },
+        ontbrekend: [SPSS_WEET_NIET],
+        meetniveau: 'SCALE',
+      }, cijfer);
+      if (namen.enps.has(s.stam)) {
+        voeg({
+          naam: namen.enps.get(s.stam),
+          soort: 'getal',
+          decimalen: 0,
+          label: `eNPS-groep: ${q.tekst}`,
+          waardelabels: { 1: 'Criticaster (0–6)', 2: 'Passief (7–8)', 3: 'Promotor (9–10)' },
+          meetniveau: 'ORDINAL',
+        }, (l, a) => {
+          const w = cijfer(l, a);
+          return w === null || w === SPSS_WEET_NIET ? null : enpsGroep(w);
+        });
+      }
     } else if (q.type === 'janee') {
       voeg({ naam, soort: 'getal', decimalen: 0, label, waardelabels: { 1: 'Ja', 0: 'Nee' }, meetniveau: 'NOMINAL' }, (l, a) => {
         const v = vraagIn(l);
@@ -406,7 +457,9 @@ export function spssPakket(data) {
     '- Dezelfde vraag op verschillende meetmomenten staat in dezelfde kolom. Een vraag die in een vragenlijst niet voorkomt, is daar leeg.',
     '- Bij meerkeuzevragen blijft een antwoordmogelijkheid in dezelfde kolom, ook als die later is hernoemd (het label noemt dan beide namen). Kwam een mogelijkheid in een vragenlijst niet voor, dan is die kolom daar leeg.',
     '- De vragenlijsten zijn anoniem: je kunt meetmomenten vergelijken als groepen, maar niet per persoon koppelen.',
-    '- Bij schaalvragen is 99 "weet niet / n.v.t."; die waarde telt SPSS niet mee in gemiddelden.',
+    '- Bij schaalvragen en cijfervragen is 99 "weet niet / n.v.t."; die waarde telt SPSS niet mee in gemiddelden.',
+    '- Achtergrondvragen heten naar hun kenmerk (bijvoorbeeld afdeling of leeftijd). Bij een cijfervraag van 0 tot 10 (aanbevelen) staat de eNPS-groep in een eigen variabele die eindigt op _enps: 1 = criticaster (0–6), 2 = passief (7–8), 3 = promotor (9–10).',
+    '- Een cijfervraag telt niet mee in de themascores.',
     '- De variabelen thema01, thema02 … zijn de gemiddelde score per thema per respondent (alleen als minstens de helft van de vragen is beantwoord).',
     '- Dit bestand bevat losse antwoorden, ook van kleine groepen. Bewaar het veilig en deel het niet zomaar.',
     '',

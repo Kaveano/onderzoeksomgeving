@@ -31,6 +31,7 @@ const ACHTERGROND_VRAGEN = [
     tekst: 'Op welke afdeling werk je?',
     opties: ['Afdeling A', 'Afdeling B', 'Afdeling C'],
     uitsplitsen: true,
+    kenmerk: 'afdeling',
   },
   {
     thema: 'Achtergrond',
@@ -38,6 +39,7 @@ const ACHTERGROND_VRAGEN = [
     tekst: 'Hoe lang werk je al bij {bedrijf}?',
     opties: ['Korter dan 1 jaar', '1 tot 5 jaar', '5 tot 10 jaar', '10 jaar of langer'],
     uitsplitsen: true,
+    kenmerk: 'diensttijd',
   },
 ];
 
@@ -52,23 +54,26 @@ const ACHTERGROND_ONBOARDING = [
     tekst: 'Hoe lang werk je bij {bedrijf}?',
     opties: ['Korter dan 3 maanden', '3 tot 6 maanden', '6 tot 12 maanden', 'Een jaar of langer'],
     uitsplitsen: true,
+    kenmerk: 'diensttijd',
   },
 ];
 
 // Vertrekkers: terugblikkend gevraagd en zonder uitsplitsing, want per afdeling of diensttijd
-// zijn er bijna altijd minder dan 5 vertrekkers.
+// zijn er bijna altijd minder dan 5 vertrekkers. Het kenmerk staat er wel bij (wie heeft er meegedaan?).
 const ACHTERGROND_VERTREK = [
   {
     thema: 'Achtergrond',
     type: 'meerkeuze',
     tekst: 'Op welke afdeling werkte je?',
     opties: ['Afdeling A', 'Afdeling B', 'Afdeling C'],
+    kenmerk: 'afdeling',
   },
   {
     thema: 'Achtergrond',
     type: 'meerkeuze',
     tekst: 'Hoe lang heb je bij {bedrijf} gewerkt?',
     opties: ['Korter dan 1 jaar', '1 tot 5 jaar', '5 tot 10 jaar', '10 jaar of langer'],
+    kenmerk: 'diensttijd',
   },
 ];
 
@@ -437,7 +442,7 @@ export const EXTRA_SJABLONEN = [
         { thema: 'Totaalbeeld en verbeterpunten', type: 'open', tekst: 'Wat doet je leidinggevende goed en moet hij of zij vooral blijven doen?', toelichting: 'Noem geen namen.' },
         { thema: 'Totaalbeeld en verbeterpunten', type: 'open', tekst: 'Wat zou je leidinggevende anders kunnen doen om jou en je team beter te ondersteunen?', toelichting: 'Noem geen namen.' },
         ...ACHTERGROND_VRAGEN,
-        { thema: 'Achtergrond', type: 'janee', tekst: 'Geef je zelf leiding aan een of meer medewerkers?', uitsplitsen: true },
+        { thema: 'Achtergrond', type: 'janee', tekst: 'Geef je zelf leiding aan een of meer medewerkers?', uitsplitsen: true, kenmerk: 'leidinggevend' },
       ],
       acties: [
         ACHTERGROND_ACTIE,
@@ -542,7 +547,7 @@ export const EXTRA_SJABLONEN = [
           tekst: 'Hoe lang duurde het voordat je je werk grotendeels zelfstandig kon doen?',
           opties: ['Korter dan een maand', '1 tot 3 maanden', '3 tot 6 maanden', 'Langer dan 6 maanden', 'Zover ben ik nog niet'],
         },
-        { thema: 'Verwachtingen en totaaloordeel', type: 'janee', tekst: 'Zou je {bedrijf} aanbevelen als werkgever aan vrienden of kennissen?' },
+        { thema: 'Verwachtingen en totaaloordeel', type: 'cijfer', schaal_soort: 'nps', tekst: 'Hoe waarschijnlijk is het dat je {bedrijf} als werkgever aanbeveelt aan vrienden of bekenden?' },
         { thema: 'Verwachtingen en totaaloordeel', type: 'open', tekst: 'Wat heeft je het meest geholpen bij je start bij {bedrijf}?' },
         { thema: 'Verwachtingen en totaaloordeel', type: 'open', tekst: 'Wat heb je gemist of had beter gekund tijdens je inwerkperiode?' },
         ...ACHTERGROND_ONBOARDING,
@@ -688,7 +693,7 @@ export const EXTRA_SJABLONEN = [
         { thema: 'Organisatie en afscheid', type: 'schaal', tekst: 'Ik werd goed geïnformeerd over wat er in de organisatie speelde.' },
         { thema: 'Organisatie en afscheid', meetpunt: 'Afhandeling van het vertrek', type: 'schaal', tekst: 'Mijn vertrek is zorgvuldig en respectvol afgehandeld.', weet_niet: true },
         { thema: 'Organisatie en afscheid', meetpunt: 'Totaaloordeel werkgever', type: 'schaal', schaal_soort: 'tevreden', tekst: 'Hoe tevreden ben je, alles bij elkaar genomen, over je tijd bij {bedrijf}?' },
-        { thema: 'Organisatie en afscheid', type: 'janee', tekst: 'Zou je {bedrijf} aanbevelen als werkgever aan vrienden of kennissen?' },
+        { thema: 'Organisatie en afscheid', type: 'cijfer', schaal_soort: 'nps', tekst: 'Hoe waarschijnlijk is het dat je {bedrijf} als werkgever aanbeveelt aan vrienden of bekenden?' },
         { thema: 'Organisatie en afscheid', type: 'janee', tekst: 'Zou je in de toekomst opnieuw bij {bedrijf} willen werken?' },
         { thema: 'Organisatie en afscheid', type: 'open', tekst: 'Wat heb je het meest gewaardeerd aan het werken bij {bedrijf}?' },
         { thema: 'Organisatie en afscheid', type: 'open', tekst: 'Welk advies wil je {bedrijf} meegeven?' },

@@ -26,6 +26,7 @@ const ACHTERGROND_VRAGEN = [
     tekst: 'Op welke afdeling werk je?',
     opties: ['Afdeling A', 'Afdeling B', 'Afdeling C'],
     uitsplitsen: true,
+    kenmerk: 'afdeling',
   },
   {
     thema: 'Achtergrond',
@@ -33,6 +34,7 @@ const ACHTERGROND_VRAGEN = [
     tekst: 'Hoe lang werk je al bij {bedrijf}?',
     opties: ['Korter dan 1 jaar', '1 tot 5 jaar', '5 tot 10 jaar', '10 jaar of langer'],
     uitsplitsen: true,
+    kenmerk: 'diensttijd',
   },
 ];
 
@@ -123,7 +125,8 @@ export const STANDAARD_SJABLONEN = [
         { thema: 'Betrokkenheid', meetpunt: 'Bevlogenheid', type: 'schaal', tekst: 'Ik ben trots op de organisatie waar ik werk.' },
         { thema: 'Betrokkenheid', meetpunt: 'Vertrekintentie', type: 'schaal', tekst: 'Ik verwacht over een jaar nog bij {bedrijf} te werken.' },
         { thema: 'Betrokkenheid', type: 'schaal', schaal_soort: 'tevreden', tekst: 'Hoe tevreden ben je, alles bij elkaar genomen, over je werk?' },
-        { thema: 'Betrokkenheid', type: 'janee', tekst: 'Zou je {bedrijf} aanbevelen als werkgever aan vrienden of kennissen?' },
+        { thema: 'Betrokkenheid', type: 'cijfer', schaal_soort: 'rapport', tekst: 'Welk rapportcijfer geef je {bedrijf} als werkgever?' },
+        { thema: 'Betrokkenheid', type: 'cijfer', schaal_soort: 'nps', tekst: 'Hoe waarschijnlijk is het dat je {bedrijf} als werkgever aanbeveelt aan vrienden of bekenden?' },
         { thema: 'Betrokkenheid', type: 'open', tekst: 'Wat gaat er goed bij {bedrijf} en moeten we vooral zo houden?' },
         { thema: 'Betrokkenheid', type: 'open', tekst: 'Wat zou volgens jou als eerste verbeterd moeten worden?' },
         ...ACHTERGROND_VRAGEN,

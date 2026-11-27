@@ -55,6 +55,7 @@ function antwoordTekst(q, a, data, { schaalAlsLabel = false } = {}) {
     }
     return a;
   }
+  if (q.type === 'cijfer') return a === WEET_NIET ? 'weet niet / n.v.t.' : a;
   if (q.type === 'meerkeuze') {
     const labels = new Map(opties(q).map((o) => [o.id, o.label]));
     return (Array.isArray(a) ? a : [a]).map((k) => labels.get(k) || '(verwijderde optie)').join(' | ');
@@ -81,7 +82,8 @@ export function alleAntwoordenCsv(data) {
   const themaNaam = new Map(data.themas.map((t) => [t.id, t.naam]));
   const meetpuntNaam = new Map(data.meetpunten.map((m) => [m.id, m.naam]));
   const mmNaam = new Map(data.meetmomenten.map((m) => [m.id, m.naam]));
-  const kop = ['Vragenlijst', 'Meetmoment', 'Respondent', 'Datum', 'Thema', 'Meetpunt', 'Vraag', 'Vraagtype', 'Antwoord', 'Score (1-5)'];
+  // De laatste kolom is het cijfer bij een cijfervraag (0 tot 10 of 1 tot 10); dat telt niet mee in Score (1-5).
+  const kop = ['Vragenlijst', 'Meetmoment', 'Respondent', 'Datum', 'Thema', 'Meetpunt', 'Vraag', 'Vraagtype', 'Antwoord', 'Score (1-5)', 'Cijfer (0-10)'];
   const rijen = [];
   for (const vl of data.vragenlijsten) {
     const vragen = data.vragen.filter((q) => q.vragenlijst_id === vl.id);
@@ -101,6 +103,7 @@ export function alleAntwoordenCsv(data) {
           data.lijsten.vraagtypen[q.type] || q.type,
           antwoordTekst(q, a, data, { schaalAlsLabel: true }),
           q.type === 'schaal' && Number.isInteger(a) ? a : null,
+          q.type === 'cijfer' && Number.isInteger(a) ? a : null,
         ]);
       }
     });

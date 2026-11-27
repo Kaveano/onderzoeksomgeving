@@ -557,6 +557,9 @@ function maakVraag(vraag, nr) {
     case 'schaal':
       antwoord = maakSchaal(item);
       break;
+    case 'cijfer':
+      antwoord = maakCijfer(item, beschrijving);
+      break;
     case 'janee':
       antwoord = h('div', { class: 'vl-opties vl-janee' },
         optie(item, { type: 'radio', waarde: 'ja', inhoud: [teken(false), ' ', h('span', { class: 'vl-optie-tekst' }, 'Ja')] }),
@@ -620,6 +623,43 @@ function maakSchaal(item) {
   )];
 }
 
+/**
+ * Cijfervraag: 0 tot 10 (aanbevelen) of 1 tot 10 (rapportcijfer), één knop per cijfer. Op een groot scherm in één rij,
+ * op een telefoon in twee rijen (0–5 en 6–10, of 1–5 en 6–10). Onder elke rij staat de tekst bij het uiterste
+ * ("0 = Zeer onwaarschijnlijk", "10 = Zeer waarschijnlijk"); de vraag en de uiterste knoppen verwijzen ernaar
+ * (aria-describedby), zodat een schermlezer ze voorleest.
+ */
+function maakCijfer(item, beschrijving) {
+  const c = item.vraag.cijfer || {};
+  const min = Number.isInteger(c.min) ? c.min : 1;
+  const max = Number.isInteger(c.max) && c.max > min ? c.max : 10;
+  const basis = `v${item.vraag.id}`;
+  const laag = h('span', { class: 'vl-cijfer-eind vl-cijfer-laag', id: `${basis}-laag` }, `${min} = ${c.laag || 'laagste cijfer'}`);
+  const hoog = h('span', { class: 'vl-cijfer-eind vl-cijfer-hoog', id: `${basis}-hoog` }, `${max} = ${c.hoog || 'hoogste cijfer'}`);
+  beschrijving.push(laag.id, hoog.id);
+  const knop = (w) => {
+    const el = optie(item, { type: 'radio', waarde: String(w), klasse: 'vl-cijfer-optie', inhoud: [h('span', { class: 'vl-cijfer-nr' }, String(w))] });
+    const invoer = item.invoer[item.invoer.length - 1];
+    if (w === min) invoer.setAttribute('aria-describedby', laag.id);
+    if (w === max) invoer.setAttribute('aria-describedby', hoog.id);
+    return el;
+  };
+  // Eerste rij tot en met 5, de tweede vanaf 6.
+  const splits = Math.min(max, 5);
+  const eerste = [];
+  const tweede = [];
+  for (let w = min; w <= max; w++) (w <= splits ? eerste : tweede).push(knop(w));
+  const aantal = max - min + 1;
+  const rij = h('div', { class: `vl-opties vl-cijfer vl-cijfer-${aantal}` },
+    h('div', { class: 'vl-cijfer-rij' }, eerste, laag),
+    h('div', { class: 'vl-cijfer-rij' }, tweede, hoog),
+  );
+  if (!item.vraag.weet_niet) return rij;
+  return [rij, h('div', { class: 'vl-weetniet' },
+    optie(item, { type: 'radio', waarde: WEET_NIET, inhoud: [teken(false), ' ', h('span', { class: 'vl-optie-tekst' }, 'Weet niet / n.v.t.')] }),
+  )];
+}
+
 function maakOpen(item, beschrijving) {
   const basis = `v${item.vraag.id}`;
   const teller = h('p', { class: 'vl-teller', id: `${basis}-teller` });
@@ -663,7 +703,7 @@ function waardeVan(item) {
   if (!gekozen.length) return undefined;
   if (vraag.type === 'meerkeuze' && vraag.meerdere_antwoorden) return gekozen;
   const w = gekozen[0];
-  if (vraag.type === 'schaal') return w === WEET_NIET ? WEET_NIET : Number(w);
+  if (vraag.type === 'schaal' || vraag.type === 'cijfer') return w === WEET_NIET ? WEET_NIET : Number(w);
   return w;
 }
 

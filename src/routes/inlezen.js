@@ -6,7 +6,8 @@ import { Fout, json, leesJson } from '../lib/http.js';
 import * as v from '../lib/validatie.js';
 import { alle, een, haalOnderzoek, haalBewerkbaarOnderzoek, bewerkbaarVia, onderzoekVan, nuIso, vandaagNL } from '../lib/db.js';
 import { controleerAntwoord, haalVragen, willekeurigId } from './publiek.js';
-import { vraagVeldenUit } from './vragenlijsten.js';
+import { vraagVeldenUit, kenmerkDubbel } from './vragenlijsten.js';
+import { KENMERKEN } from '../../public/js/beheer/kenmerken.js';
 
 const MAX_REEKS = 300;
 const MAX_CELLEN = 6000; // respondenten × vragen per verzoek, zodat het controleren binnen de rekentijd blijft
@@ -94,10 +95,11 @@ export async function vragen({ request, env, params }) {
   const vragenlijstId = v.id(params.id);
   const o = await bewerkbaarVia(env, 'vragenlijst', vragenlijstId);
   const lijst = lijstUit(await leesJson(request, 400_000), 'vragen', 'vragen', MAX_VRAGEN);
-  const [themas, meetpunten, stand] = await env.DB.batch([
+  const [themas, meetpunten, stand, kenmerkenNu] = await env.DB.batch([
     env.DB.prepare('SELECT id FROM themas WHERE onderzoek_id = ?').bind(o.id),
     env.DB.prepare('SELECT m.id, m.thema_id FROM meetpunten m JOIN themas t ON t.id = m.thema_id WHERE t.onderzoek_id = ?').bind(o.id),
     env.DB.prepare('SELECT COUNT(*) AS n, COALESCE(MAX(volgorde), 0) AS laatste FROM vragen WHERE vragenlijst_id = ?').bind(vragenlijstId),
+    env.DB.prepare("SELECT DISTINCT kenmerk FROM vragen WHERE vragenlijst_id = ? AND kenmerk <> ''").bind(vragenlijstId),
   ]);
   const { n, laatste } = stand.results[0];
   if (n + lijst.length > MAX_VRAGEN) {
@@ -105,13 +107,19 @@ export async function vragen({ request, env, params }) {
   }
   const themaIds = new Set(themas.results.map((t) => t.id));
   const meetpuntThema = new Map(meetpunten.results.map((m) => [m.id, m.thema_id]));
+  // Een kenmerk (behalve 'overig') hooguit één keer per vragenlijst: binnen deze reeks én met de vragen die er al staan.
+  const kenmerkBezet = new Set(kenmerkenNu.results.map((r) => r.kenmerk));
   const rijen = perRegel(lijst, (q, i) => {
     const f = vraagVeldenUit(q, themaIds, meetpuntThema);
+    if (f.kenmerk && !KENMERKEN[f.kenmerk].meerdere) {
+      if (kenmerkBezet.has(f.kenmerk)) throw new Fout(409, kenmerkDubbel([f.kenmerk]));
+      kenmerkBezet.add(f.kenmerk);
+    }
     return [vragenlijstId, f.thema_id, f.meetpunt_id, f.type, f.tekst, f.toelichting, JSON.stringify(f.opties), f.schaal_soort,
-      f.meerdere_antwoorden, f.verplicht, f.weet_niet, f.uitsplitsen, laatste + 1 + i];
+      f.meerdere_antwoorden, f.verplicht, f.weet_niet, f.uitsplitsen, laatste + 1 + i, f.kenmerk];
   });
   await env.DB.batch(invoegOpdrachten(env, 'vragen',
-    ['vragenlijst_id', 'thema_id', 'meetpunt_id', 'type', 'tekst', 'toelichting', 'opties', 'schaal_soort', 'meerdere_antwoorden', 'verplicht', 'weet_niet', 'uitsplitsen', 'volgorde'], rijen));
+    ['vragenlijst_id', 'thema_id', 'meetpunt_id', 'type', 'tekst', 'toelichting', 'opties', 'schaal_soort', 'meerdere_antwoorden', 'verplicht', 'weet_niet', 'uitsplitsen', 'volgorde', 'kenmerk'], rijen));
   return json({ ok: true, aantal: rijen.length }, 201);
 }
 

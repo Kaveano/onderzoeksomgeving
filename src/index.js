@@ -126,6 +126,8 @@ const BEHEER_ROUTES = [
 
   // Uitbreidingen: elk pakket voegt zijn routes alleen direct onder zijn eigen regel toe.
   // [P2] Vraagmodel: kenmerkvragen en kenmerk per vraag
+  ['POST', `${B}/vragenlijsten/:id/kenmerkvragen`, vragenlijsten.kenmerkVragen],
+  ['PUT', `${B}/vragen/:id/kenmerk`, vragenlijsten.vraagKenmerk],
   // [P3] HR-analytics: instellingen en personeelscijfers
   // [P4] Werkbank: definities en analyses
   // [P5] Bibliotheek, bronnen bij een onderzoek en coderen
