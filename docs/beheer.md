@@ -16,6 +16,8 @@ Dit document is voor onderhoud: waar staat wat, hoe zet je een nieuwe versie onl
 | Gegevens in de browser | `public/js/beheer/gegevens.js` | De enige manier waarop schermen aan de antwoorden komen: één kopie per onderzoek per sessie, daarna alleen veranderde vragenlijsten (zie "Grote onderzoeken") |
 | Verschilwacht | `public/js/beheer/verschilwacht.js` | Waarschuwt als een meelezer twee uitkomsten kan vergelijken die 1 tot 4 respondenten verschillen |
 | Belastingtest | `scripts/belasting.mjs` | Meet hoe groot een onderzoek kan worden op de gratis laag (zie "Belastingtest") |
+| Werkbank (rekenen) | `public/js/beheer/werkbank/` | Zuivere modules: `dataset.js` (variabelen, namen als in SPSS), `transformaties.js` (eigen variabelen, selecties), `privacy-selectie.js` (regels A–E bovenop `privacy.js`), `verdelingen.js`, `matrix.js`, `procedures/` (de analyses; `procedures/index.js` is de lijst), `uitvoer.js`, `uitvoer-tekst.js`, `uitvoer-export.js`, `rekenkern.js` (hoofdthread met pauzes en stoppen), `rapport.js` (`analysesVoorRapport` voor het rapport), `definities.js` (vorm van definities en specs; ook de server gebruikt die) |
+| Werkbank (scherm en server) | `public/js/beheer/schermen/werkbank*.js`, `werkbank/uitvoer-weergave.js`, `src/routes/werkbank.js` | De server bewaart alleen definities (`werkbank_definities`) en bewaarde analyses (`werkbank_analyses`) |
 
 Je andere projecten (AF Partners-site, InterimRadar) staan los hiervan en worden niet geraakt.
 
@@ -58,6 +60,8 @@ Er wordt niets in rekening gebracht. Bij een daglimiet weigert Cloudflare verzoe
 | D1: opslag | 500 MB per database | Tekst; ruim voldoende voor vele onderzoeken |
 
 Grenzen die de app zelf stelt, zodat één verzoek altijd binnen de gratis rekentijd blijft: 300 regels per keer bij inlezen (de app verdeelt grotere bestanden zelf in delen), 100 vragen per vragenlijst, 20 rapporten en 20 deellinks per onderzoek, 10 eigen datasets per onderzoek van maximaal 2.000 rijen en 40 kolommen.
+
+**Werkbank.** Per onderzoek hooguit 300 definities (eigen variabelen, selecties, eigenschappen) en 200 bewaarde analyses; een definitie, spec of notitie is hooguit 20.000 tekens. Elke route van `src/routes/werkbank.js` doet één batch om te lezen en één schrijfopdracht; bij het ophalen worden de JSON-kolommen niet ingelezen maar doorgeplakt (`test/werkbank-api.test.mjs` telt dat). Alle analyses rekenen in de browser, op de hoofdthread met korte pauzes (geen Web Worker). Gemeten in Node (`test/werkbank-prestaties.test.mjs`): 5.000 respondenten × 150 vragen opbouwen ongeveer 0,15 s, een correlatiematrix van 40 variabelen 0,3 s, ANOVA met Games-Howell over 10 groepen ongeveer 1,8 s.
 
 ### Grote onderzoeken
 
@@ -158,6 +162,12 @@ Het eerste verzoek in een vers proces kost 12 tot 30 ms, bij elke grootte vanaf 
 **Exportbestanden**
 - Excel, SPSS, de antwoorden als CSV en de volledige JSON bevatten alle losse antwoorden. Afronden vraagt daarom eerst bevestiging (K S10). Een rapport heet *geschikt om te delen*.
 - Het willekeurige id van een inzending komt alleen via `export/inzendingen` bij de ingelogde beheerder (voor coderen). In de volledige JSON staan in plaats daarvan vragenlijst en respondentnummer.
+
+**Werkbank (Analyse › Werkbank)**
+- De server bewaart alleen definities en specs, nooit waarden per persoon of uitkomsten; alles rekent de browser opnieuw uit de antwoorden. De vorm wordt aan beide kanten met `werkbank/definities.js` gecontroleerd; namen niet gelijk aan een naam die de SPSS-export uitdeelt (`spssVariabeleNamen`), een kenmerksleutel of een SPSS-woord.
+- Regels (D2 §7, BOUWPLAN B6/B7/B26): R0 (vragenlijst met 1–4 antwoorden doet niet mee); A (beschermde groepen via `privacy.js verdeelInGroepen`, "Overige groepen samen"); B (cellen; aanvullend verbergen; × met `VERBORGEN_UITLEG`); C (geen toets, effect, verwacht aantal of residu bij een verborgen cel); D (een selectie en elke buur – zonder één voorwaarde of zonder één gekozen groep – verschillen 0 of minstens 5, per uitvoer, per groep en per cel); E (twee indelingen van dezelfde wortelvariabele, ook verwijderde, bakenen geen groepje van 1–4 af); G (geen rijen per persoon, geen datum, geen open tekst; minimum en maximum zijn de 5e laagste en hoogste waarde, mediaan vanaf 9). B6: een variabele met hooguit twee waarden krijgt per groep de kruistabelregel. B7: een score die gedeeltelijke respondenten laat wegvallen, alleen bij 0 of minstens 5 weggevallen (ook per groep). B26: frequenties van meningsvragen zonder selectie volgen het dashboard; voor rapporten rekent `analysesVoorRapport` altijd streng, zodat `kleinste_n` minstens 5 is. Een indeling (kenmerk, eigen indeling, vragenlijst, code) mag alleen als getal meedoen als haar verdeling geen kleine groep heeft.
+- **Restrisico** (D2 §7.9, K P11): de regels houden afleiden in één stap tegen (totaal min de getoonde delen, een selectie min een buur, twee indelingen van dezelfde vraag, toetsen over kleine cellen). Door veel verschillende uitkomsten over verschillende variabelen en selecties te combineren, is het in theorie nog mogelijk iets over een kleine groep af te leiden; volledige controle van alle uitkomsten samen is in een browserprogramma niet haalbaar. De onderzoeker heeft de ruwe gegevens toch al (SPSS-export); de regels zorgen dat wat ze **deelt** (stukken, rapporten, Excel, Word) niet per ongeluk kleine groepen laat zien.
+- **Referentiewaarden opnieuw maken.** `python3 -I test/referentie/werkbank_referentie.py > test/fixtures/werkbank-referentie.json` (zaad 20261127; de versies van Python, NumPy, SciPy en statsmodels staan in de kop van het JSON-bestand; gecontroleerd met SciPy 1.18.1 en statsmodels 0.15.0). Draai daarna `node --test test/werkbank-statistiek.test.mjs`. `npm test` draait het Python-script niet.
 
 **Eigen datasets (Analyse, onderdeel 6)**
 - Groepen met minder dan 5 waarden doen niet mee; samenhang vraagt minstens 10 rijen. Kolommen die over gezondheid lijken te gaan (verzuim, ziekmelding, diagnose, arbo) staan bij het inlezen standaard uit, net als kolommen met persoonsgegevens.

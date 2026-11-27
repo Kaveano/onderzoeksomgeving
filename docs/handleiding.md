@@ -197,6 +197,58 @@ Een groep met minder dan 5 waarden doet niet mee aan een vergelijking, net als b
 
 **Gegevens over gezondheid.** Kolommen die over verzuim, ziekmeldingen of diagnoses lijken te gaan, staan bij het inlezen uit, met de melding *"Deze kolom lijkt over gezondheid te gaan. Gebruik hiervoor 'Personeelsbestand voor HR-analytics'; dan worden alleen groepscijfers bewaard."* Verzuim per medewerker is een gegeven over iemands gezondheid; dat hoort niet als losse rijen in een eigen dataset.
 
+### Werkbank: zelf analyses doen
+
+Wil je zelf kiezen welke analyse je doet, zoals in SPSS? Kies dan bij **Analyse** bovenaan **Werkbank**. Je kunt nieuwe variabelen maken (bijvoorbeeld een schaalscore), een selectie maken en uitkomsten bewaren voor je rapport. De anonimiteit blijft beschermd: niets wat op minder dan 5 mensen berust, komt in beeld. De berekeningen gebeuren in je eigen browser; met **Stoppen** breek je een lange berekening af.
+
+**Bovenaan kies je:**
+- **Gegevens**: één vragenlijst, *Alle vragenlijsten samen (meetmoment als variabele)* of een eigen dataset (bijvoorbeeld *Dataset: Opleidingsuren 2025 – 480 rijen*). Een vragenlijst met minder dan 5 antwoorden doet niet mee.
+- **Selectie**: *Iedereen* of een selectie die je hebt gemaakt (bijvoorbeeld één afdeling).
+- **Schrijfwijze** van de zin onder een uitkomst: *Rapport (p = 0,036)*, zoals in je rapporten, of *APA (p = ,036)*, zonder nul voor maten die niet groter dan 1 kunnen zijn.
+- **Gegevens vernieuwen** haalt de nieuwste antwoorden op.
+
+**Variabelen.** Hier staan alle vragen, thema's, meetpunten, achtergrondkenmerken en je eigen variabelen, met dezelfde korte namen als in het SPSS-pakket (v01, thema02 …). Per variabele zie je de soort, het **meetniveau** (nominaal: groepen zonder volgorde; ordinaal: groepen met volgorde; interval: een getal), de waarden en hoeveel geldige antwoorden er zijn (× = minder dan 5). Pas het meetniveau aan als een variabele anders gebruikt moet worden. "Weet niet" en lege antwoorden tellen als ontbrekend. Ruwe gegevens per respondent zie je hier niet, om de anonimiteit te beschermen; gebruik daarvoor de export bij Afronden.
+
+**Variabelen maken.** Elk venster toont meteen een voorbeeld.
+- **Schaalscore berekenen**: het gemiddelde of de som van een aantal vragen. Vink *omscoren* aan bij een vraag die andersom gesteld is. Je ziet direct de Cronbachs alfa van die vragen.
+- **Vraag omscoren**: 1 wordt 5, 2 wordt 4 (bij een rapportcijfer 1 tot 10: 1 wordt 10).
+- **Indelen in groepen**: op antwoorden (geef antwoorden dezelfde groepsnaam) of met grenzen (bijvoorbeeld 30; 40; 50). *Gelijke groepen* (mediaan, tertielen, kwartielen) rekent de grenzen één keer uit en bewaart ze. Bij een vraag van 0 tot 10 is er de *eNPS-indeling (0–6 / 7–8 / 9–10)*.
+- **Selectie maken**: een of meer voorwaarden die tegelijk gelden. Je kunt ook kiezen *"Laat respondenten weg die alle schaalvragen hetzelfde beantwoordden"* en *"Laat respondenten weg die minder dan … % van de vragen beantwoordden"*.
+
+Verwijder je een indeling of selectie, dan verdwijnt die uit je lijst, maar telt hij nog mee bij de controle op terugrekenen (uitkomsten ervan kunnen al in je stukken staan). Met *Helemaal verwijderen* gaat hij echt weg.
+
+**Analyseren.** Kies wat je wilt weten:
+
+| Vraag | Analyse | Gebruik dit als … |
+|---|---|---|
+| Hoe zijn de antwoorden verdeeld? | Frequenties | je wilt zien hoe vaak elk antwoord is gegeven |
+| Gemiddelde, spreiding en vorm | Beschrijvende statistiek | je van scores het gemiddelde, de spreiding en de vorm wilt weten |
+| Gemiddelden per groep | Gemiddelden vergelijken | je de gemiddelden van groepen naast elkaar wilt zien (zonder toets) |
+| Verschillen twee groepen? | t-toets (Student, Welch, Levene, Mann-Whitney, Cohens d en Hedges' g) | je twee groepen wilt vergelijken |
+| Verschillen drie of meer groepen? | Variantieanalyse (ANOVA, Welch, Games-Howell of Tukey, Kruskal-Wallis met Dunn) | je drie of meer groepen wilt vergelijken |
+| Hangen twee indelingen samen? | Kruistabel en chi-kwadraat (Fisher bij 2 × 2, Cramérs V, aangepaste residuen) | je twee vragen met vaste antwoorden wilt vergelijken |
+| Wijkt de verdeling af van wat je verwacht? | Chi-kwadraat aanpassingstoets | je wilt controleren of de respons lijkt op de organisatie |
+| Welke scores hangen samen? | Correlatiematrix (Pearson, Spearman, Holm) | je wilt zien welke scores samen hoger of lager zijn |
+| Meten deze vragen samen één ding? | Betrouwbaarheid (Cronbachs alfa) | je van een aantal vragen één schaalscore wilt maken |
+
+Regressie, logistische regressie, de gepaarde vergelijking en factoranalyse komen later.
+
+**Uitvoer.** De nieuwste uitkomst staat bovenaan, met tabellen, *Wat betekent dit?* en een zin in APA-stijl met **Kopieer zin**. Per uitkomst: **Bewaren als analyse**, **Neem op in stuk**, **Naar Excel**, **Naar Word** en **Weghalen**; daarnaast **Hele uitvoer naar Excel** en **Hele uitvoer naar Word** (*geschikt om te delen*). De uitvoer blijft staan zolang je de pagina niet ververst. Op een telefoon wordt een correlatiematrix een lijst met paren.
+
+**Mijn analyses.** Een bewaarde analyse is de vraag, niet de uitkomst: met **Opnieuw uitvoeren** rekent hij met de nieuwste gegevens. Met **Aanpassen** open je het formulier weer, met **Notitie** schrijf je iets voor jezelf (dat komt niet in een rapport). Gebruikt een analyse een variabele die niet meer bestaat, dan zegt de werkbank dat.
+
+**Privacy in de werkbank, in gewone woorden.**
+- Een getal dat op minder dan 5 mensen berust, verschijnt niet; een verborgen cel is overal ×. Waar nodig verdwijnt ook een andere cel, zodat een klein aantal niet uit het totaal is terug te rekenen.
+- Kleine groepen worden samengevoegd tot *Overige groepen samen* of doen niet mee (ze worden dan genoemd, zonder getallen). Een toets wordt niet berekend als een cel verborgen is.
+- Heeft een uitkomst maar twee waarden (zoals ja/nee), dan is een gemiddelde per groep een percentage; dan geldt de regel van de kruistabel.
+- Bij een themascore of eigen schaalscore: vallen er 1 tot 4 mensen weg omdat ze te weinig vragen beantwoordden, dan wordt die score niet getoond (anders zijn hun antwoorden terug te rekenen uit het dashboard).
+- Een selectie mag nooit maar 1 tot 4 mensen verschillen van iedereen of van dezelfde selectie met één voorwaarde minder. Twee indelingen van dezelfde vraag mogen samen geen groepje van 1 tot 4 mensen afbakenen (zoals "jonger dan 40" naast "jonger dan 41").
+- Minimum en maximum zijn de 5e laagste en de 5e hoogste waarde; de mediaan staat er pas bij vanaf 9 mensen.
+- Bij *Frequenties* zonder selectie zie je bij gewone vragen de hele verdeling, net als op het dashboard; bij achtergrondkenmerken en indelingen worden aantallen van 1 tot 4 verborgen. In een rapport worden ze altijd verborgen.
+- De datum van invullen en open antwoorden komen nooit in de werkbank; codes bij open antwoorden wel (als 0/1).
+
+**Verschillen met SPSS.** De werkbank gebruikt dezelfde formules en is gecontroleerd met SciPy en statsmodels. Kleine verschillen: Mann-Whitney geeft z met continuïteitscorrectie (SPSS zonder; verschil in de 2e of 3e decimaal), de post-hoctoets is standaard Games-Howell (Tukey kan ook), en minimum en maximum zijn de 5e laagste en hoogste waarde.
+
 ## 6. Eigen invoer
 
 Op het tabblad **Eigen invoer** leg je vast wat je buiten de vragenlijst te weten komt: interviews, observaties, documentanalyse en cijfers zoals verzuim of verloop. Koppel elk item aan een thema en een datum, en eventueel aan een meetpunt en meetmoment.
@@ -382,3 +434,4 @@ Goed om te weten:
 - Van **meelezers** met een deellink wordt niets bewaard, behalve de datum waarop de link het laatst is bekeken. Van de toegangscode wordt alleen een onleesbare versie (hash) bewaard.
 - **E-mailadressen** worden nergens bewaard. Uitnodigingen verstuur je vanuit je eigen e-mailprogramma.
 - Bestanden die je **inleest** worden in je eigen browser gelezen; alleen de gegevens die je kiest, worden opgeslagen.
+- De **werkbank** bewaart alleen hoe je eigen variabelen, selecties en analyses gemaakt zijn, nooit waarden per persoon. Uitkomsten van minder dan 5 mensen komen niet in beeld, ook niet per groep als percentage (bij ja/nee of twee waarden geldt de regel van de kruistabel), en een selectie of indeling die maar een paar mensen verschilt van een andere, wordt geweigerd.
