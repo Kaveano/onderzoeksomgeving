@@ -183,5 +183,5 @@ export async function stukkenTxt({ env, params }) {
       tekst += `- [${ACTIESTATUSSEN[a.status]}] ${a.titel}${a.datum ? ` (${a.datum})` : ''}${a.notitie ? `\n  ${a.notitie}` : ''}\n`;
     }
   }
-  return bestand('﻿' + tekst.replace(/\r?\n/g, '\r\n'), `${slug(o.bedrijfsnaam)}-stukken-${vandaagNL()}.txt`, 'text/plain; charset=utf-8');
+  return bestand('\uFEFF' + tekst.replace(/\r?\n/g, '\r\n'), `${slug(o.bedrijfsnaam)}-stukken-${vandaagNL()}.txt`, 'text/plain; charset=utf-8');
 }

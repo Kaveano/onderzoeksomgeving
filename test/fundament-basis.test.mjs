@@ -296,3 +296,12 @@ test('verbergOpen (B8): zonder tussenstand geen uitkomsten van een vragenlijst d
   assert.deepEqual(JSON.parse(JSON.stringify(rapportVoorKijker(rij).blokken)), zonder);
   assert.deepEqual(JSON.parse(JSON.stringify(rapportVoorKijker(rij, { verbergOpen: false }).blokken)), naar(tussen, { markeerLeeg: false }));
 });
+
+test('broncode van de server: geen letterlijk BOM-teken (een editor kan het ongemerkt weghalen; schrijf \\uFEFF)', async () => {
+  const { readdirSync } = await import('node:fs');
+  const map = new URL('../src/', import.meta.url);
+  const bestanden = readdirSync(map, { recursive: true }).filter((f) => f.endsWith('.js'));
+  assert.ok(bestanden.length > 10);
+  for (const f of bestanden) assert.ok(!readFileSync(new URL(f, map), 'utf8').includes('﻿'), f);
+  assert.match(readFileSync(new URL('routes/export.js', map), 'utf8'), /bestand\('\\uFEFF' \+ tekst/);
+});
