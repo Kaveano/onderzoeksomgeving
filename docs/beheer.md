@@ -129,6 +129,14 @@ Database-aanpassingen doorvoeren, als er nieuwe bestanden in `migrations/` staan
 npx wrangler d1 migrations apply DB --remote
 ```
 
+**Eerst een reservekopie bij migratie 0011.** Migratie `0011_vragen_cijfer_kenmerk.sql` bouwt de tabel `vragen` opnieuw op (voor het vraagtype cijfer en het achtergrondkenmerk). Alle vragen, verwijzingen en antwoorden blijven daarbij staan; dat controleert `test/migratie.test.mjs` elke keer op een lokale kopie met voorbeeldgegevens. Maak toch eerst een reservekopie van de live database:
+
+```bash
+npx wrangler d1 export onderzoeksomgeving --remote --output backup-voor-0011.sql
+```
+
+Wil je extra zeker zijn, probeer de migraties dan eerst op een lokale kopie van die reservekopie: `npx wrangler d1 execute DB --local --file backup-voor-0011.sql`, daarna `npm run db:lokaal`. Gaat er live toch iets mis, dan zet je de database met D1 Time Travel terug naar het moment vóór de migratie (`npx wrangler d1 time-travel restore onderzoeksomgeving --timestamp=<tijdstip>`). Migraties 0012 tot en met 0015 voegen alleen nieuwe tabellen toe.
+
 Online zetten:
 
 ```bash

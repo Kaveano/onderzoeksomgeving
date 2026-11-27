@@ -167,7 +167,16 @@ export async function verwijderen({ request, env, params }) {
     throw new Fout(400, 'Typ de bedrijfsnaam precies over om het verwijderen te bevestigen.');
   }
   // Volgorde van verwijderen houdt rekening met verwijzingen tussen tabellen.
+  // Eerst wat naar antwoorden, eigen invoer of datasets verwijst (codering, werkbank), dan de rest.
   await env.DB.batch([
+    env.DB.prepare('DELETE FROM coderingen WHERE onderzoek_id = ?').bind(id),
+    env.DB.prepare('DELETE FROM citaten WHERE onderzoek_id = ?').bind(id),
+    env.DB.prepare('DELETE FROM codes WHERE onderzoek_id = ?').bind(id),
+    env.DB.prepare('DELETE FROM werkbank_analyses WHERE onderzoek_id = ?').bind(id),
+    env.DB.prepare('DELETE FROM werkbank_definities WHERE onderzoek_id = ?').bind(id),
+    env.DB.prepare('DELETE FROM personeelscijfers WHERE onderzoek_id = ?').bind(id),
+    env.DB.prepare('DELETE FROM hr_instellingen WHERE onderzoek_id = ?').bind(id),
+    env.DB.prepare('DELETE FROM bron_koppelingen WHERE onderzoek_id = ?').bind(id),
     env.DB.prepare(
       'DELETE FROM inzendingen WHERE vragenlijst_id IN (SELECT id FROM vragenlijsten WHERE onderzoek_id = ?)',
     ).bind(id),

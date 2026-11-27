@@ -323,14 +323,17 @@ export async function vraagWijzig({ request, env, params }) {
 
 export async function vraagVerwijder({ env, params }) {
   const id = v.id(params.id);
-  await bewerkbaarVia(env, 'vraag', id);
+  const o = await bewerkbaarVia(env, 'vraag', id);
   const vraag = await een(env, 'SELECT vragenlijst_id FROM vragen WHERE id = ?', id);
   // Een open vragenlijst zonder vragen werkt niet voor respondenten: dan gaat hij dicht.
+  // Codes en citaten bij de antwoorden op deze vraag gaan mee weg (vraag_id heeft bewust geen verwijzing).
   const res = await env.DB.batch([
     env.DB.prepare('DELETE FROM vragen WHERE id = ?').bind(id),
     env.DB.prepare(
       "UPDATE vragenlijsten SET status = 'gesloten' WHERE id = ? AND status = 'open' AND NOT EXISTS (SELECT 1 FROM vragen WHERE vragenlijst_id = ?)",
     ).bind(vraag.vragenlijst_id, vraag.vragenlijst_id),
+    env.DB.prepare('DELETE FROM coderingen WHERE onderzoek_id = ? AND vraag_id = ?').bind(o.id, id),
+    env.DB.prepare('DELETE FROM citaten WHERE onderzoek_id = ? AND vraag_id = ?').bind(o.id, id),
   ]);
   return json({ ok: true, vragenlijst_gesloten: res[1].meta.changes > 0 });
 }
