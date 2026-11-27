@@ -246,8 +246,8 @@ test('criterium 5: een bron die in een rapport genoemd wordt, verwijder je niet 
   assert.equal((await roep(`${B}/bibliotheek/${s.bakker}`)).status, 404);
 });
 
-test('inlezen in een reeks: dubbele bronnen overgeslagen, hooguit 100', async () => {
-  const bron = (titel, doi = '') => ({ soort: 'rapport', titel, organisatie: 'TNO', jaar: 2023, doi });
+test('inlezen in een reeks: dubbele bronnen overgeslagen, hooguit 25 per verzoek (FT-02)', async () => {
+  const bron = (titel, doi = '', extra = {}) => ({ soort: 'rapport', titel, organisatie: 'TNO', jaar: 2023, doi, ...extra });
   let r = await roep(`${B}/bibliotheek/reeks`, {
     methode: 'POST',
     body: { bronnen: [bron('Eerste', '10.1234/aaa'), bron('Tweede', '10.1234/AAA'), bron('Derde'), { soort: 'rapport', titel: '' }] },
@@ -262,8 +262,12 @@ test('inlezen in een reeks: dubbele bronnen overgeslagen, hooguit 100', async ()
   r = await roep(`${B}/bibliotheek/reeks`, { methode: 'POST', body: { bronnen: [bron('Weer de eerste', 'https://doi.org/10.1234/aaa')] } });
   assert.deepEqual(r.data.toegevoegd, []);
   assert.ok(Number.isInteger(r.data.overgeslagen[0].bestaand_id));
-  r = await roep(`${B}/bibliotheek/reeks`, { methode: 'POST', body: { bronnen: Array.from({ length: 101 }, (_, i) => bron(`B${i}`)) } });
+  r = await roep(`${B}/bibliotheek/reeks`, { methode: 'POST', body: { bronnen: Array.from({ length: 26 }, (_, i) => bron(`B${i}`)) } });
   assert.equal(r.status, 400);
+  assert.equal(r.data.fout, 'Je kunt hooguit 25 bronnen tegelijk toevoegen.');
+  // Een te groot verzoek wordt niet eens gelezen
+  r = await roep(`${B}/bibliotheek/reeks`, { methode: 'POST', body: { bronnen: [bron('Groot', '', { samenvatting: 'x'.repeat(510_000) })] } });
+  assert.equal(r.status, 413);
 });
 
 test('criterium 5: koppelen aan een onderzoek; 409 als het onderzoek gearchiveerd is', async () => {

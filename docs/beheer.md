@@ -269,7 +269,7 @@ Een proef op een tijdelijke map: `node scripts/startcollectie.mjs test/fixtures/
 
 **Een nieuwe versie van de collectie**: pas `data/startcollectie.json` aan en maak een **nieuwe** migratie met het volgende vrije nummer: `node scripts/startcollectie.mjs data/startcollectie.json --versie 2 --bestand 00NN_bibliotheek_start_v2.sql`. Voor bronnen die er al waren komt er dan ook een `UPDATE … WHERE sleutel = ? AND collectie = 'start'` bij (dat mag, want startbronnen zijn alleen-lezen); notities, koppelingen en verbergen blijven staan. Pas een migratie die al live is gegaan nooit meer aan.
 
-**Grenzen**: hooguit 1.000 bronnen in de bibliotheek, 100 per inleesverzoek; de lijst gaat in delen van hooguit 700.000 tekens (de database bouwt de JSON op, de Worker plakt hem alleen door).
+**Grenzen**: hooguit 1.000 bronnen in de bibliotheek. Een RIS-bestand gaat in delen van hooguit 25 bronnen (en 480 KB) naar `POST /bibliotheek/reeks`, zodat de controle op dubbele bronnen ruim binnen de rekentijd blijft (`planReeks` maakt de vergelijkingssleutels van de bibliotheek één keer; een test bewaakt de tijd); de lijst gaat in delen van hooguit 700.000 tekens (de database bouwt de JSON op, de Worker plakt hem alleen door).
 
 ## Later: eigen subdomein (onderzoek.afpartners.nl)
 

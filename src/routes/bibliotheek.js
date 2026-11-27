@@ -13,10 +13,10 @@ import { Fout, json, leesJson } from '../lib/http.js';
 import * as v from '../lib/validatie.js';
 import { een, alle, haalOnderzoek, haalBewerkbaarOnderzoek, nuIso } from '../lib/db.js';
 import {
-  controleerBron, controleerNotities, nieuweCiteersleutel, INSERT_KOLOMMEN, insertWaarden, bronUitRij,
+  controleerBron, controleerNotities, nieuweCiteersleutel, INSERT_KOLOMMEN, insertWaarden, bronUitRij, planReeks,
   START_ALLEEN_LEZEN, START_NIET_VERWIJDEREN, BIBLIOTHEEK_VOL,
 } from '../lib/bibliotheek.js';
-import { MAX_BRONNEN, MAX_PER_REEKS, LIMIETEN, dubbeleVan } from '../../public/js/beheer/bibliotheek-regels.js';
+import { MAX_BRONNEN, MAX_PER_REEKS, MAX_REEKS_VERZOEK, LIMIETEN } from '../../public/js/beheer/bibliotheek-regels.js';
 
 /** Zoveel tekens (length()) aan bronnen per deel van de lijst: ruim onder de 2 MB van één waarde in D1. */
 export const MAX_PAGINA_TEKENS = 700_000;
@@ -257,43 +257,19 @@ export async function verbergen({ request, env, params }) {
 // ---------- Meerdere bronnen ----------
 
 /**
- * POST /bibliotheek/reeks { bronnen: [≤ 100], dubbel: 'overslaan' | 'toevoegen' }
+ * POST /bibliotheek/reeks { bronnen: [≤ 25], dubbel: 'overslaan' | 'toevoegen' }
  * → { toegevoegd: [{ rij, id, citeersleutel }], overgeslagen: [{ rij, reden, bestaand_id? }], versie }.
  * Een bron met een fout wordt overgeslagen (met de reden); de rest wordt toegevoegd. Dubbel = dezelfde DOI,
- * anders dezelfde titel en hetzelfde jaar (ook binnen dit verzoek).
+ * anders dezelfde titel en hetzelfde jaar (ook binnen dit verzoek). De browser verdeelt een groot bestand in delen
+ * (reeksDelen), zodat één verzoek ruim binnen de rekentijd blijft (planReeks; FT-02).
  */
 export async function reeks({ request, env }) {
-  const body = await leesJson(request, 2_000_000);
+  const body = await leesJson(request, MAX_REEKS_VERZOEK);
   if (!Array.isArray(body.bronnen)) throw new Fout(400, 'Stuur een lijst met bronnen.');
   if (body.bronnen.length > MAX_PER_REEKS) throw new Fout(400, `Je kunt hooguit ${MAX_PER_REEKS} bronnen tegelijk toevoegen.`);
   const dubbel = v.keuze(body.dubbel, 'Dubbel', ['overslaan', 'toevoegen'], { standaard: 'overslaan' });
   const bestaande = await alle(env, 'SELECT id, doi, titel, jaar, citeersleutel FROM bronnen');
-  const bezet = new Set(bestaande.map((b) => b.citeersleutel));
-  const vergelijk = [...bestaande];
-  const toevoegen = [];
-  const overgeslagen = [];
-  body.bronnen.forEach((ruw, i) => {
-    const rij = i + 1;
-    let schoon;
-    try {
-      schoon = controleerBron(ruw);
-    } catch (e) {
-      if (!(e instanceof Fout)) throw e;
-      overgeslagen.push({ rij, reden: e.message });
-      return;
-    }
-    if (dubbel === 'overslaan') {
-      const zelfde = dubbeleVan({ ...schoon, citeersleutel: null }, vergelijk);
-      if (zelfde) {
-        overgeslagen.push({ rij, reden: 'Staat al in je bibliotheek.', bestaand_id: zelfde.id ?? null });
-        return;
-      }
-    }
-    const citeersleutel = nieuweCiteersleutel(schoon, bezet);
-    bezet.add(citeersleutel);
-    vergelijk.push({ id: null, doi: schoon.doi, titel: schoon.titel, jaar: schoon.jaar });
-    toevoegen.push({ rij, schoon, citeersleutel });
-  });
+  const { toevoegen, overgeslagen } = planReeks(body.bronnen, bestaande, { dubbel });
   if (bestaande.length + toevoegen.length > MAX_BRONNEN) throw new Fout(409, BIBLIOTHEEK_VOL);
   if (!toevoegen.length) {
     const nu = await een(env, VERSIE_LEZEN);

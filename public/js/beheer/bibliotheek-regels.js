@@ -59,8 +59,18 @@ export const BETROUWBAARHEID = {
 export const BETROUWBAARHEID_RANG = { onbekend: 0, beperkt: 1, redelijk: 2, hoog: 3 };
 
 export const MAX_BRONNEN = 1000;
-/** Zoveel bronnen per verzoek bij inlezen (de browser splitst een groter bestand). */
-export const MAX_PER_REEKS = 100;
+/**
+ * Zoveel bronnen per verzoek bij inlezen (de browser splitst een groter bestand). Klein gehouden zodat de
+ * controle in de Worker ruim binnen de rekentijd van de gratis laag blijft (FT-02).
+ */
+export const MAX_PER_REEKS = 25;
+/**
+ * Zoveel bytes JSON per verzoek bij inlezen; de browser maakt een deel eerder af als het groter wordt. 25 bronnen van
+ * de grootst mogelijke omvang (ongeveer 18 KB) passen erin. De server weigert een groter verzoek (MAX_REEKS_VERZOEK).
+ */
+export const MAX_REEKS_BYTES = 480_000;
+/** Grootste verzoek dat POST /bibliotheek/reeks aanneemt, in bytes: MAX_REEKS_BYTES plus ruimte voor de omhulling. */
+export const MAX_REEKS_VERZOEK = 500_000;
 
 /** Grenzen per veld (D3 §2.1): een bron blijft daarmee onder ongeveer 18 KB. */
 export const LIMIETEN = {
@@ -773,25 +783,70 @@ export function kaleDoi(t) {
   return String(t ?? '').trim().replace(/^(?:https?:\/\/(?:dx\.)?doi\.org\/|doi:\s*)/i, '').toLowerCase();
 }
 
+/** De sleutels waarop dubbele bronnen worden herkend: kale DOI, en genormaliseerde titel met jaar. */
+function dubbelSleutels(bron) {
+  const titel = normaliseer(bron?.titel);
+  return {
+    doi: kaleDoi(bron?.doi),
+    titelJaar: titel ? `${titel}|${Number.isInteger(bron?.jaar) ? bron.jaar : ''}` : '',
+  };
+}
+
+/**
+ * Zoekt snel dubbele bronnen in een (grote) lijst: de sleutels van elke bron worden één keer berekend, daarna kost
+ * elke vraag even veel, hoe groot de bibliotheek ook is. vind(bron) geeft hetzelfde als dubbeleVan(bron, lijst);
+ * voegToe(bron) zet er een bron bij (bijvoorbeeld een eerdere bron uit hetzelfde bestand).
+ */
+export function dubbelZoeker(bestaande = []) {
+  const perDoi = new Map();
+  const perTitel = new Map();
+  const perSleutel = new Map();
+  const voegToe = (b) => {
+    const k = dubbelSleutels(b);
+    if (k.doi && !perDoi.has(k.doi)) perDoi.set(k.doi, b);
+    if (k.titelJaar && !perTitel.has(k.titelJaar)) perTitel.set(k.titelJaar, b);
+    if (b?.citeersleutel && !perSleutel.has(b.citeersleutel)) perSleutel.set(b.citeersleutel, b);
+  };
+  for (const b of bestaande || []) voegToe(b);
+  return {
+    voegToe,
+    vind(bron) {
+      const k = dubbelSleutels(bron);
+      return (k.doi && perDoi.get(k.doi)) || (k.titelJaar && perTitel.get(k.titelJaar))
+        || (bron?.citeersleutel && perSleutel.get(bron.citeersleutel)) || null;
+    },
+  };
+}
+
 /**
  * De bestaande bron waarvan deze een dubbele is (dezelfde DOI; anders dezelfde titel en hetzelfde jaar; anders
- * dezelfde citeersleutel), of null.
+ * dezelfde citeersleutel), of null. Voor veel bronnen achter elkaar: dubbelZoeker.
  */
 export function dubbeleVan(bron, bestaande) {
-  const doi = kaleDoi(bron?.doi);
-  const titelJaar = `${normaliseer(bron?.titel)}|${Number.isInteger(bron?.jaar) ? bron.jaar : ''}`;
-  for (const b of bestaande || []) {
-    if (doi && kaleDoi(b.doi) === doi) return b;
-  }
-  if (normaliseer(bron?.titel)) {
-    for (const b of bestaande || []) {
-      if (`${normaliseer(b.titel)}|${Number.isInteger(b.jaar) ? b.jaar : ''}` === titelJaar) return b;
+  return dubbelZoeker(bestaande).vind(bron);
+}
+
+/**
+ * Verdeelt bronnen in delen voor POST /bibliotheek/reeks: hooguit max bronnen en hooguit maxBytes bytes JSON per deel
+ * (een deel met één bron mag groter zijn; de server zegt dan dat het te groot is).
+ * → [{ vanaf, bronnen }] (vanaf: plaats van de eerste bron van het deel in de hele lijst, vanaf 0).
+ */
+export function reeksDelen(bronnen, { max = MAX_PER_REEKS, maxBytes = MAX_REEKS_BYTES } = {}) {
+  const codeer = new TextEncoder();
+  const delen = [];
+  let huidig = null;
+  let bytes = 0;
+  (bronnen || []).forEach((b, i) => {
+    const grootte = codeer.encode(JSON.stringify(b)).length + 1;
+    if (!huidig || huidig.bronnen.length >= max || bytes + grootte > maxBytes) {
+      huidig = { vanaf: i, bronnen: [] };
+      delen.push(huidig);
+      bytes = 0;
     }
-  }
-  if (bron?.citeersleutel) {
-    for (const b of bestaande || []) if (b.citeersleutel === bron.citeersleutel) return b;
-  }
-  return null;
+    huidig.bronnen.push(b);
+    bytes += grootte;
+  });
+  return delen;
 }
 
 // ---------- "Plak een verwijzing": een APA-verwijzing lezen ----------

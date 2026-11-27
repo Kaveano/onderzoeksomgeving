@@ -6,7 +6,7 @@ import { api } from '../api.js';
 import { h, vervang, laden, leeg, melding, meld, meldFout, bevestig, maakDialoog, uniekeId, aantal, vertraag } from '../ui.js';
 import { nlDatum } from '../opmaak.js';
 import {
-  BRONSOORTEN, ONDERWERPEN, TALEN, BETROUWBAARHEID, MAX_PER_REEKS, dubbeleVan, auteursRegel,
+  BRONSOORTEN, ONDERWERPEN, TALEN, BETROUWBAARHEID, dubbelZoeker, reeksDelen, auteursRegel,
 } from '../bibliotheek-regels.js';
 import { zoek, markeringen, SORTERING_LABELS } from '../bibliotheek-zoeken.js';
 import { leesRis, leesTekstBestand } from '../bibliotheek-bestanden.js';
@@ -366,9 +366,14 @@ export async function toon(container, ctx) {
         const { bronnen, meldingen } = leesRis(leesTekstBestand(new Uint8Array(await bestand.arrayBuffer())));
         const alBekend = [];
         nieuw = [];
+        const zoeker = dubbelZoeker(bib.bronnen);
         for (const b of bronnen) {
-          if (dubbeleVan(b, [...bib.bronnen, ...nieuw])) alBekend.push(b);
-          else nieuw.push(b);
+          if (zoeker.vind(b)) {
+            alBekend.push(b);
+          } else {
+            nieuw.push(b);
+            zoeker.voegToe(b);
+          }
         }
         const ruimte = 1000 - bib.bronnen.length;
         vervang(uitkomst,
@@ -390,11 +395,12 @@ export async function toon(container, ctx) {
       let toegevoegd = 0;
       const overgeslagen = [];
       try {
-        for (let i = 0; i < nieuw.length; i += MAX_PER_REEKS) {
-          voortgang.textContent = `Bezig: ${Math.min(i + MAX_PER_REEKS, nieuw.length)} van ${nieuw.length}…`;
-          const r = await api.post('/bibliotheek/reeks', { bronnen: nieuw.slice(i, i + MAX_PER_REEKS), dubbel: 'overslaan' });
+        // Kleine delen (hooguit 25 bronnen): zo blijft elk verzoek binnen de rekentijd van de server.
+        for (const deel of reeksDelen(nieuw)) {
+          voortgang.textContent = `Bezig: ${deel.vanaf + deel.bronnen.length} van ${nieuw.length}…`;
+          const r = await api.post('/bibliotheek/reeks', { bronnen: deel.bronnen, dubbel: 'overslaan' });
           toegevoegd += r.toegevoegd.length;
-          overgeslagen.push(...r.overgeslagen.map((o) => `Bron ${i + o.rij}: ${o.reden}`));
+          overgeslagen.push(...r.overgeslagen.map((o) => `Bron ${deel.vanaf + o.rij}: ${o.reden}`));
         }
         bibliotheekGewijzigd();
         bezig = false;

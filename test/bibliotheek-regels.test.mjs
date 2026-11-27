@@ -4,12 +4,14 @@
 // Uitvoeren: node --test test/bibliotheek-regels.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { performance } from 'node:perf_hooks';
 
 import {
   OPMAAK, apaVerwijzing, apaInTekst, apaKort, sorteerLiteratuur, citeersleutelBasis, vrijeCiteersleutel, leesAuteur, voorletters,
   leesApaVerwijzing, normaliseerStartbron, normaliseer, paginaTekst, dubbeleVan, nlDatumKort, auteursRegel, CITEERSLEUTEL,
-  BRONSOORTEN, DETAILVELDEN, ONDERWERPEN,
+  BRONSOORTEN, DETAILVELDEN, ONDERWERPEN, dubbelZoeker, reeksDelen, MAX_PER_REEKS, MAX_REEKS_BYTES, MAX_REEKS_VERZOEK, kaleDoi,
 } from '../public/js/beheer/bibliotheek-regels.js';
+import { planReeks, insertWaarden } from '../src/lib/bibliotheek.js';
 
 import { A, GOUDEN } from './fixtures/bibliotheek-gouden.mjs';
 
@@ -266,4 +268,129 @@ test('vaste lijsten', () => {
   assert.equal(Object.keys(BRONSOORTEN).length, 11);
   assert.equal(Object.keys(ONDERWERPEN).length, 16);
   for (const soort of Object.keys(BRONSOORTEN)) assert.ok(Array.isArray(DETAILVELDEN[soort]), soort);
+});
+
+// ---------- Inlezen in een reeks (POST /bibliotheek/reeks): rekentijd binnen de gratis laag (FT-02) ----------
+
+/** Vast zaad (LCG), zodat elke run dezelfde bronnen geeft. */
+function lcg(zaad) {
+  return () => {
+    zaad = (zaad * 1664525 + 1013904223) % 4294967296;
+    return zaad / 4294967296;
+  };
+}
+
+/** De oude, lineaire controle (één keer de hele lijst per bron): de maat voor dubbelZoeker. */
+function dubbeleLineair(bron, bestaande) {
+  const doi = kaleDoi(bron?.doi);
+  const titelJaar = `${normaliseer(bron?.titel)}|${Number.isInteger(bron?.jaar) ? bron.jaar : ''}`;
+  for (const b of bestaande) if (doi && kaleDoi(b.doi) === doi) return b;
+  if (normaliseer(bron?.titel)) {
+    for (const b of bestaande) if (`${normaliseer(b.titel)}|${Number.isInteger(b.jaar) ? b.jaar : ''}` === titelJaar) return b;
+  }
+  if (bron?.citeersleutel) for (const b of bestaande) if (b.citeersleutel === bron.citeersleutel) return b;
+  return null;
+}
+
+test('dubbelZoeker geeft hetzelfde als de lineaire controle (ook bij lege velden en hoofdletters)', () => {
+  const r = lcg(42);
+  const kies = (lijst) => lijst[Math.floor(r() * lijst.length)];
+  const titels = ['Werkdruk in de zorg', 'Werkdruk in de Zorg!', 'werkdruk  in de zorg', 'Onboarding', '', 'Café-cultuur', 'Cafe cultuur'];
+  const dois = ['', '', '10.1/A', '10.1/a', 'https://doi.org/10.1/a', 'doi:10.2/b', '10.2/B'];
+  const maak = (i) => ({ id: i, titel: kies(titels), jaar: kies([2017, 2018, null, undefined]), doi: kies(dois), citeersleutel: kies(['', 'tno2023', 'cbs2024', null]) });
+  const bestaande = Array.from({ length: 40 }, (_, i) => maak(i + 1));
+  const zoeker = dubbelZoeker(bestaande);
+  for (let i = 0; i < 400; i++) {
+    const vraag = maak(1000 + i);
+    assert.equal(zoeker.vind(vraag), dubbeleLineair(vraag, bestaande), JSON.stringify(vraag));
+    assert.equal(dubbeleVan(vraag, bestaande), dubbeleLineair(vraag, bestaande));
+  }
+  // voegToe: een eerdere bron uit hetzelfde bestand telt mee
+  const leeg = dubbelZoeker([]);
+  assert.equal(leeg.vind({ titel: 'Nieuw', jaar: 2020 }), null);
+  leeg.voegToe({ id: null, titel: 'Nieuw', jaar: 2020 });
+  assert.deepEqual(leeg.vind({ titel: 'nieuw.', jaar: 2020 }), { id: null, titel: 'Nieuw', jaar: 2020 });
+});
+
+test('reeksDelen: hooguit 25 bronnen en hooguit MAX_REEKS_BYTES per deel', () => {
+  assert.equal(MAX_PER_REEKS, 25);
+  assert.ok(MAX_REEKS_BYTES < MAX_REEKS_VERZOEK);
+  const klein = Array.from({ length: 60 }, (_, i) => ({ titel: `B${i}` }));
+  const delen = reeksDelen(klein);
+  assert.deepEqual(delen.map((d) => [d.vanaf, d.bronnen.length]), [[0, 25], [25, 25], [50, 10]]);
+  assert.deepEqual(delen.flatMap((d) => d.bronnen), klein);
+  // Grote bronnen (met veel letters met accent: meer bytes dan tekens) gaan in kleinere delen
+  const groot = Array.from({ length: 30 }, (_, i) => ({ titel: `G${i}`, samenvatting: 'é'.repeat(4000), notities: 'x'.repeat(5000) }));
+  const grootDelen = reeksDelen(groot);
+  for (const d of grootDelen) {
+    const bytes = new TextEncoder().encode(JSON.stringify({ bronnen: d.bronnen, dubbel: 'overslaan' })).length;
+    assert.ok(bytes <= MAX_REEKS_VERZOEK, `${bytes} bytes`);
+    assert.ok(d.bronnen.length <= 25);
+  }
+  assert.deepEqual(grootDelen.flatMap((d) => d.bronnen), groot);
+  assert.ok(grootDelen.length >= 2);
+  // Een bron die alleen al te groot is, staat in een eigen deel (de server meldt dan dat het verzoek te groot is)
+  const reus = reeksDelen([{ titel: 'a' }, { titel: 'b', samenvatting: 'x'.repeat(600_000) }, { titel: 'c' }]);
+  assert.deepEqual(reus.map((d) => [d.vanaf, d.bronnen.length]), [[0, 1], [1, 1], [2, 1]]);
+  assert.deepEqual(reeksDelen([]), []);
+});
+
+test('planReeks: fouten, dubbele bronnen (bestaand en binnen het verzoek) en citeersleutels', () => {
+  const bestaande = [
+    { id: 7, doi: '10.1234/AAA', titel: 'Oud', jaar: 2020, citeersleutel: 'tno2023' },
+    { id: 8, doi: '', titel: 'Werkdruk in de zorg', jaar: 2023, citeersleutel: 'jansen2023' },
+  ];
+  const bron = (titel, extra = {}) => ({ soort: 'rapport', titel, organisatie: 'TNO', jaar: 2023, ...extra });
+  const r = planReeks([
+    bron('Eerste', { doi: 'https://doi.org/10.1234/aaa' }), // dezelfde DOI als id 7
+    bron('Werkdruk in de Zorg.'), // zelfde titel en jaar als id 8
+    bron('Nieuw'),
+    bron('nieuw!'), // dubbel binnen het verzoek
+    { soort: 'rapport', titel: '' },
+    bron('Ander'),
+  ], bestaande);
+  assert.deepEqual(r.overgeslagen, [
+    { rij: 1, reden: 'Staat al in je bibliotheek.', bestaand_id: 7 },
+    { rij: 2, reden: 'Staat al in je bibliotheek.', bestaand_id: 8 },
+    { rij: 4, reden: 'Staat al in je bibliotheek.', bestaand_id: null },
+    { rij: 5, reden: 'Vul de titel van de bron in.' },
+  ]);
+  assert.deepEqual(r.toevoegen.map((t) => [t.rij, t.citeersleutel]), [[3, 'tno2023b'], [6, 'tno2023c']]);
+  // dubbel: 'toevoegen' slaat niets over dat geldig is
+  const alles = planReeks([bron('Nieuw'), bron('Nieuw')], bestaande, { dubbel: 'toevoegen' });
+  assert.deepEqual(alles.toevoegen.map((t) => t.citeersleutel), ['tno2023b', 'tno2023c']);
+  assert.deepEqual(alles.overgeslagen, []);
+});
+
+test('FT-02: één verzoek van 25 bronnen tegen een volle bibliotheek (1.000 bronnen) kost een paar ms', () => {
+  const r = lcg(20261127);
+  const woorden = ('werkdruk verzuim medewerkers organisatie leiderschap onboarding betrokkenheid tevredenheid ontwikkeling ' +
+    'loopbaan cultuur verandering thuiswerken hybride vitaliteit gezondheid stress herstel team leidinggevende évaluatie café').split(' ');
+  const zin = (n) => Array.from({ length: n }, () => woorden[Math.floor(r() * woorden.length)]).join(' ');
+  // De bibliotheek zoals SELECT id, doi, titel, jaar, citeersleutel FROM bronnen die teruggeeft
+  const bestaande = Array.from({ length: 1000 }, (_, i) => ({
+    id: i + 1, doi: i % 2 ? `10.1000/x${i}` : '', titel: `${zin(12)} ${i}`, jaar: 1990 + (i % 35), citeersleutel: `auteur${i}`,
+  }));
+  const nieuw = Array.from({ length: MAX_PER_REEKS }, (_, i) => ({
+    soort: 'artikel', titel: `${zin(12)} nieuw ${i}`, jaar: 2020, taal: 'nl', doi: `10.2000/y${i}`,
+    auteurs: [{ achternaam: 'Bakker', voorletters: 'A. B.' }, { achternaam: 'Vries', tussenvoegsel: 'de', voorletters: 'M.' }],
+    details: { tijdschrift: 'Tijdschrift voor HRM', jaargang: '12', nummer: '3', paginas: '45-67' },
+    samenvatting: zin(110), kernpunten: [zin(20), zin(20), zin(20)], trefwoorden: ['werkdruk', 'zorg', 'verzuim'], onderwerpen: ['werkdruk'],
+  }));
+  const body = JSON.stringify({ bronnen: nieuw, dubbel: 'overslaan' });
+  assert.ok(body.length < MAX_REEKS_BYTES);
+  const tijden = [];
+  for (let i = 0; i < 11; i++) {
+    const t0 = performance.now();
+    const b = JSON.parse(body); // wat leesJson doet
+    const plan = planReeks(b.bronnen, bestaande, { dubbel: b.dubbel });
+    for (const t of plan.toevoegen) insertWaarden(t.schoon, { citeersleutel: t.citeersleutel, nu: '2026-11-27T12:00:00.000Z' });
+    tijden.push(performance.now() - t0);
+    assert.equal(plan.toevoegen.length, MAX_PER_REEKS);
+  }
+  const eerste = tijden[0];
+  tijden.sort((a, b) => a - b);
+  const mediaan = tijden[5];
+  console.log(`# reeks van 25 tegen 1.000 bestaande: eerste keer ${eerste.toFixed(1)} ms; mediaan ${mediaan.toFixed(2)} ms`);
+  assert.ok(mediaan < 6, `mediaan ${mediaan} ms`);
 });

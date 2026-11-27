@@ -6,6 +6,7 @@ import { Fout } from './http.js';
 import * as v from './validatie.js';
 import {
   BRONSOORTEN, ONDERWERPEN, TALEN, BETROUWBAARHEID, LIMIETEN, detailveldenVan, citeersleutelBasis, vrijeCiteersleutel, voorletters,
+  dubbelZoeker,
 } from '../../public/js/beheer/bibliotheek-regels.js';
 
 /** Tekst bij een poging een bron uit de startcollectie aan te passen (BOUWPLAN §3.12). */
@@ -148,6 +149,46 @@ export function controleerNotities(waarde) {
 /** Nieuwe, vrije citeersleutel: citeersleutelBasis(bron), dan …b, …c (bezet: Set van bestaande sleutels). */
 export function nieuweCiteersleutel(bron, bezet) {
   return vrijeCiteersleutel(citeersleutelBasis(bron), bezet);
+}
+
+/**
+ * Het werk van POST /bibliotheek/reeks zonder de database: controleer elke bron, sla dubbele over (dezelfde DOI,
+ * anders dezelfde titel en hetzelfde jaar, ook binnen dit verzoek) en kies een vrije citeersleutel.
+ * bestaande: [{ id, doi, titel, jaar, citeersleutel }] (de hele bibliotheek).
+ * → { toevoegen: [{ rij, schoon, citeersleutel }], overgeslagen: [{ rij, reden, bestaand_id? }] } (rij telt vanaf 1).
+ *
+ * Rekentijd (FT-02): de vergelijkingssleutels van de bibliotheek worden één keer gemaakt; daarna kost elke nieuwe bron
+ * even veel, hoe groot de bibliotheek ook is. Een test bewaakt de tijd.
+ */
+export function planReeks(bronnen, bestaande, { dubbel = 'overslaan' } = {}) {
+  const bezet = new Set(bestaande.map((b) => b.citeersleutel));
+  const zoeker = dubbel === 'overslaan' ? dubbelZoeker(bestaande) : null;
+  const toevoegen = [];
+  const overgeslagen = [];
+  bronnen.forEach((ruw, i) => {
+    const rij = i + 1;
+    let schoon;
+    try {
+      schoon = controleerBron(ruw);
+    } catch (e) {
+      if (!(e instanceof Fout)) throw e;
+      overgeslagen.push({ rij, reden: e.message });
+      return;
+    }
+    if (zoeker) {
+      // Alleen DOI en titel + jaar tellen: de citeersleutel van een nieuwe bron wordt hier pas gekozen.
+      const zelfde = zoeker.vind({ doi: schoon.doi, titel: schoon.titel, jaar: schoon.jaar });
+      if (zelfde) {
+        overgeslagen.push({ rij, reden: 'Staat al in je bibliotheek.', bestaand_id: zelfde.id ?? null });
+        return;
+      }
+    }
+    const citeersleutel = nieuweCiteersleutel(schoon, bezet);
+    bezet.add(citeersleutel);
+    if (zoeker) zoeker.voegToe({ id: null, doi: schoon.doi, titel: schoon.titel, jaar: schoon.jaar });
+    toevoegen.push({ rij, schoon, citeersleutel });
+  });
+  return { toevoegen, overgeslagen };
 }
 
 /** De kolommen van een bron in de tabel bronnen, in de volgorde van INSERT_KOLOMMEN. */
