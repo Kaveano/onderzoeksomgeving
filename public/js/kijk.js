@@ -276,13 +276,13 @@ async function toonDocument(container, id) {
 }
 
 async function toonRapport(container, id) {
-  const [{ rapport }, feitenModule, weergaveModule] = await Promise.all([
+  const [{ rapport }, weergaveModule] = await Promise.all([
     vraag(`/rapporten/${id}`),
-    import('./beheer/rapport-feiten.js'),
     import('./beheer/rapport-weergave.js'),
   ]);
   document.title = `${rapport.titel || 'Rapport'} – ${overzicht.onderzoek.titel}`;
-  const blokken = feitenModule.rapportNaarBlokken(rapport, { markeerLeeg: false });
+  // De server stuurt het rapport als kant-en-klare blokken (tekst en tabellen), zonder ruwe cijfers.
+  const blokken = Array.isArray(rapport.blokken) ? rapport.blokken : [];
   vervang(container,
     h('div', { class: 'kruimel kijk-rapport-balk' },
       h('a', { href: '#/documenten' }, '← Alle documenten'),

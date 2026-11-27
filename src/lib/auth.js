@@ -70,7 +70,7 @@ async function wachtwoordKenmerk(geheim, token) {
  * Niet terug te rekenen code voor de afzender van een inlogpoging (alleen om pogingen
  * per afzender te tellen; wordt na een dag gewist). Bij IPv6 telt het hele /64-blok als één afzender.
  */
-async function afzenderCode(env, request) {
+export async function afzenderCode(env, request) {
   let ip = request.headers.get('CF-Connecting-IP') || 'onbekend';
   if (ip.includes(':')) ip = ip.split(':').slice(0, 4).join(':');
   const [, rij] = await env.DB.batch([

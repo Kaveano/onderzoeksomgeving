@@ -376,10 +376,43 @@ export function kolomSoort(waarden) {
   return 'tekst';
 }
 
-/** Kolommen waarvan de naam op persoonsgegevens lijkt (om voor te waarschuwen). */
-export function verdachteKolommen(kop) {
-  const p = /^(naam|voornaam|achternaam|medewerker|werknemer|personeelsnummer|persnr|bsn|e mail|email|mail|telefoon|mobiel|adres|postcode|geboortedatum|iban)\b/;
-  return kop.filter((k) => p.test(normaal(k)));
+// Woorden in een kolomnaam die op persoonsgegevens wijzen (na normaal(): kleine letters, zonder leestekens).
+const PERSOON_WOORDEN = new Set([
+  'naam', 'namen', 'voornaam', 'voornamen', 'achternaam', 'roepnaam', 'tussenvoegsel', 'voorletters', 'initialen',
+  'medewerker', 'werknemer', 'persoon', 'deelnemer', 'respondent',
+  'bsn', 'burgerservicenummer', 'sofinummer', 'iban', 'rekeningnummer', 'paspoort', 'paspoortnummer',
+  'email', 'mail', 'mailadres', 'emailadres', 'telefoon', 'tel', 'telnr', 'mobiel', 'gsm', 'mobile', 'phone',
+  'adres', 'straat', 'huisnummer', 'postcode', 'woonplaats',
+  'geboortedatum', 'geb', 'gebdatum', 'geboortejaar', 'geboorteplaats',
+  'personeelsnummer', 'personeelsnr', 'persnr', 'medewerkersnummer', 'medewerkernummer', 'werknemersnummer', 'werknemernummer', 'employee',
+]);
+// Samenstellingen: "E-mailadres", "Telefoonnummer", "Volledige naam", "Personeelsnr." en dergelijke.
+const P_PERSOON_DEEL = /^(e?mail|telefoon|tel|mobiel|personeel|pers|medewerker|werknemer|voor|achter|roep|huis|rekening|burger|paspoort|geboorte)/;
+const P_PERSOON_EIND = /(adres|nummer|nr|naam|datum)$/;
+const P_EMAIL = /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i;
+const P_TELEFOON = /^(\+|00|0)[\d\s().-]{8,}$/;
+
+/**
+ * Kolommen die op persoonsgegevens lijken (om voor te waarschuwen en standaard uit te zetten):
+ * op de naam van de kolom, ook samenstellingen als "E-mailadres" of "Telefoonnummer", en op de inhoud
+ * (e-mailadressen of telefoonnummers). Liever een kolom te veel uitzetten dan een te weinig.
+ */
+export function verdachteKolommen(kop, rijen = []) {
+  const uit = [];
+  kop.forEach((k, i) => {
+    const woorden = normaal(k).split(' ').filter(Boolean);
+    const opNaam = woorden.some((w) => PERSOON_WOORDEN.has(w) || (P_PERSOON_DEEL.test(w) && P_PERSOON_EIND.test(w)));
+    let opInhoud = false;
+    if (!opNaam && rijen.length) {
+      const teksten = rijen.map((r) => r[i]).filter((w) => typeof w === 'string' && w.trim()).map((w) => w.trim());
+      if (teksten.length) {
+        const treffers = teksten.filter((w) => P_EMAIL.test(w) || (P_TELEFOON.test(w) && w.replace(/\D/g, '').length >= 9)).length;
+        opInhoud = treffers / teksten.length >= 0.3;
+      }
+    }
+    if (opNaam || opInhoud) uit.push(k);
+  });
+  return uit;
 }
 
 /**

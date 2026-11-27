@@ -431,22 +431,30 @@ export async function berekenDashboard(env, onderzoek, keuze = {}) {
       if (s.q.type === 'schaal' || s.q.type === 'janee') {
         const perMm = new Map();
         for (const ander of vragenPerStam.get(stam(s.q)) || []) {
-          const mmId = lijstInfo.get(ander.vragenlijst_id)?.meetmoment_id;
+          const info = lijstInfo.get(ander.vragenlijst_id);
+          const mmId = info?.meetmoment_id;
           if (!mmId) continue;
           const a = vraagAgg.get(ander.id);
-          const p = perMm.get(mmId) || { som: 0, n: 0, ja: 0, janee: 0 };
+          const p = perMm.get(mmId) || { som: 0, n: 0, ja: 0, janee: 0, kleinste: null, open: false };
           p.som += a.som;
           p.n += a.n;
           p.ja += a.ja;
           p.janee += a.ja + a.nee;
+          // Per meetmoment kunnen meer vragenlijsten meetellen. Voor kijkers is van belang hoe klein de kleinste
+          // bijdrage is (anders is die terug te rekenen) en of er een vragenlijst bij is die nog openstaat.
+          const bijdrage = s.q.type === 'schaal' ? a.n : a.ja + a.nee;
+          if (bijdrage > 0) {
+            p.kleinste = p.kleinste === null ? bijdrage : Math.min(p.kleinste, bijdrage);
+            if (info.status === 'open') p.open = true;
+          }
           perMm.set(mmId, p);
         }
         if (perMm.size > 1) {
           r.verloop = meetmomenten.filter((mm) => perMm.has(mm.id)).map((mm) => {
             const p = perMm.get(mm.id);
             return s.q.type === 'schaal'
-              ? { meetmoment_id: mm.id, naam: mm.naam, gemiddelde: deel(p.som, p.n), n: p.n }
-              : { meetmoment_id: mm.id, naam: mm.naam, percentage_ja: pct(p.ja, p.janee), n: p.janee };
+              ? { meetmoment_id: mm.id, naam: mm.naam, gemiddelde: deel(p.som, p.n), n: p.n, kleinste: p.kleinste, open: p.open }
+              : { meetmoment_id: mm.id, naam: mm.naam, percentage_ja: pct(p.ja, p.janee), n: p.janee, kleinste: p.kleinste, open: p.open };
           });
         }
       }
@@ -505,21 +513,29 @@ export async function berekenDashboard(env, onderzoek, keuze = {}) {
   // 3. Verloop per thema en meetpunt over de meetmomenten (uit de tellingen per vragenlijst)
   const perMeetmoment = meetmomenten.map((mm) => ({
     mm,
-    aggs: lijsten.filter((l) => l.meetmoment_id === mm.id).map((l) => aggPerLijst.get(l.id)),
+    aggs: lijsten.filter((l) => l.meetmoment_id === mm.id).map((l) => ({ agg: aggPerLijst.get(l.id), open: l.status === 'open' })),
   }));
+  // kleinste: het kleinste aantal respondenten van één vragenlijst die aan dit punt bijdraagt;
+  // open: of een bijdragende vragenlijst nog openstaat. Beide zijn nodig om het punt voor kijkers veilig te tonen.
   const pool = (aggs, soort, sleutel) => {
     let som = 0;
     let aantal = 0;
     let respondenten = 0;
-    for (const a of aggs) {
+    let kleinste = null;
+    let open = false;
+    for (const { agg: a, open: lijstOpen } of aggs) {
       const g = a[soort].get(sleutel);
       if (g) {
         som += g.som;
         aantal += g.aantal;
         respondenten += g.respondenten;
+        if (g.respondenten > 0) {
+          kleinste = kleinste === null ? g.respondenten : Math.min(kleinste, g.respondenten);
+          if (lijstOpen) open = true;
+        }
       }
     }
-    return { gemiddelde: deel(som, aantal), n: respondenten };
+    return { gemiddelde: deel(som, aantal), n: respondenten, kleinste, open };
   };
   const verloopThemas = [];
   for (const t of themas) {

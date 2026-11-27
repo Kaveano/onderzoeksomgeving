@@ -6,6 +6,8 @@
 import { Fout, json, leesJson } from '../lib/http.js';
 import * as v from '../lib/validatie.js';
 import { alle, een, haalOnderzoek, haalBewerkbaarOnderzoek, bewerkbaarVia, onderzoekVan, nuIso } from '../lib/db.js';
+// Dezelfde regels als in de browser, zodat een kijker precies ziet wat de onderzoeker in het voorbeeld ziet.
+import { rapportNaarBlokken } from '../../public/js/beheer/rapport-feiten.js';
 
 const SOORTEN = ['tussen', 'eind'];
 const MAX_RAPPORTEN = 20;
@@ -150,12 +152,12 @@ export async function verwijder({ env, params }) {
   return json({ ok: true });
 }
 
-/** Rapport voor een kijker (deellink): zonder open antwoorden, tenzij die bijlage in het rapport aanstaat. */
+/**
+ * Rapport voor een kijker (deellink). De kijker krijgt alleen de kant-en-klare tekst en tabellen van de
+ * hoofdstukken die aanstaan, precies zoals ze in het rapport staan; de ruwe, vastgelegde cijfers gaan niet mee.
+ */
 export function rapportVoorKijker(rij) {
   const r = rapportUitDb(rij);
-  const openAan = (r.inhoud.secties || []).some((s) => s.soort === 'bijlage-open' && s.aan !== false && s.feiten !== false);
-  if (r.feiten && !openAan) for (const l of r.feiten.lijsten || []) l.open = [];
-  // Hoofdstukken die uit staan, gaan niet mee.
-  r.inhoud.secties = (r.inhoud.secties || []).filter((s) => s.aan !== false);
-  return { id: r.id, soort: r.soort, titel: r.titel, inhoud: r.inhoud, feiten: r.feiten, bijgewerkt_op: r.bijgewerkt_op };
+  const blokken = rapportNaarBlokken({ titel: r.titel, soort: r.soort, inhoud: r.inhoud, feiten: r.feiten }, { markeerLeeg: false });
+  return { id: r.id, soort: r.soort, titel: r.titel, blokken, bijgewerkt_op: r.bijgewerkt_op };
 }

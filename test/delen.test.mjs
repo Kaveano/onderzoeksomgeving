@@ -122,10 +122,19 @@ test('kijker ziet alleen wat is vrijgegeven en kan niets wijzigen', async () => 
   assert.equal(ov.status, 200);
   assert.equal(ov.data.onderzoek.titel, 'MTO');
   assert.deepEqual(ov.data.stukken.map((x) => x.id), [s.stukken[2].id]);
+  // Zolang de vragenlijst openstaat: alleen het aantal, geen uitkomsten (anders is één nieuwe respondent te volgen).
+  const open = await roep(`/api/kijk/${s.link.code}/dashboard`, { koekje: s.kijk });
+  assert.equal(open.status, 200);
+  assert.equal(open.data.selectie.verborgen, true);
+  assert.equal(open.data.selectie.reden, 'open');
+  assert.equal(open.data.selectie.n, 6);
+  assert.deepEqual(open.data.selectie.vragen, []);
+  await roep(`/api/beheer/vragenlijsten/${s.vl}/status`, { methode: 'POST', body: { status: 'gesloten' } });
   const d = await roep(`/api/kijk/${s.link.code}/dashboard`, { koekje: s.kijk });
   assert.equal(d.status, 200);
   assert.equal(d.data.kijker, true);
   assert.equal(d.data.selectie.n, 6);
+  assert.equal(d.data.selectie.verborgen, undefined);
   assert.ok(d.data.selectie.themas.length > 0);
   // Open antwoorden zijn niet vrijgegeven; links naar vragenlijsten ontbreken.
   assert.deepEqual(d.data.selectie.open, []);
@@ -161,6 +170,91 @@ test('minder dan 5 respondenten: kijker ziet geen uitkomsten van die vragenlijst
   assert.deepEqual(kijk.data.selectie.vragen, []);
 });
 
+test('geen terugrekenen: een verborgen vraag verbergt ook het themagemiddelde', async () => {
+  const thema = (await roep(`/api/beheer/onderzoeken/${s.onderzoek}/themas`, { methode: 'POST', body: { naam: 'Rekenthema' } })).data.id;
+  const vl = (await roep(`/api/beheer/onderzoeken/${s.onderzoek}/vragenlijsten`, { methode: 'POST', body: { titel: 'Rekenlijst' } })).data.id;
+  const q1 = (await roep(`/api/beheer/vragenlijsten/${vl}/vragen`, { methode: 'POST', body: { type: 'schaal', thema_id: thema, tekst: 'Iedereen' } })).data.id;
+  const q2 = (await roep(`/api/beheer/vragenlijsten/${vl}/vragen`, { methode: 'POST', body: { type: 'schaal', thema_id: thema, tekst: 'Bijna niemand', weet_niet: true } })).data.id;
+  await roep(`/api/beheer/vragenlijsten/${vl}/status`, { methode: 'POST', body: { status: 'open' } });
+  const code = (await roep(`/api/beheer/vragenlijsten/${vl}`)).data.vragenlijst.code;
+  // 8 respondenten; de tweede vraag geven er 2 een score en 4 zeggen "weet niet"
+  for (let i = 0; i < 8; i++) {
+    const a = { [q1]: 4 };
+    if (i < 2) a[q2] = i + 1;
+    else if (i < 6) a[q2] = 'weet_niet';
+    await roep(`/api/publiek/${code}`, { methode: 'POST', body: { antwoorden: a }, koekje: '' });
+  }
+  await roep(`/api/beheer/vragenlijsten/${vl}/status`, { methode: 'POST', body: { status: 'gesloten' } });
+  const beheer = (await roep(`/api/beheer/onderzoeken/${s.onderzoek}/dashboard?vragenlijst=${vl}`)).data.selectie;
+  assert.equal(beheer.themas[0].gemiddelde, 3.5, 'de onderzoeker ziet het wel');
+  const d = (await roep(`/api/kijk/${s.link.code}/dashboard?vragenlijst=${vl}`, { koekje: s.kijk })).data.selectie;
+  const v1 = d.vragen.find((q) => q.id === q1);
+  const v2 = d.vragen.find((q) => q.id === q2);
+  assert.equal(v1.gemiddelde, 4);
+  assert.equal(v2.verborgen, true, '6 antwoorden, maar maar 2 scores: geen gemiddelde');
+  assert.equal(v2.gemiddelde, null);
+  assert.equal(v2.n, null);
+  assert.equal(v2.n_score, undefined);
+  assert.deepEqual(v2.verdeling, []);
+  assert.equal(d.themas[0].gemiddelde, null, 'anders volgt het verborgen gemiddelde uit het themagemiddelde');
+  assert.equal(d.themas[0].n, null);
+  assert.equal(d.themas[0].antwoorden, undefined);
+});
+
+test('geen terugrekenen: een kleine vragenlijst op hetzelfde meetmoment verbergt dat punt in het verloop', async () => {
+  const detail = (await roep(`/api/beheer/onderzoeken/${s.onderzoek}`)).data;
+  const nul = detail.meetmomenten[0].id;
+  const vervolg = (await roep(`/api/beheer/onderzoeken/${s.onderzoek}/meetmomenten`, { methode: 'POST', body: { naam: 'Vervolg' } })).data.id;
+  await roep(`/api/beheer/vragenlijsten/${s.vl}`, { methode: 'PUT', body: { titel: 'Hoofdlijst', meetmoment_id: nul, status: 'gesloten' } });
+  const vullen = async (id, aantal, score) => {
+    await roep(`/api/beheer/vragenlijsten/${id}/status`, { methode: 'POST', body: { status: 'open' } });
+    const vl = (await roep(`/api/beheer/vragenlijsten/${id}`)).data;
+    for (let i = 0; i < aantal; i++) {
+      const a = {};
+      for (const q of vl.vragen) if (q.type === 'schaal') a[q.id] = score;
+      await roep(`/api/publiek/${vl.vragenlijst.code}`, { methode: 'POST', body: { antwoorden: a }, koekje: '' });
+    }
+    await roep(`/api/beheer/vragenlijsten/${id}/status`, { methode: 'POST', body: { status: 'gesloten' } });
+  };
+  const kopie = (await roep(`/api/beheer/vragenlijsten/${s.vl}/kopie`, { methode: 'POST', body: { titel: 'Vervolglijst', meetmoment_id: vervolg } })).data.id;
+  await vullen(kopie, 6, 5);
+  const themaVan = (d) => d.verloop.themas[0];
+  let d = (await roep(`/api/kijk/${s.link.code}/dashboard?vragenlijst=${s.vl}`, { koekje: s.kijk })).data;
+  assert.ok(themaVan(d).punten.every((p) => p.gemiddelde !== null), 'twee grote metingen: beide punten zichtbaar');
+  assert.equal(themaVan(d).punten[0].kleinste, undefined, 'hulpvelden gaan niet mee naar de kijker');
+  // Nu een kleine vragenlijst (2 respondenten) op hetzelfde meetmoment als de hoofdlijst
+  const klein = (await roep(`/api/beheer/vragenlijsten/${s.vl}/kopie`, { methode: 'POST', body: { titel: 'Kleine lijst', meetmoment_id: nul } })).data.id;
+  await vullen(klein, 2, 1);
+  const beheer = (await roep(`/api/beheer/onderzoeken/${s.onderzoek}/dashboard?vragenlijst=${s.vl}`)).data;
+  assert.equal(themaVan(beheer).punten[0].kleinste, 2);
+  d = (await roep(`/api/kijk/${s.link.code}/dashboard?vragenlijst=${s.vl}`, { koekje: s.kijk })).data;
+  const punt = themaVan(d).punten.find((p) => p.meetmoment_id === nul);
+  assert.equal(punt.gemiddelde, null);
+  assert.equal(punt.n, null);
+  for (const q of d.selectie.vragen) {
+    for (const p of q.verloop || []) if (p.meetmoment_id === nul) assert.equal(p.gemiddelde ?? p.percentage_ja ?? null, null);
+  }
+  // Ook in de uitkomst van de kleine lijst zelf staat niets
+  const kd = (await roep(`/api/kijk/${s.link.code}/dashboard?vragenlijst=${klein}`, { koekje: s.kijk })).data;
+  assert.equal(kd.selectie.verborgen, true);
+  assert.equal(kd.selectie.reden, 'klein');
+});
+
+test('tussenstand van een open vragenlijst alleen als die is gedeeld', async () => {
+  await roep(`/api/beheer/vragenlijsten/${s.vl}/status`, { methode: 'POST', body: { status: 'open' } });
+  let d = (await roep(`/api/kijk/${s.link.code}/dashboard?vragenlijst=${s.vl}`, { koekje: s.kijk })).data;
+  assert.equal(d.selectie.reden, 'open');
+  assert.ok(d.verloop.themas.every((t) => t.punten.every((p) => p.gemiddelde === null || p.meetmoment_id !== d.verloop.meetmomenten[0].id)), 'ook het verloop toont de open meting niet');
+  const met = await roep(`/api/beheer/deellinks/${s.link.id}`, { methode: 'PUT', body: { naam: 'Directie', onderdelen: { dashboard: true, open_antwoorden: true, tussenstand: true, stukken: [s.stukken[2].id] } } });
+  assert.equal(met.status, 200);
+  d = (await roep(`/api/kijk/${s.link.code}/dashboard?vragenlijst=${s.vl}`, { koekje: s.kijk })).data;
+  assert.equal(d.selectie.verborgen, undefined);
+  assert.ok(d.selectie.themas.length > 0);
+  const lijst = (await roep(`/api/beheer/onderzoeken/${s.onderzoek}/deellinks`)).data.deellinks;
+  assert.equal(lijst.find((l) => l.id === s.link.id).onderdelen.tussenstand, true);
+  await roep(`/api/beheer/vragenlijsten/${s.vl}/status`, { methode: 'POST', body: { status: 'gesloten' } });
+});
+
 test('nieuwe toegangscode maakt de oude en lopende sessies ongeldig', async () => {
   const r = await roep(`/api/beheer/deellinks/${s.link.id}/nieuwe-toegangscode`, { methode: 'POST', body: {} });
   assert.notEqual(r.data.toegangscode, s.toegangscode);
@@ -178,8 +272,11 @@ test('raden van de toegangscode wordt geremd', async () => {
   const statussen = [];
   for (let i = 0; i < 7; i++) statussen.push((await roep(`/api/kijk/${code}/toegang`, { methode: 'POST', body: { toegangscode: `FOUT${i}-AAAAA` }, koekje: '' })).status);
   assert.deepEqual(statussen, [401, 401, 401, 401, 401, 429, 429]);
-  // Ook de juiste code werkt dan even niet; een andere link wordt niet geraakt.
+  // Ook de juiste code werkt dan even niet vanaf dezelfde afzender; een andere link wordt niet geraakt.
   assert.equal((await roep(`/api/kijk/${code}/toegang`, { methode: 'POST', body: { toegangscode: tweede.data.toegangscode }, koekje: '' })).status, 429);
+  // Iemand anders (een andere afzender) wordt niet buitengesloten door de foute pogingen van een ander.
+  const ander = await fetch(`${BASIS}/api/kijk/${code}/toegang`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': '198.51.100.7' }, body: JSON.stringify({ toegangscode: tweede.data.toegangscode }) });
+  assert.equal(ander.status, 200);
   assert.equal((await roep(`/api/kijk/${s.link.code}/overzicht`, { koekje: s.kijk })).status, 200);
   s.tweede = tweede.data.deellink;
 });

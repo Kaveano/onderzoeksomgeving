@@ -14,14 +14,15 @@
 import { Fout, json, leesJson } from '../lib/http.js';
 import * as v from '../lib/validatie.js';
 import { alle, een, haalOnderzoek, nuIso, vandaagNL } from '../lib/db.js';
-import { willekeurigeCode } from '../lib/auth.js';
+import { willekeurigeCode, afzenderCode } from '../lib/auth.js';
 import { berekenDashboard } from './dashboard.js';
 import { rapportVoorKijker } from './rapporten.js';
 import { DREMPEL } from '../lib/schalen.js';
 
 const SESSIEDUUR_SEC = 8 * 60 * 60;
 const POGING_VENSTER_MS = 15 * 60 * 1000;
-const MAX_POGINGEN = 5;
+const MAX_POGINGEN = 5; // per afzender per link
+const MAX_POGINGEN_LINK = 50; // alle afzenders samen per link (remt raden vanaf veel adressen)
 const MAX_LINKS_PER_ONDERZOEK = 20;
 const CODE_PATROON = /^[A-Za-z0-9_-]{16,40}$/;
 // Zonder tekens die op elkaar lijken (0/O, 1/I/L).
@@ -82,6 +83,8 @@ async function controleerOnderdelen(env, ruw, onderzoekId, { magLeeg = false } =
   const onderdelen = {
     dashboard: o.dashboard !== false,
     open_antwoorden: o.open_antwoorden === true && o.dashboard !== false,
+    // Tussenstand: ook resultaten van vragenlijsten die nog openstaan (standaard niet; zie kijkerDashboard).
+    tussenstand: o.tussenstand === true && o.dashboard !== false,
     stukken: stukIds,
     rapporten: rapportIds,
   };
@@ -103,7 +106,7 @@ function linkVoorBeheer(rij) {
     id: rij.id,
     naam: rij.naam,
     code: rij.code,
-    onderdelen: { dashboard: onderdelen.dashboard === true, open_antwoorden: onderdelen.dashboard === true && onderdelen.open_antwoorden === true, stukken: onderdelen.stukken || [], rapporten: onderdelen.rapporten || [] },
+    onderdelen: { dashboard: onderdelen.dashboard === true, open_antwoorden: onderdelen.dashboard === true && onderdelen.open_antwoorden === true, tussenstand: onderdelen.dashboard === true && onderdelen.tussenstand === true, stukken: onderdelen.stukken || [], rapporten: onderdelen.rapporten || [] },
     verloopt_op: rij.verloopt_op,
     ingetrokken: !!rij.ingetrokken,
     verlopen,
@@ -208,7 +211,7 @@ async function werkendeLink(env, code) {
   } catch {
     onderdelen = {};
   }
-  rij.mag = { dashboard: onderdelen.dashboard === true, open_antwoorden: onderdelen.dashboard === true && onderdelen.open_antwoorden === true, stukken: onderdelen.stukken || [], rapporten: onderdelen.rapporten || [] };
+  rij.mag = { dashboard: onderdelen.dashboard === true, open_antwoorden: onderdelen.dashboard === true && onderdelen.open_antwoorden === true, tussenstand: onderdelen.dashboard === true && onderdelen.tussenstand === true, stukken: onderdelen.stukken || [], rapporten: onderdelen.rapporten || [] };
   return rij;
 }
 
@@ -233,13 +236,17 @@ export async function toegang({ request, env, params }) {
   const link = await werkendeLink(env, params.code);
   const body = await leesJson(request, 5_000);
   const nu = Date.now();
+  const afzender = await afzenderCode(env, request);
   // Poging vastleggen en tellen in één ondeelbare batch; boven de grens wordt niet meer vergeleken.
+  // Er geldt een grens per afzender en een ruimere grens voor alle afzenders samen.
   const [poging] = await env.DB.batch([
     env.DB.prepare(
-      `INSERT INTO kijkpogingen (deellink_id, tijdstip)
-       SELECT ?, ? WHERE (SELECT COUNT(*) FROM kijkpogingen WHERE deellink_id = ? AND tijdstip > ?) < ?
+      `INSERT INTO kijkpogingen (deellink_id, tijdstip, afzender)
+       SELECT ?, ?, ?
+       WHERE (SELECT COUNT(*) FROM kijkpogingen WHERE deellink_id = ? AND afzender = ? AND tijdstip > ?) < ?
+         AND (SELECT COUNT(*) FROM kijkpogingen WHERE deellink_id = ? AND tijdstip > ?) < ?
        RETURNING id`,
-    ).bind(link.id, nu, link.id, nu - POGING_VENSTER_MS, MAX_POGINGEN),
+    ).bind(link.id, nu, afzender, link.id, afzender, nu - POGING_VENSTER_MS, MAX_POGINGEN, link.id, nu - POGING_VENSTER_MS, MAX_POGINGEN_LINK),
     env.DB.prepare('DELETE FROM kijkpogingen WHERE tijdstip < ?').bind(nu - 24 * 60 * 60 * 1000),
     env.DB.prepare('DELETE FROM kijksessies WHERE verloopt_op < ?').bind(nu),
   ]);
@@ -317,20 +324,50 @@ export async function dashboard({ request, env, params }) {
     uitsplitsen: url.searchParams.get('uitsplitsen'),
   });
 
-  // Geen links naar vragenlijsten.
+  return json(kijkerDashboard(d, link.mag));
+}
+
+/**
+ * Maakt van het dashboard (zoals de onderzoeker het ziet) de versie voor een kijker.
+ * Uitgangspunt: niets tonen waaruit de antwoorden van minder dan DREMPEL personen zijn af te leiden,
+ * ook niet door verschillende getallen tegen elkaar weg te strepen. Daarom:
+ * - een vragenlijst met minder dan DREMPEL respondenten: geen uitkomsten;
+ * - een vragenlijst die nog openstaat: geen uitkomsten (tenzij de tussenstand is gedeeld), omdat een kijker
+ *   anders door twee keer te kijken de antwoorden van één nieuwe respondent kan zien;
+ * - een vraag met minder dan DREMPEL scores: geen verdeling, gemiddelde of aantal;
+ * - een thema of meetpunt met zo'n vraag: geen gemiddelde (het zou de verborgen vraag verraden);
+ * - een punt in het verloop waar een kleine of nog open vragenlijst aan bijdraagt: geen gemiddelde;
+ * - geen open antwoorden (tenzij gedeeld), geen links, geen aantallen eigen invoer;
+ * - gemiddelden afgerond op twee decimalen.
+ */
+export function kijkerDashboard(d, mag) {
+  const rond = (x) => (typeof x === 'number' && Number.isFinite(x) ? Math.round(x * 100) / 100 : x);
+  const isOpen = new Map(d.respons.map((r) => [r.vragenlijst_id, r.status === 'open']));
   for (const r of d.respons) delete r.code;
+
+  // Een punt in het verloop alleen tonen als elke bijdragende vragenlijst groot genoeg en (zonder tussenstand) gesloten is.
+  const puntVeilig = (p) => p.n !== null && p.n >= DREMPEL && (p.kleinste === null || p.kleinste === undefined || p.kleinste >= DREMPEL) && (mag.tussenstand || !p.open);
+  const schoonPunt = (p, velden) => {
+    const veilig = puntVeilig(p);
+    const uit = { meetmoment_id: p.meetmoment_id, naam: p.naam };
+    if (p.datum !== undefined) uit.datum = p.datum;
+    for (const v of velden) uit[v] = veilig ? rond(p[v]) : null;
+    uit.n = veilig ? p.n : null;
+    return uit;
+  };
 
   const s = d.selectie;
   if (s) {
-    if (s.n < DREMPEL) {
-      // Te weinig respondenten: voor kijkers helemaal geen uitkomsten van deze vragenlijst.
+    const open = isOpen.get(s.vragenlijst_id) && !mag.tussenstand;
+    if (s.n < DREMPEL || open) {
       d.selectie = {
         vragenlijst_id: s.vragenlijst_id,
         titel: s.titel,
         meetmoment_naam: s.meetmoment_naam,
         n: s.n,
-        klein: true,
+        klein: s.n < DREMPEL,
         verborgen: true,
+        reden: s.n < DREMPEL ? 'klein' : 'open',
         themas: [],
         meetpunten: [],
         vragen: [],
@@ -339,41 +376,67 @@ export async function dashboard({ request, env, params }) {
         uitsplitsing: null,
       };
     } else {
-      if (!link.mag.open_antwoorden) {
+      if (!mag.open_antwoorden) {
         s.open = [];
         s.open_verborgen = true;
       }
-      // Vragen met minder dan DREMPEL antwoorden: geen verdeling of gemiddelde.
+      const verborgenThemas = new Set();
+      const verborgenMeetpunten = new Set();
       for (const q of s.vragen) {
-        if (q.n > 0 && q.n < DREMPEL) {
+        const scores = q.type === 'schaal' ? q.n_score : q.n;
+        const klein = (q.n > 0 && q.n < DREMPEL) || (q.type === 'schaal' && scores > 0 && scores < DREMPEL);
+        if (klein) {
           q.verdeling = [];
           q.gemiddelde = null;
           q.percentage_ja = null;
+          q.n = null;
+          delete q.n_score;
           q.verborgen = true;
+          if (q.type === 'schaal') {
+            verborgenThemas.add(q.thema_id);
+            if (q.meetpunt_id) verborgenMeetpunten.add(q.meetpunt_id);
+          }
+        } else {
+          q.gemiddelde = rond(q.gemiddelde);
+          q.percentage_ja = rond(q.percentage_ja);
         }
-        if (q.verloop) q.verloop = q.verloop.map((p) => (p.n < DREMPEL ? { meetmoment_id: p.meetmoment_id, naam: p.naam, gemiddelde: null, percentage_ja: null, n: null } : p));
+        if (q.verloop) q.verloop = q.verloop.map((p) => schoonPunt(p, ['gemiddelde', 'percentage_ja']));
       }
-      for (const t of [...s.themas, ...s.meetpunten]) {
-        if (t.n > 0 && t.n < DREMPEL) {
+      const verberg = (t, extra) => {
+        if ((t.n > 0 && t.n < DREMPEL) || extra) {
           t.gemiddelde = null;
+          t.n = null;
           t.verborgen = true;
+        } else {
+          t.gemiddelde = rond(t.gemiddelde);
         }
         delete t.antwoorden;
+      };
+      for (const t of s.themas) verberg(t, verborgenThemas.has(t.thema_id));
+      for (const m of s.meetpunten) verberg(m, verborgenMeetpunten.has(m.meetpunt_id));
+      // In de uitsplitsing per groep geldt hetzelfde: geen themagemiddelde als er een verborgen vraag in zit.
+      for (const g of (s.uitsplitsing && s.uitsplitsing.groepen) || []) {
+        for (const c of g.themas || []) {
+          if (verborgenThemas.has(c.thema_id)) {
+            c.gemiddelde = null;
+            c.n = null;
+            c.verborgen = true;
+          }
+        }
       }
       // Open antwoorden op een vraag met minder dan DREMPEL antwoorden ook niet tonen.
       s.open = s.open.map((q) => (q.antwoorden.length < DREMPEL ? { ...q, antwoorden: [], verborgen: true } : q));
     }
   }
-  // Verloop: meetmomenten met minder dan DREMPEL respondenten tonen geen gemiddelde.
   for (const reeks of [...d.verloop.themas, ...d.verloop.meetpunten]) {
-    reeks.punten = reeks.punten.map((p) => (p.n < DREMPEL ? { ...p, gemiddelde: null, n: null } : p));
+    reeks.punten = reeks.punten.map((p) => schoonPunt(p, ['gemiddelde']));
   }
   d.verloop.themas = d.verloop.themas.filter((r) => r.punten.some((p) => p.gemiddelde !== null));
   d.verloop.meetpunten = d.verloop.meetpunten.filter((r) => r.punten.some((p) => p.gemiddelde !== null));
   // Aantallen interviews, observaties en dergelijke zijn voor de onderzoeker zelf.
   delete d.eigen_invoer_telling;
   d.kijker = true;
-  return json(d);
+  return d;
 }
 
 export async function stuk({ request, env, params }) {

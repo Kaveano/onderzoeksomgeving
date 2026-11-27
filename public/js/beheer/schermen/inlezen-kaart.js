@@ -198,12 +198,12 @@ function themaKeuze(themas, gekozen, bijKeuze) {
 }
 
 /** Stuurt items in delen naar de server; elk deel is alles-of-niets. */
-async function inDelen(items, stuur) {
+async function inDelen(items, stuur, perKeer = REEKS) {
   let klaar = 0;
-  for (let i = 0; i < items.length; i += REEKS) {
+  for (let i = 0; i < items.length; i += perKeer) {
     try {
-      await stuur(items.slice(i, i + REEKS));
-      klaar += Math.min(REEKS, items.length - i);
+      await stuur(items.slice(i, i + perKeer));
+      klaar += Math.min(perKeer, items.length - i);
     } catch (e) {
       if (klaar) throw new Error(`De eerste ${klaar} regels zijn ingelezen; daarna ging het mis: ${e.message} Lees de rest opnieuw in zonder de eerste ${klaar} regels.`);
       throw e;
@@ -418,7 +418,8 @@ export async function antwoordenInlezen(ctx) {
           const r = verwerkAntwoorden(rijen, koppeling, datumKolom, vragen, schalen, vandaag());
           return { items: r.items, problemen: r.problemen, regel: `${aantal(r.items.length, 'respondent', 'respondenten')} van de ${aantal(rijen.length, 'rij', 'rijen')} ${r.items.length === 1 ? 'heeft' : 'hebben'} bruikbare antwoorden. Na het inlezen tellen ze mee in alle resultaten.` };
         },
-        opslaan: (items) => inDelen(items, (deel) => api.post(`/vragenlijsten/${vl.id}/inzendingen/reeks`, { inzendingen: deel })),
+        // Per verzoek hooguit zo'n 3.000 antwoordcellen, zodat de server binnen de gratis rekentijd blijft.
+        opslaan: (items) => inDelen(items, (deel) => api.post(`/vragenlijsten/${vl.id}/inzendingen/reeks`, { inzendingen: deel }), Math.max(10, Math.min(REEKS, Math.floor(3000 / Math.max(1, vragen.length))))),
       };
     },
   });
@@ -437,7 +438,7 @@ export function datasetToevoegen(ctx) {
     ],
     knopTekst: () => 'Dataset opslaan',
     bouw: ({ kop, rijen, bestand, ververs }) => {
-      const verdacht = new Set(verdachteKolommen(kop));
+      const verdacht = new Set(verdachteKolommen(kop, rijen));
       const soorten = kop.map((_, i) => kolomSoort(rijen.map((r) => r[i])));
       const gekozen = new Set(kop.map((k, i) => i).filter((i) => !verdacht.has(kop[i]) && soorten[i] !== 'leeg'));
       const naamId = uniekeId('im-naam');

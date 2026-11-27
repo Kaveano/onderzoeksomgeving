@@ -9,6 +9,7 @@ import { controleerAntwoord, haalVragen, willekeurigId } from './publiek.js';
 import { vraagVeldenUit } from './vragenlijsten.js';
 
 const MAX_REEKS = 300;
+const MAX_CELLEN = 6000; // respondenten × vragen per verzoek, zodat het controleren binnen de rekentijd blijft
 const MAX_VRAGEN = 100;
 const MAX_INZENDINGEN = 20_000; // per vragenlijst
 const MAX_DATASETS = 10;
@@ -131,6 +132,11 @@ export async function antwoorden({ request, env, params }) {
     een(env, 'SELECT COUNT(*) AS n FROM inzendingen WHERE vragenlijst_id = ?', vragenlijstId),
   ]);
   if (!vragenVanLijst.length) throw new Fout(409, 'Deze vragenlijst heeft nog geen vragen.');
+  if (lijst.length * vragenVanLijst.length > MAX_CELLEN) {
+    throw new Fout(400, `Te veel antwoorden in één keer. Stuur maximaal ${Math.max(1, Math.floor(MAX_CELLEN / vragenVanLijst.length))} respondenten per keer.`);
+  }
+  // De antwoordmogelijkheden één keer per vraag inlezen, niet per antwoord.
+  for (const q of vragenVanLijst) if (q.type === 'meerkeuze') q._geldig = new Set(JSON.parse(q.opties || '[]').map((o) => o.id));
   const max = Math.min(vl.max_inzendingen || MAX_INZENDINGEN, MAX_INZENDINGEN);
   if (tel.n + lijst.length > max) {
     throw new Fout(409, `Deze vragenlijst kan maximaal ${max.toLocaleString('nl-NL')} inzendingen hebben. Er zijn er al ${tel.n.toLocaleString('nl-NL')}.`);

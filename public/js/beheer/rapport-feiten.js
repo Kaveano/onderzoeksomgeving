@@ -257,6 +257,10 @@ export function verzamelFeiten({ data, dashboards, peildatum }) {
     const r = (d.respons || []).find((x) => x.vragenlijst_id === s.vragenlijst_id) || {};
     const verborgen = privaat(s, drempel);
     const dagen = (r.per_dag || []).map((p) => p.datum);
+    // Een vraag met minder dan `drempel` scores is niet te tonen. Dan ook het gemiddelde van zijn thema niet,
+    // want daaruit en uit de andere vragen is het verborgen gemiddelde terug te rekenen.
+    const kleineVraag = (q) => (q.n > 0 && q.n < drempel) || (q.type === 'schaal' && q.n_score > 0 && q.n_score < drempel);
+    const themasMetKleineVraag = new Set(s.vragen.filter((q) => q.type === 'schaal' && kleineVraag(q)).map((q) => q.thema_id));
     lijsten.push({
       id: s.vragenlijst_id,
       titel: s.titel,
@@ -271,11 +275,11 @@ export function verzamelFeiten({ data, dashboards, peildatum }) {
       tot: dagen[dagen.length - 1] || null,
       verborgen,
       themas: verborgen ? [] : s.themas.map((t) => {
-        const klein = t.n > 0 && t.n < drempel;
+        const klein = (t.n > 0 && t.n < drempel) || themasMetKleineVraag.has(t.thema_id);
         return { naam: t.naam, aantal_vragen: t.aantal_vragen, n: klein ? null : t.n, gemiddelde: klein ? null : t.gemiddelde, verborgen: klein };
       }),
       vragen: s.vragen.map((q) => {
-        const klein = verborgen || (q.n > 0 && q.n < drempel);
+        const klein = verborgen || kleineVraag(q);
         const basis = { thema_naam: q.thema_naam || '', type: q.type, tekst: q.tekst, meerdere: !!q.meerdere_antwoorden, opties: (q.verdeling || []).map((v) => v.label) };
         if (klein || q.type === 'open') return { ...basis, n: klein ? null : q.n, verborgen: klein, verdeling: [] };
         return {
@@ -300,7 +304,9 @@ export function verzamelFeiten({ data, dashboards, peildatum }) {
     themas: (v.themas || []).map((t) => ({
       thema_id: t.thema_id,
       naam: t.naam,
-      punten: t.punten.map((p) => (eindig(p.gemiddelde) && p.n >= drempel
+      // Een punt telt alle vragenlijsten van een meetmoment samen. Draagt daar een vragenlijst met minder dan
+      // `drempel` respondenten aan bij (kleinste), dan is die uit het totaal terug te rekenen: niet tonen.
+      punten: t.punten.map((p) => (eindig(p.gemiddelde) && p.n >= drempel && (p.kleinste === null || p.kleinste === undefined || p.kleinste >= drempel)
         ? { meetmoment_id: p.meetmoment_id, naam: p.naam, gemiddelde: p.gemiddelde, n: p.n }
         : { meetmoment_id: p.meetmoment_id, naam: p.naam, gemiddelde: null, n: null })),
     })).filter((t) => t.punten.some((p) => p.gemiddelde !== null)),
@@ -313,12 +319,17 @@ export function verzamelFeiten({ data, dashboards, peildatum }) {
     const perMoment = [];
     for (const mm of model.meetmomenten) {
       const scores = [];
+      let kleineLijst = false;
       for (const l of model.lijsten) {
         if (l.meetmoment_id !== mm.id) continue;
         const w = waardenVan(l, `t:${t.id}`);
-        if (w) for (const x of w) if (x !== null) scores.push(x);
+        if (!w) continue;
+        const geldig = w.filter((x) => x !== null);
+        // Ook hier: een kleine vragenlijst op hetzelfde meetmoment zou uit de uitkomst terug te rekenen zijn.
+        if (geldig.length > 0 && geldig.length < drempel) kleineLijst = true;
+        scores.push(...geldig);
       }
-      if (scores.length >= drempel) perMoment.push({ naam: mm.naam, scores });
+      if (scores.length >= drempel && !kleineLijst) perMoment.push({ naam: mm.naam, scores });
     }
     if (perMoment.length < 2) continue;
     const a = perMoment[0];

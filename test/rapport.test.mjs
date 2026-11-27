@@ -297,7 +297,7 @@ test('rapport delen via een deellink: alleen-lezen en zonder open antwoorden', a
   assert.equal(fout.status, 400);
   const r = await roep(`${B}/onderzoeken/${s.onderzoek}/deellinks`, { methode: 'POST', body: { naam: 'Directie', onderdelen: { dashboard: false, rapporten: [s.rapport] } } });
   assert.equal(r.status, 201);
-  assert.deepEqual(r.data.deellink.onderdelen, { dashboard: false, open_antwoorden: false, stukken: [], rapporten: [s.rapport] });
+  assert.deepEqual(r.data.deellink.onderdelen, { dashboard: false, open_antwoorden: false, tussenstand: false, stukken: [], rapporten: [s.rapport] });
   const code = r.data.deellink.code;
   const toegang = await fetch(`${BASIS}/api/kijk/${code}/toegang`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ toegangscode: r.data.toegangscode }) });
   const kijk = toegang.headers.get('set-cookie').split(';')[0];
@@ -308,13 +308,24 @@ test('rapport delen via een deellink: alleen-lezen en zonder open antwoorden', a
   // Het dashboard is niet gedeeld, een stuk ook niet
   assert.equal((await roep(`/api/kijk/${code}/dashboard`, { koekje: kijk })).status, 403);
   assert.equal((await roep(`/api/kijk/${code}/stukken/${stukken[0].id}`, { koekje: kijk })).status, 404);
+  // Zet een hoofdstuk uit: de feiten daarvan mogen dan ook niet in wat de kijker ontvangt
+  const huidig = (await roep(`${B}/rapporten/${s.rapport}`)).data.rapport;
+  huidig.inhoud.secties.find((x) => x.soort === 'verloop').aan = false;
+  huidig.inhoud.secties.find((x) => x.soort === 'cijfers').feiten = false;
+  assert.equal((await roep(`${B}/rapporten/${s.rapport}`, { methode: 'PUT', body: { inhoud: huidig.inhoud } })).status, 200);
   const rap = await roep(`/api/kijk/${code}/rapporten/${s.rapport}`, { koekje: kijk });
   assert.equal(rap.status, 200);
   assert.equal(rap.data.rapport.titel, 'Eindrapport MTO 2026');
-  // De bijlage met open antwoorden staat uit: de antwoorden gaan dan ook niet mee naar de kijker
-  assert.doesNotMatch(JSON.stringify(rap.data), /Open antwoord nummer/);
-  assert.ok(rap.data.rapport.inhoud.secties.every((x) => x.soort !== 'bijlage-open'));
-  assert.match(JSON.stringify(rap.data), /Mijn eigen conclusie/);
+  // De kijker krijgt kant-en-klare blokken, geen ruwe feiten of instellingen
+  assert.ok(Array.isArray(rap.data.rapport.blokken));
+  assert.equal(rap.data.rapport.feiten, undefined);
+  assert.equal(rap.data.rapport.inhoud, undefined);
+  const tekst = JSON.stringify(rap.data);
+  assert.doesNotMatch(tekst, /Open antwoord nummer/, 'de bijlage met open antwoorden staat uit');
+  assert.doesNotMatch(tekst, /Ontwikkeling tussen de meetmomenten|t-toets van Welch/, 'een uitgezet hoofdstuk gaat niet mee');
+  assert.doesNotMatch(tekst, /Eigen cijfers|6,4 %/, 'uitgezette feiten gaan niet mee');
+  assert.doesNotMatch(tekst, /"(verdeling|toetsen|lijsten|acties)"/);
+  assert.match(tekst, /Mijn eigen conclusie/);
   // Kijker kan het rapport niet wijzigen
   assert.equal((await roep(`${B}/rapporten/${s.rapport}`, { methode: 'PUT', body: { titel: 'gehackt' }, koekje: kijk })).status, 401);
   // Intrekken kan altijd, ook als het gedeelde rapport is verwijderd

@@ -281,10 +281,15 @@ export async function toon(container, ctx) {
     } else if (sel && !metAntwoorden) {
       kaarten.push(geenAntwoorden());
     } else if (sel && sel.verborgen) {
-      kaarten.push(melding([
-        h('strong', {}, 'De uitkomsten van deze vragenlijst worden nog niet getoond. '),
-        `Er zijn minder dan ${d.drempel} respondenten. Om de anonimiteit te beschermen zijn de resultaten pas zichtbaar vanaf ${d.drempel} respondenten.`,
-      ], 'waarschuwing'));
+      kaarten.push(melding(sel.reden === 'open'
+        ? [
+          h('strong', {}, 'Deze vragenlijst staat nog open. '),
+          'De resultaten zijn zichtbaar zodra de onderzoeker de vragenlijst heeft gesloten. Zo blijft ook het antwoord van één nieuwe respondent anoniem.',
+        ]
+        : [
+          h('strong', {}, 'De uitkomsten van deze vragenlijst worden nog niet getoond. '),
+          `Er zijn minder dan ${d.drempel} respondenten. Om de anonimiteit te beschermen zijn de resultaten pas zichtbaar vanaf ${d.drempel} respondenten.`,
+        ], 'waarschuwing'));
     } else if (sel) {
       if (sel.klein) {
         kaarten.push(melding([

@@ -329,7 +329,9 @@ export async function toon(container, ctx) {
 
   function watGedeeld(l) {
     const delen = [];
-    if (l.onderdelen.dashboard) delen.push(l.onderdelen.open_antwoorden ? 'resultaten met open antwoorden' : 'resultaten zonder open antwoorden');
+    if (l.onderdelen.dashboard) {
+      delen.push(`resultaten ${l.onderdelen.open_antwoorden ? 'met' : 'zonder'} open antwoorden${l.onderdelen.tussenstand ? ' (ook tussenstanden)' : ''}`);
+    }
     const nr = (l.onderdelen.rapporten || []).filter((id) => rapporten.some((r) => r.id === id)).length;
     if (nr) delen.push(aantal(nr, 'rapport', 'rapporten'));
     const n = l.onderdelen.stukken.filter((id) => stukken.some((s) => s.id === id)).length;
@@ -343,6 +345,7 @@ export async function toon(container, ctx) {
     const od = {
       dashboard: l.onderdelen.dashboard,
       open_antwoorden: l.onderdelen.open_antwoorden,
+      tussenstand: l.onderdelen.tussenstand,
       stukken: l.onderdelen.stukken.filter((id) => stukken.some((s) => s.id === id)),
       rapporten: (l.onderdelen.rapporten || []).filter((id) => rapporten.some((r) => r.id === id)),
     };
@@ -373,6 +376,13 @@ export async function toon(container, ctx) {
           waarde: onderdelen.open_antwoorden,
           hulp: 'Open antwoorden kunnen herkenbaar zijn voor collega\'s. Deel ze alleen als dat zo is afgesproken.',
         },
+        {
+          naam: 'tussenstand',
+          type: 'checkbox',
+          label: 'Ook de tussenstand van vragenlijsten die nog openstaan',
+          waarde: onderdelen.tussenstand,
+          hulp: 'Liever niet. Wie tijdens het invullen twee keer kijkt, kan aan het verschil zien wat één nieuwe respondent heeft geantwoord. Zonder dit vinkje ziet de meelezer de resultaten van een vragenlijst pas als je hem hebt gesloten (het aantal ingevulde lijsten wel).',
+        },
         ...rapporten.map((r) => ({
           naam: `rapport_${r.id}`,
           type: 'checkbox',
@@ -397,7 +407,7 @@ export async function toon(container, ctx) {
         const gekozenStukken = stukken.filter((s) => w[`stuk_${s.id}`]);
         const gekozenRapporten = rapporten.filter((r) => w[`rapport_${r.id}`]);
         if (!w.dashboard && !gekozenStukken.length && !gekozenRapporten.length) return 'Kies minstens één onderdeel dat de kijker mag zien.';
-        if (w.open_antwoorden && !w.dashboard) return 'Open antwoorden horen bij de resultaten. Vink ook "Resultaten" aan, of zet de open antwoorden uit.';
+        if ((w.open_antwoorden || w.tussenstand) && !w.dashboard) return 'Open antwoorden en tussenstanden horen bij de resultaten. Vink ook "Resultaten" aan, of zet die uit.';
         return null;
       },
       opslaan: async (w) => {
@@ -407,6 +417,7 @@ export async function toon(container, ctx) {
           onderdelen: {
             dashboard: w.dashboard,
             open_antwoorden: w.dashboard && w.open_antwoorden,
+            tussenstand: w.dashboard && w.tussenstand,
             stukken: stukken.filter((s) => w[`stuk_${s.id}`]).map((s) => s.id),
             rapporten: rapporten.filter((r) => w[`rapport_${r.id}`]).map((r) => r.id),
           },

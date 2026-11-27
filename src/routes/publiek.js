@@ -90,7 +90,8 @@ export function controleerAntwoord(vraag, waarde) {
       if (waarde !== 'ja' && waarde !== 'nee') throw new Fout(400, 'Ongeldig antwoord op een ja/nee-vraag.');
       return waarde;
     case 'meerkeuze': {
-      const geldig = new Set(JSON.parse(vraag.opties || '[]').map((o) => o.id));
+      // _geldig: vooraf berekende antwoordmogelijkheden (bij inlezen van veel antwoorden tegelijk).
+      const geldig = vraag._geldig || new Set(JSON.parse(vraag.opties || '[]').map((o) => o.id));
       if (vraag.meerdere_antwoorden) {
         if (!Array.isArray(waarde)) throw new Fout(400, 'Ongeldig antwoord op een meerkeuzevraag.');
         const keuzes = [...new Set(waarde)];
