@@ -16,11 +16,11 @@ Dit document is voor onderhoud: waar staat wat, hoe zet je een nieuwe versie onl
 | Gegevens in de browser | `public/js/beheer/gegevens.js` | De enige manier waarop schermen aan de antwoorden komen: één kopie per onderzoek per sessie, daarna alleen veranderde vragenlijsten (zie "Grote onderzoeken") |
 | Verschilwacht | `public/js/beheer/verschilwacht.js` | Waarschuwt als een meelezer twee uitkomsten kan vergelijken die 1 tot 4 respondenten verschillen |
 | Belastingtest | `scripts/belasting.mjs` | Meet hoe groot een onderzoek kan worden op de gratis laag (zie "Belastingtest") |
-| Bibliotheek (P5) | Tabellen `bronnen` en `bron_koppelingen`; `src/routes/bibliotheek.js`, `src/lib/bibliotheek.js` (controle, citeersleutels) | Eén bibliotheek voor alle onderzoeken. Elke wijziging verhoogt `instellingen.bibliotheek_versie`; de browser (`public/js/beheer/bibliotheek-data.js`) haalt de lijst alleen opnieuw op als die versie veranderd is |
+| Bibliotheek | Tabellen `bronnen` en `bron_koppelingen`; `src/routes/bibliotheek.js`, `src/lib/bibliotheek.js` (controle, citeersleutels) | Eén bibliotheek voor alle onderzoeken. Elke wijziging verhoogt `instellingen.bibliotheek_versie`; de browser (`public/js/beheer/bibliotheek-data.js`) haalt de lijst alleen opnieuw op als die versie veranderd is |
 | APA, zoeken en bestanden van de bibliotheek | `public/js/beheer/bibliotheek-regels.js` (APA 7 met de Nederlandse afspraken in `OPMAAK`, "Plak een verwijzing", namen en citeersleutels), `bibliotheek-zoeken.js` (zoeken zonder index), `bibliotheek-bestanden.js` (RIS, Excel, Word) | Zuiver (geen DOM): de Worker, de schermen en de tests gebruiken dezelfde code |
 | Schermen van de bibliotheek | `schermen/bibliotheek.js`, `bron-bewerken.js`, `bronnen.js` (Rapport · Bronnen), `bronkiezer.js` (dialoog "Bron noemen"), `bibliotheek-ui.js` (Citeer, Koppel, Plak een verwijzing, exports) | CSS: `public/css/scherm-bibliotheek.css` |
-| Coderen van open antwoorden (P5) | Tabellen `codes`, `coderingen`, `citaten`; `src/routes/codering.js`; `public/js/beheer/codering-regels.js` (tellen en `coderingFeiten`, zuiver); scherm `schermen/coderen.js` (Analyse · Open antwoorden) | CSS: `public/css/scherm-coderen.css`. Coderingen en citaten verdwijnen met hun inzending of eigen invoer (`ON DELETE CASCADE`) |
-| Startcollectie (P5/P7) | `scripts/startcollectie.mjs`, `data/startcollectie.json`, `data/startcollectie-sleutels.json`, migratie `0016_bibliotheek_start.sql` | Zie "De startcollectie van de bibliotheek" |
+| Coderen van open antwoorden | Tabellen `codes`, `coderingen`, `citaten`; `src/routes/codering.js`; `public/js/beheer/codering-regels.js` (tellen en `coderingFeiten`, zuiver); scherm `schermen/coderen.js` (Analyse · Open antwoorden) | CSS: `public/css/scherm-coderen.css`. Coderingen en citaten verdwijnen met hun inzending of eigen invoer (`ON DELETE CASCADE`) |
+| Startcollectie | `scripts/startcollectie.mjs`, `data/startcollectie.json`, `data/startcollectie-sleutels.json`, migratie `0016_bibliotheek_start.sql` | Zie "De startcollectie van de bibliotheek" |
 
 Je andere projecten (AF Partners-site, InterimRadar) staan los hiervan en worden niet geraakt.
 
@@ -177,13 +177,13 @@ Het eerste verzoek in een vers proces kost 12 tot 30 ms, bij elke grootte vanaf 
 - **Raadpogingen:** maximaal 10 mislukte pogingen per afzender per 15 minuten. Voor dat tellen wordt een niet terug te rekenen code bewaard die na een dag wordt gewist. Voor alle afzenders samen geldt maximaal 200.
 - **Andere websites:** verzoeken vanaf een andere website worden geweigerd.
 
-**Bibliotheek (P5)**
+**Bibliotheek**
 - Er is geen bibliotheekroute onder `/api/kijk`; alles staat achter de beheerlogin (PR-18). Een meelezer krijgt van een bron alleen de APA-velden als die in een gedeeld rapport genoemd wordt (dat bouwt P6).
 - `bronnen.notities` en `bron_koppelingen.notitie` gaan nooit in een rapport of RIS-bestand (RIS alleen met de optie *Eigen notities meenemen*); wel in de eigen Excel-export als die optie aan staat, en in de volledige JSON.
 - Links worden alleen bewaard als ze met `http://` of `https://` beginnen en alleen als link getoond via `h()` (met `rel="noopener noreferrer"`).
 - Een bron die in een rapport genoemd wordt (zoeken met `GLOB '*@<sleutel>[^a-z0-9]*'` in de rapporttekst), wordt alleen na bevestiging verwijderd.
 
-**Coderen (P5)**
+**Coderen**
 - Een codering hoort bij één antwoord (het willekeurige `inzendingen.id` plus de vraag) of bij één stuk eigen invoer van de soort interview of observatie. De server controleert dat de inzending bij een vragenlijst van dit onderzoek hoort, dat de vraag een open vraag van die vragenlijst is en dat er iets is ingevuld (bij eigen invoer: dat het een interview of observatie van dit onderzoek is). `PUT /onderzoeken/:id/coderingen` vervangt de codes van één stuk in één batch.
 - `GET /onderzoeken/:id/codering` geeft de JSON zoals de database hem opbouwt (geen werk per codering in de Worker), met de coderingen in delen van hooguit 10.000 (`?na=<id>`, het veld `volgende`); de schermen gebruiken deze route niet (zij lezen `export/data`).
 - `codering-regels.js coderingFeiten` (voor het rapport, P6) neemt alleen vragen met minstens 5 niet-lege antwoorden op; aantallen per code gaan door `verbergReeks` over [codes…, antwoorden zonder code]. Citaten alleen met `gecontroleerd = 1` én `in_rapport = 1` (de server weigert `in_rapport` zonder `gecontroleerd`; een nieuwe tekst zet beide terug op 0), en bij een vragenlijst alleen bij een vraag met minstens 5 antwoorden. Elk citaat uit een vragenlijst draagt `lijst_id` en `vraag_id`, zodat het rapport bij een meelezer zonder tussenstand de citaten uit lijsten die op de peildatum open waren kan weglaten (PR-13; de vraagtekst is daarvoor niet genoeg, want een gekopieerde vraag heeft dezelfde tekst).

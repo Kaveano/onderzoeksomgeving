@@ -447,14 +447,26 @@ function toonFormulier(container, ctx, kruimel, origineel, gebruik, isNieuw) {
     return tekst;
   }
   opslaanKnop.addEventListener('click', () => slaOp());
+  const genoemdTekst = (rapporten) => `Deze bron wordt genoemd in ${aantal(rapporten.length, 'rapport', 'rapporten')}: ${rapporten.map((r) => r.titel).join(', ')}. Verwijder je hem, dan staat in die rapporten de code [@${origineel.citeersleutel}] zonder verwijzing. Toch verwijderen?`;
   verwijderKnop?.addEventListener('click', async () => {
     const rapporten = gebruik.rapporten || [];
     const tekst = rapporten.length
-      ? `Deze bron wordt genoemd in ${aantal(rapporten.length, 'rapport', 'rapporten')}: ${rapporten.map((r) => r.titel).join(', ')}. Verwijder je hem, dan staat in die rapporten de code [@${origineel.citeersleutel}] zonder verwijzing. Toch verwijderen?`
+      ? genoemdTekst(rapporten)
       : 'De bron verdwijnt uit de bibliotheek en uit de onderzoeken waaraan hij gekoppeld is. Dit kun je niet ongedaan maken.';
     if (!(await bevestig({ titel: 'Bron verwijderen?', tekst, knop: 'Verwijderen', gevaar: true }))) return;
     try {
-      await api.del(`/bibliotheek/${origineel.id}`, { bevestigd: true });
+      // Eerst zonder "bevestigd": de server kijkt zelf in welke rapporten de bron nu genoemd wordt. Noemt hij een
+      // rapport dat je hierboven niet zag (bijvoorbeeld net in een ander tabblad), dan vragen we het opnieuw.
+      try {
+        await api.del(`/bibliotheek/${origineel.id}`, {});
+      } catch (e) {
+        if (e.status !== 409 || !Array.isArray(e.data?.rapporten)) throw e;
+        const gezien = new Set(rapporten.map((r) => r.id));
+        const nieuw = e.data.rapporten.some((r) => !gezien.has(r.id));
+        gebruik.rapporten = e.data.rapporten;
+        if (nieuw && !(await bevestig({ titel: 'Bron wordt genoemd', tekst: genoemdTekst(e.data.rapporten), knop: 'Toch verwijderen', gevaar: true }))) return;
+        await api.del(`/bibliotheek/${origineel.id}`, { bevestigd: true });
+      }
       opgeslagen = JSON.stringify(schoonVoorOpslaan(bron));
       bibliotheekGewijzigd();
       meld('Bron verwijderd.');
