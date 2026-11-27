@@ -464,12 +464,20 @@ const P_PERSOON_EIND = /(adres|nummer|nr|naam|datum)$/;
 const P_EMAIL = /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i;
 const P_TELEFOON = /^(\+|00|0)[\d\s().-]{8,}$/;
 
+// Woorden die op gegevens over gezondheid wijzen (K M3): verzuim, ziekte, diagnose, arbo en dergelijke. Ook als deel
+// van een woord: "Ziekteverzuim", "Verzuimdagen", "Ziekmeldingen", "Arbodienst".
+const P_GEZONDHEID = /(verzuim|ziek|diagnose|medisch|gezondheid|arbeidsongeschikt|reintegratie|burnout|^arbo|bedrijfsarts)/;
+
 /**
  * Kolommen die op persoonsgegevens lijken (om voor te waarschuwen en standaard uit te zetten):
  * op de naam van de kolom, ook samenstellingen als "E-mailadres" of "Telefoonnummer", en op de inhoud
  * (e-mailadressen of telefoonnummers). Liever een kolom te veel uitzetten dan een te weinig.
+ * Zonder opties: de namen van die kolommen (zoals altijd).
+ * Met { metReden: true }: [{ kolom, reden }] met reden 'persoon', en ook de kolommen die over gezondheid lijken te
+ * gaan (verzuim, ziekmelding, diagnose …) met reden 'gezondheid'. Die horen niet in een vrije dataset, maar in het
+ * personeelsbestand voor HR-analytics, waarvan alleen groepscijfers worden bewaard (BOUWPLAN B4/B5).
  */
-export function verdachteKolommen(kop, rijen = []) {
+export function verdachteKolommen(kop, rijen = [], { metReden = false } = {}) {
   const uit = [];
   kop.forEach((k, i) => {
     const woorden = normaal(k).split(' ').filter(Boolean);
@@ -482,7 +490,8 @@ export function verdachteKolommen(kop, rijen = []) {
         opInhoud = treffers / teksten.length >= 0.3;
       }
     }
-    if (opNaam || opInhoud) uit.push(k);
+    if (opNaam || opInhoud) uit.push(metReden ? { kolom: k, reden: 'persoon' } : k);
+    else if (metReden && woorden.some((w) => P_GEZONDHEID.test(w))) uit.push({ kolom: k, reden: 'gezondheid' });
   });
   return uit;
 }

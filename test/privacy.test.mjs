@@ -8,6 +8,9 @@ import {
 } from '../public/js/beheer/privacy.js';
 import { aanpassingsToets } from '../public/js/beheer/statistiek.js';
 import { verzamelFeiten, sectieFeiten, standaardInhoud, TOETS_WEGGEVALLEN } from '../public/js/beheer/rapport-feiten.js';
+import { verdeelGroepen } from '../public/js/beheer/schermen/analyse.js';
+import { MIN_GROEP, MIN_PAREN } from '../public/js/beheer/schermen/analyse-dataset.js';
+import { verdachteKolommen } from '../public/js/beheer/inlees-regels.js';
 
 /** Vaste reeks "willekeurige" getallen (lineaire congruentiegenerator), zodat elke run hetzelfde test. */
 function lcg(zaad) {
@@ -356,4 +359,123 @@ test('B7: een toets in het rapport verdwijnt als 1 tot 4 gedeeltelijk ingevulde 
   const lijst = sectieFeiten({ soort: 'verloop', feiten: true }, f, standaardInhoud('eind')).find((b) => b.soort === 'lijst');
   assert.equal(lijst.items[0], `**Werkdruk**: het verschil tussen Nulmeting en Vervolg is ${TOETS_WEGGEVALLEN}.`);
   assert.equal(TOETS_WEGGEVALLEN, 'niet getoond: te weinig volledig ingevulde antwoorden om dit veilig naast het dashboard te tonen');
+});
+
+// ---------- Analyse: dezelfde uitkomst als de vroegere eigen regels (P1 criterium 10) ----------
+
+// Letterlijk overgenomen uit public/js/beheer/schermen/analyse.js zoals het was vóór de gedeelde privacymodule.
+const oud = {
+  categorie(vraag, antwoorden) {
+    let w = antwoorden[vraag.id];
+    if (Array.isArray(w)) w = w.length === 1 ? w[0] : null;
+    if (vraag.type === 'janee') return w === 'ja' || w === 'nee' ? w : null;
+    return typeof w === 'string' && vraag.opties.some((o) => o.id === w) ? w : null;
+  },
+  optiesVan(vraag) {
+    return vraag.type === 'janee'
+      ? [{ id: 'ja', label: 'Ja' }, { id: 'nee', label: 'Nee' }]
+      : vraag.opties.map((o) => ({ id: o.id, label: o.label }));
+  },
+  verdeelGroepen(lijst, vraag, waarden, drempel) {
+    const groepen = oud.optiesVan(vraag).map((o) => ({ naam: o.label, id: o.id, waarden: [] }));
+    const perId = new Map(groepen.map((gr) => [gr.id, gr]));
+    let verborgen = 0;
+    lijst.inz.forEach((a, i) => {
+      const x = waarden[i];
+      if (x === null) return;
+      const gr = perId.get(oud.categorie(vraag, a));
+      if (gr) gr.waarden.push(x);
+      else verborgen++;
+    });
+    const mee = groepen.filter((gr) => gr.waarden.length >= drempel);
+    const klein = groepen.filter((gr) => gr.waarden.length < drempel);
+    for (const gr of klein) verborgen += gr.waarden.length;
+    const ookNiet = [];
+    while (verborgen > 0 && verborgen < drempel && mee.length) {
+      let k = 0;
+      mee.forEach((gr, i) => {
+        if (gr.waarden.length < mee[k].waarden.length) k = i;
+      });
+      const [gr] = mee.splice(k, 1);
+      ookNiet.push(gr);
+      verborgen += gr.waarden.length;
+    }
+    return { mee, klein, ookNiet };
+  },
+  maskeerKruistabel(tabel, drempel) {
+    const verborgen = tabel.map((rij) => rij.map((c) => c < drempel));
+    const lijnen = [];
+    tabel.forEach((rij, i) => lijnen.push(rij.map((_, j) => [i, j])));
+    tabel[0].forEach((_, j) => lijnen.push(tabel.map((__, i) => [i, j])));
+    let veranderd = true;
+    while (veranderd) {
+      veranderd = false;
+      for (const lijn of lijnen) {
+        const weg = lijn.filter(([i, j]) => verborgen[i][j]);
+        if (!weg.length) continue;
+        const som = weg.reduce((t, [i, j]) => t + tabel[i][j], 0);
+        if (weg.length >= 2 && som >= drempel) continue;
+        const zichtbaar = lijn.filter(([i, j]) => !verborgen[i][j]).sort((p, q) => tabel[p[0]][p[1]] - tabel[q[0]][q[1]]);
+        if (!zichtbaar.length) continue;
+        verborgen[zichtbaar[0][0]][zichtbaar[0][1]] = true;
+        veranderd = true;
+      }
+    }
+    return verborgen;
+  },
+};
+
+test('Analyse: verdeelGroepen en maskeerKruistabel geven precies hetzelfde als vroeger (200 willekeurige tabellen)', () => {
+  const r = lcg(10);
+  const vorm = (u) => JSON.stringify({ mee: u.mee.map((g) => [g.naam, g.waarden]), klein: u.klein.map((g) => [g.naam, g.waarden]), ookNiet: u.ookNiet.map((g) => [g.naam, g.waarden]) });
+  let metKlein = 0;
+  for (let t = 0; t < 200; t++) {
+    const drempel = t % 10 === 9 ? 7 : DREMPEL;
+    const janee = t % 4 === 0;
+    const opties = janee ? [] : Array.from({ length: 2 + r.geheel(5) }, (_, i) => ({ id: `o${i}`, label: i % 3 === 2 ? 'Zelfde naam' : `Optie ${i}` }));
+    const vraag = { id: 1, type: janee ? 'janee' : 'meerkeuze', opties };
+    const sleutels = janee ? ['ja', 'nee'] : opties.map((o) => o.id);
+    // Scheve verdeling, zodat er vaak kleine groepen zijn; soms overgeslagen of een ongeldig antwoord.
+    const gewicht = sleutels.map(() => r.getal() ** 2);
+    const totaal = som(gewicht);
+    const inz = Array.from({ length: 3 + r.geheel(45) }, () => {
+      const k = r.getal();
+      if (k < 0.08) return {};
+      if (k < 0.1) return { 1: ['x'] };
+      let x = r.getal() * totaal;
+      const i = gewicht.findIndex((g) => (x -= g) < 0);
+      return { 1: sleutels[i === -1 ? sleutels.length - 1 : i] };
+    });
+    const waarden = inz.map(() => (r.getal() < 0.15 ? null : 1 + r.geheel(4)));
+    const lijst = { inz };
+    const a = oud.verdeelGroepen(lijst, vraag, waarden, drempel);
+    const b = verdeelGroepen(lijst, vraag, waarden, drempel);
+    assert.equal(vorm(b), vorm(a), `tabel ${t}`);
+    if (a.klein.length || a.ookNiet.length) metKlein++;
+    // Een kruistabel van dezelfde grootte
+    const tabel = Array.from({ length: 2 + r.geheel(3) }, () => Array.from({ length: 2 + r.geheel(3) }, () => aantal(r)));
+    assert.deepEqual(maskeerKruistabel(tabel, drempel), oud.maskeerKruistabel(tabel, drempel), `kruistabel ${t}`);
+  }
+  assert.ok(metKlein > 100, `te weinig gevallen met kleine groepen: ${metKlein}`);
+});
+
+// ---------- Vrije datasets (PR-17, BOUWPLAN B5) ----------
+
+test('eigen dataset: groepen van minstens 5 en samenhang vanaf 10 rijen; gezondheidskolommen herkend', () => {
+  assert.equal(MIN_GROEP, DREMPEL);
+  assert.equal(MIN_PAREN, 10);
+  const kop = ['Naam', 'Afdeling', 'Verzuim %', 'Ziekteverzuimdagen', 'Reden verzuim', 'Ziekmeldingen', 'Diagnose', 'Arbodienst', 'Arbeidsvoorwaarden', 'Leeftijd'];
+  assert.deepEqual(verdachteKolommen(kop, [], { metReden: true }), [
+    { kolom: 'Naam', reden: 'persoon' },
+    { kolom: 'Verzuim %', reden: 'gezondheid' },
+    { kolom: 'Ziekteverzuimdagen', reden: 'gezondheid' },
+    { kolom: 'Reden verzuim', reden: 'gezondheid' },
+    { kolom: 'Ziekmeldingen', reden: 'gezondheid' },
+    { kolom: 'Diagnose', reden: 'gezondheid' },
+    { kolom: 'Arbodienst', reden: 'gezondheid' },
+  ]);
+  // Zonder opties blijft de uitkomst zoals altijd: alleen de namen van kolommen met persoonsgegevens.
+  assert.deepEqual(verdachteKolommen(kop), ['Naam']);
+  // Ook op de inhoud (e-mailadressen) met reden
+  assert.deepEqual(verdachteKolommen(['Kolom A'], [['jan@x.nl'], ['piet@y.com']], { metReden: true }), [{ kolom: 'Kolom A', reden: 'persoon' }]);
 });

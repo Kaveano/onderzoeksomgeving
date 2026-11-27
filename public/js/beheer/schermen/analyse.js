@@ -23,6 +23,7 @@ import * as S from '../statistiek.js';
 import { neemOpInStuk } from '../stukdialoog.js';
 import { bouwModel, schaalWaarde, isKeuzevraag, vragenVan, waardenVan } from '../analyse-model.js';
 import { maakDatasetKaart } from './analyse-dataset.js';
+import { verdeelInGroepen, maskeerKruistabel, drempelVan } from '../privacy.js';
 
 const ALFA = 0.05; // grens voor "statistisch significant"
 const MIN_PAREN = 10; // samenhang, betrouwbaarheid en kruistabel: minstens zoveel respondenten
@@ -156,72 +157,33 @@ function omschrijf(model, lijsten, sleutel) {
 const voluit = (o) => `${o.lidwoord} ${o.soort} “${o.naam}”`; // het thema “Werkdruk en balans”
 const alsTitel = (o) => `${hoofdletter(o.soort)} “${o.naam}”`; // Thema “Werkdruk en balans”
 
-// ---------- Privacy ----------
+// ---------- Privacy (de regels zelf staan in ../privacy.js) ----------
 
 /**
- * Verdeelt de scores over de groepen van een uitsplitsvraag.
+ * Verdeelt de scores over de groepen van een uitsplitsvraag (strategie 'weglaten' van verdeelInGroepen).
  * - mee: groepen met minstens `drempel` geldige scores;
  * - klein: groepen met minder (ook 0) – daarvan komt nooit een getal in beeld;
  * - ookNiet: de kleinste groepen die verder wél groot genoeg zijn, maar ook wegblijven zolang alles
  *   wat verborgen is samen minder dan `drempel` scores telt (anders terug te rekenen uit het totaal).
  *   Respondenten die de uitsplitsvraag oversloegen tellen als verborgen mee.
+ * Geëxporteerd voor de test die de uitkomst vergelijkt met de vroegere eigen regels van dit scherm.
  */
-function verdeelGroepen(lijst, vraag, waarden, drempel) {
+export function verdeelGroepen(lijst, vraag, waarden, drempel) {
   const groepen = optiesVan(vraag).map((o) => ({ naam: o.label, id: o.id, waarden: [] }));
   const perId = new Map(groepen.map((gr) => [gr.id, gr]));
-  let verborgen = 0;
+  let zonderGroep = 0;
   lijst.inz.forEach((a, i) => {
     const x = waarden[i];
     if (x === null) return;
     const gr = perId.get(categorie(vraag, a));
     if (gr) gr.waarden.push(x);
-    else verborgen++;
+    else zonderGroep++;
   });
-  const mee = groepen.filter((gr) => gr.waarden.length >= drempel);
-  const klein = groepen.filter((gr) => gr.waarden.length < drempel);
-  for (const gr of klein) verborgen += gr.waarden.length;
-  const ookNiet = [];
-  while (verborgen > 0 && verborgen < drempel && mee.length) {
-    let k = 0;
-    mee.forEach((gr, i) => {
-      if (gr.waarden.length < mee[k].waarden.length) k = i;
-    });
-    const [gr] = mee.splice(k, 1);
-    ookNiet.push(gr);
-    verborgen += gr.waarden.length;
-  }
-  return { mee, klein, ookNiet };
-}
-
-/**
- * Bepaalt welke cellen van een kruistabel niet getoond worden (true = verborgen).
- * - Elke cel met minder dan `drempel` respondenten is verborgen, ook een lege cel.
- * - In elke rij en kolom met een verborgen cel moeten er minstens twee verborgen zijn, die samen
- *   minstens `drempel` tellen. Anders is een kleine cel terug te rekenen uit de rij- en kolomtotalen
- *   (die staan op het dashboard). Zo nodig verdwijnt daarom ook de kleinste cel die nog zichtbaar is.
- * Het scherm toont alle verborgen cellen op dezelfde manier: wie kan zien welke cellen klein zijn en
- * welke alleen ter bescherming zijn verborgen, kan soms alsnog terugrekenen.
- */
-function maskeerKruistabel(tabel, drempel) {
-  const verborgen = tabel.map((rij) => rij.map((c) => c < drempel));
-  const lijnen = [];
-  tabel.forEach((rij, i) => lijnen.push(rij.map((_, j) => [i, j])));
-  tabel[0].forEach((_, j) => lijnen.push(tabel.map((__, i) => [i, j])));
-  let veranderd = true;
-  while (veranderd) {
-    veranderd = false;
-    for (const lijn of lijnen) {
-      const weg = lijn.filter(([i, j]) => verborgen[i][j]);
-      if (!weg.length) continue;
-      const som = weg.reduce((t, [i, j]) => t + tabel[i][j], 0);
-      if (weg.length >= 2 && som >= drempel) continue;
-      const zichtbaar = lijn.filter(([i, j]) => !verborgen[i][j]).sort((p, q) => tabel[p[0]][p[1]] - tabel[q[0]][q[1]]);
-      if (!zichtbaar.length) continue;
-      verborgen[zichtbaar[0][0]][zichtbaar[0][1]] = true;
-      veranderd = true;
-    }
-  }
-  return verborgen;
+  const indeling = verdeelInGroepen(groepen.map((gr, i) => ({ sleutel: i, label: gr.naam, n: gr.waarden.length })), {
+    d: drempel, strategie: 'weglaten', extraVerborgen: zonderGroep,
+  });
+  const reden = (r) => indeling.weggelaten.filter((w) => w.reden === r).map((w) => groepen[w.sleutel]);
+  return { mee: indeling.zichtbaar.map((z) => groepen[z.sleutel]), klein: reden('klein'), ookNiet: reden('terugrekenen') };
 }
 
 // ---------- Uitleg in gewone taal ----------
@@ -330,7 +292,7 @@ function rKlasse(r) {
 export async function toon(container, ctx) {
   const onderzoekId = ctx.params.id;
   const basis = `#/onderzoek/${onderzoekId}`;
-  const drempel = Number(ctx.instellingen && ctx.instellingen.drempel) || 5;
+  const drempel = drempelVan(ctx.instellingen); // nooit lager dan 5 (privacy.js)
   const stuksoorten = (ctx.instellingen && ctx.instellingen.stuksoorten) || null;
   ctx.zetTitel(`Analyse – ${ctx.onderzoek.onderzoek.titel}`);
 

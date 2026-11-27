@@ -438,9 +438,13 @@ export function datasetToevoegen(ctx) {
     ],
     knopTekst: () => 'Dataset opslaan',
     bouw: ({ kop, rijen, totaalrijen, bestand, ververs }) => {
-      const verdacht = new Set(verdachteKolommen(kop, rijen));
+      // Persoonsgegevens en gezondheid (verzuim, ziekmelding …) staan standaard uit; je kunt ze zelf weer aanvinken.
+      const gevonden = verdachteKolommen(kop, rijen, { metReden: true });
+      const verdacht = new Set(gevonden.filter((x) => x.reden === 'persoon').map((x) => x.kolom));
+      const gezondheid = new Set(gevonden.filter((x) => x.reden === 'gezondheid').map((x) => x.kolom));
       const soorten = kop.map((_, i) => kolomSoort(rijen.map((r) => r[i])));
-      const gekozen = new Set(kop.map((k, i) => i).filter((i) => !verdacht.has(kop[i]) && soorten[i] !== 'leeg'));
+      const gekozen = new Set(kop.map((k, i) => i).filter((i) => !verdacht.has(kop[i]) && !gezondheid.has(kop[i]) && soorten[i] !== 'leeg'));
+      const namen = (set) => [...set].map((k) => `"${k}"`).join(', ');
       const naamId = uniekeId('im-naam');
       const naam = h('input', { type: 'text', id: naamId, maxlength: 150, value: bestand.naam.replace(/\.[a-z0-9]+$/i, '').slice(0, 150) });
       naam.addEventListener('input', ververs);
@@ -449,7 +453,10 @@ export function datasetToevoegen(ctx) {
         inhoud: [
           h('div', { class: 'veld' }, h('label', { for: naamId }, 'Naam van de dataset'), naam),
           h('h3', { class: 'im-kop' }, 'Welke kolommen wil je bewaren?'),
-          verdacht.size ? melding(`${verdacht.size === 1 ? 'De kolom' : 'De kolommen'} ${[...verdacht].map((k) => `"${k}"`).join(', ')} ${verdacht.size === 1 ? 'lijkt' : 'lijken'} persoonsgegevens te bevatten en ${verdacht.size === 1 ? 'staat' : 'staan'} daarom uit. Bewaar alleen wat je voor het onderzoek nodig hebt.`, 'waarschuwing') : null,
+          verdacht.size ? melding(`${verdacht.size === 1 ? 'De kolom' : 'De kolommen'} ${namen(verdacht)} ${verdacht.size === 1 ? 'lijkt' : 'lijken'} persoonsgegevens te bevatten en ${verdacht.size === 1 ? 'staat' : 'staan'} daarom uit. Bewaar alleen wat je voor het onderzoek nodig hebt.`, 'waarschuwing') : null,
+          gezondheid.size ? melding(gezondheid.size === 1
+            ? `De kolom ${namen(gezondheid)} staat uit. Deze kolom lijkt over gezondheid te gaan. Gebruik hiervoor 'Personeelsbestand voor HR-analytics'; dan worden alleen groepscijfers bewaard.`
+            : `De kolommen ${namen(gezondheid)} staan uit. Deze kolommen lijken over gezondheid te gaan. Gebruik hiervoor 'Personeelsbestand voor HR-analytics'; dan worden alleen groepscijfers bewaard.`, 'waarschuwing') : null,
           h('div', { class: 'im-kolommen' }, kop.map((k, i) => {
             const id = uniekeId('im-k');
             return h('label', { class: 'keuze', for: id },

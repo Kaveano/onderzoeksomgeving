@@ -9,9 +9,9 @@ import * as S from '../statistiek.js';
 import { kolomSoort, isCodekolom } from '../inlees-regels.js';
 
 const ALFA = 0.05;
-const MIN_GROEP = 3; // kleinere groepen doen niet mee aan een vergelijking
+export const MIN_GROEP = 5; // kleinere groepen doen niet mee aan een vergelijking (de drempel van 5, zoals overal; BOUWPLAN B5)
 const MAX_GROEPEN = 12;
-const MIN_PAREN = 5;
+export const MIN_PAREN = 10; // samenhang: minstens zoveel rijen met een waarde in beide kolommen (zoals bij de vragenlijsten)
 
 const isLeeg = (w) => w === null || w === undefined || w === '';
 const sleutel = (w) => String(w).trim().toLowerCase();
