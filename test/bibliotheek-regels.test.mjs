@@ -10,8 +10,9 @@ import {
   OPMAAK, apaVerwijzing, apaInTekst, apaKort, sorteerLiteratuur, citeersleutelBasis, vrijeCiteersleutel, leesAuteur, voorletters,
   leesApaVerwijzing, normaliseerStartbron, leesStartDetails, normaliseer, paginaTekst, dubbeleVan, nlDatumKort, auteursRegel, CITEERSLEUTEL,
   BRONSOORTEN, DETAILVELDEN, ONDERWERPEN, onderwerpUitTekst, leesTijdschriftDeel, dubbelZoeker, reeksDelen, MAX_PER_REEKS, MAX_REEKS_BYTES, MAX_REEKS_VERZOEK, kaleDoi,
+  LIMIETEN,
 } from '../public/js/beheer/bibliotheek-regels.js';
-import { planReeks, insertWaarden } from '../src/lib/bibliotheek.js';
+import { planReeks, insertWaarden, controleerBron } from '../src/lib/bibliotheek.js';
 
 import { A, GOUDEN } from './fixtures/bibliotheek-gouden.mjs';
 
@@ -431,7 +432,8 @@ test('startcollectie (c): leesStartDetails leest alleen wat ondubbelzinnig in br
   assert.deepEqual(rapport('TNO-rapport TNO 2021 R11794 (publicatiepagina 29 november 2021), 156 pagina\'s.'), { rapportnummer: 'TNO 2021 R11794' });
   assert.deepEqual(rapport('TNO-rapport TNO 2025 R11108, mei 2025 (publicatiepagina 28 mei 2025), Leiden.'), { rapportnummer: 'TNO 2025 R11108' });
   assert.deepEqual(rapport('SER-advies 22/03, maart 2022, aan de minister van Sociale Zaken en Werkgelegenheid, Den Haag.'), { rapportnummer: '22/03' });
-  assert.deepEqual(rapport('Rapport 2021-07, juni 2021.'), { rapportnummer: '2021-07' });
+  assert.deepEqual(rapport('Rapport 2023-R101, juni 2023.'), { rapportnummer: '2023-R101' });
+  assert.deepEqual(rapport('Rapport 2021-07, juni 2021.'), {}, 'kan ook jaar en maand zijn: niet raden (review P7)');
   assert.deepEqual(rapport('TNO-rapport over werkdruk in 2021, juni.'), {}, 'geen nummer: niets raden');
   assert.deepEqual(rapport('TNO-factsheet bij de Week van de werkstress 2026 (publicatiepagina 9 november 2026), 3 pagina\'s.'), {});
   assert.deepEqual(rapport('TNO en CBS, april 2026 (publicatiepagina 15 april 2026), Leiden/Heerlen.'), {});
@@ -441,6 +443,58 @@ test('startcollectie (c): leesStartDetails leest alleen wat ondubbelzinnig in br
   assert.deepEqual(r.velden, {});
   assert.equal(r.meldingen.length, 1);
   assert.deepEqual(leesStartDetails('', { soort: 'website' }), { velden: {}, meldingen: [] });
+});
+
+test('startcollectie (c): geen jaartal of datum als rapportnummer en geen webadres als naam van de website (review P7)', () => {
+  const rapport = (tekst) => leesStartDetails(tekst, { soort: 'rapport', jaar: 2021, organisatie: 'TNO' });
+  for (const tekst of [
+    'Rapport 2023, Den Haag.', 'SER-advies 2022, maart 2022.', 'TNO-rapport 2021 (publicatiepagina 29 november 2021).',
+    'Advies 3 november 2020, aan de minister.', 'Rapport 10-11-2026, Den Haag.', 'Rapport 10/11/2026, Den Haag.', 'Advies Maart 2022, SER.',
+    'Rapport Den Haag 2023, intern.', 'TNO-rapport COVID-19, juni 2021.',
+  ]) {
+    const r = rapport(tekst);
+    assert.deepEqual(r.velden, {}, tekst);
+    assert.ok(r.meldingen.some((m) => m.includes('geen rapportnummer; niet overgenomen')), tekst);
+    assert.ok(r.meldingen.some((m) => m.startsWith('Uit bron_details is niets overgenomen')), tekst);
+  }
+  assert.deepEqual(rapport('TNO-rapport 2e druk, 2021.').velden, {});
+  // Wel: een letter direct voor de cijfers of één schuine streep (zoals in de startcollectie)
+  assert.deepEqual(rapport('TNO-rapport TNO 2021 R11794 (publicatiepagina 29 november 2021).').velden, { rapportnummer: 'TNO 2021 R11794' });
+  assert.deepEqual(rapport('SER-advies 22/03, maart 2022.').velden, { rapportnummer: '22/03' });
+  // De naam van de website: geen webadres, geen "www", geen gewone woorden; niet als die gelijk is aan de auteur of de afkorting
+  const web = (tekst, opties = {}) => leesStartDetails(tekst, { soort: 'website', jaar: 2026, organisatie: 'Ministerie van SZW', ...opties });
+  for (const tekst of ['Webpagina op www.arboportaal.nl, onderdeel RI&E.', 'Webpagina op arboportaal.nl (Ministerie van SZW).',
+    'Nieuwsbericht op www.cbs.nl, 3-4-2026.', 'Webpagina op de website van het ministerie, onderdeel RI&E.']) {
+    const r = web(tekst);
+    assert.equal(r.velden.sitenaam, undefined, tekst);
+    assert.ok(r.meldingen.some((m) => m.includes('lijkt geen naam van een website')), tekst);
+  }
+  assert.deepEqual(web('Nieuwsbericht op www.cbs.nl, 3-4-2026.').velden, { datum: '2026-04-03' }, 'de datum blijft wel');
+  assert.deepEqual(web('Webpagina op Arboportaal. Laatst gewijzigd volgens de paginametadata.').velden, { sitenaam: 'Arboportaal' }, 'een punt aan het eind van de zin');
+  const cbs = { organisatie: 'Centraal Bureau voor de Statistiek', afkorting: 'CBS' };
+  let r = web('Nieuwsbericht op CBS, 3-4-2026.', cbs);
+  assert.deepEqual(r.velden, { datum: '2026-04-03' }, 'website = afkorting van de auteur: geen aparte naam');
+  assert.ok(!r.meldingen.some((m) => m.includes('lijkt geen naam')));
+  assert.deepEqual(web('Nieuwsbericht op Centraal Bureau voor de Statistiek, 3-4-2026.', cbs).velden, { datum: '2026-04-03' });
+  // In de omgezette bron: de afkorting tussen haakjes telt mee, en APA noemt de website dan niet nog een keer
+  r = normaliseerStartbron(startWebpagina({ jaar: 2026, bron_details: 'Nieuwsbericht op CBS, 3-4-2026.' }));
+  assert.deepEqual(r.bron.details, { geraadpleegd: '2026-11-27', datum: '2026-04-03' });
+  assert.ok(apaVerwijzing(r.bron).startsWith('Centraal Bureau voor de Statistiek. (2026, 3 april). *Cao-lonen stijgen in 2025 met 5,0 procent*. Geraadpleegd op'));
+});
+
+test('alle vaste onderwerpen samen mogen (LIMIETEN.onderwerpen volgt ONDERWERPEN; review P7)', () => {
+  const alle = Object.keys(ONDERWERPEN);
+  assert.equal(LIMIETEN.onderwerpen, alle.length);
+  assert.equal(alle.length, 17);
+  const bron = controleerBron({ soort: 'website', titel: 'Test', url: 'https://example.org', onderwerpen: alle });
+  assert.deepEqual(bron.onderwerpen, alle);
+  assert.throws(() => controleerBron({ soort: 'website', titel: 'Test', url: 'https://example.org', onderwerpen: [...alle, 'verzuim'] }),
+    (e) => e.status === 400 && e.message === 'Kies onderwerpen uit de lijst.', 'meer dan er zijn kan niet');
+  assert.throws(() => controleerBron({ soort: 'website', titel: 'Test', url: 'https://example.org', onderwerpen: ['astrologie'] }), (e) => e.status === 400);
+  // Ook een startbron met alle onderwerpen houdt ze allemaal (niets stil ingekort)
+  const r = normaliseerStartbron(startWebpagina({ onderwerpen: alle }));
+  assert.deepEqual(r.bron.onderwerpen, alle);
+  assert.deepEqual(controleerBron(r.bron).onderwerpen, alle);
 });
 
 test('startcollectie (c, d): bron_details en geraadpleegd in de omgezette bron', () => {

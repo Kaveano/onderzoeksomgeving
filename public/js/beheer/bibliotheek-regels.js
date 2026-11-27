@@ -88,7 +88,8 @@ export const LIMIETEN = {
   doi: 200,
   detail: 300,
   redacteuren: 10,
-  onderwerpen: 16,
+  /** Alle vaste onderwerpen mogen samen (eerst 16; 17 sinds 'wetgeving' erbij kwam met de startcollectie). */
+  onderwerpen: Object.keys(ONDERWERPEN).length,
   trefwoorden: 20,
   trefwoord: 60,
   samenvatting: 4000,
@@ -1318,12 +1319,27 @@ const DATUM_IN_TEKST = `(\\d{1,2}-\\d{1,2}-\\d{4}|\\d{1,2}\\s+(?:${MAAND_NAMEN})
 const NIEUWSBERICHT = new RegExp(`^(?:[\\p{L}]+-)?nieuwsbericht(?:\\s+op\\s+([^,]+?))?,\\s*${DATUM_IN_TEKST}(?![\\d-])`, 'iu');
 // "Pagina bijgewerkt op 16 september 2026" (de datum staat op de pagina zelf)
 const BIJGEWERKT = new RegExp(`\\bpagina bijgewerkt op ${DATUM_IN_TEKST}(?![\\d-])`, 'iu');
-// "Webpagina op Arboportaal (…)" · "Themapagina op Arboportaal, …": de naam van de website
-const SITE_OP = /^(?:[\p{L}]*pagina|nieuwsbericht)\s+op\s+([^,(.]+?)\s*[,(.]/iu;
+// "Webpagina op Arboportaal (…)" · "Themapagina op Arboportaal, …": de naam van de website (tot een komma, een haakje
+// of een punt aan het eind van een zin; een punt in een webadres hoort er dus bij en wordt door isSitenaam afgewezen)
+const SITE_OP = /^(?:[\p{L}]*pagina|nieuwsbericht)\s+op\s+([^,(]+?)\s*(?:[,(]|\.(?=\s|$))/iu;
 // Alleen in de metadata van de pagina, niet zichtbaar: geen datum voor in de verwijzing
 const METADATA = /paginametadata|geen zichtbare datum/i;
-// "TNO-rapport TNO 2021 R11794 (…)" · "SER-advies 22/03, maart 2022"
+// "TNO-rapport TNO 2021 R11794 (…)" · "SER-advies 22/03, maart 2022": een mogelijk rapportnummer (zie isRapportnummer)
 const RAPPORT_NR = /^(?:[\p{Lu}]+-)?(?:[Rr]apport|[Aa]dvies)\s+([A-Z0-9][A-Za-z0-9 /.-]*?\d[A-Za-z0-9/.-]*)\s*[,(]/u;
+const MAAND_WOORD = new RegExp(`\\b(?:${[...Object.keys(MAANDEN_NL), ...Object.keys(MAANDEN_EN)].join('|')})\\b`, 'i');
+
+/**
+ * Een rapportnummer, en niet een jaartal, een datum of een naam: alleen met een letter direct voor minstens twee
+ * cijfers ("TNO 2021 R11794", "2023-R101") of met één schuine streep tussen twee getallen ("22/03"). Dus niet
+ * "2023", "2021-07" (jaar en maand?), "3 november 2020", "10/11/2026", "Den Haag 2023" of "COVID-19".
+ */
+function isRapportnummer(t) {
+  if (MAAND_WOORD.test(t) || /\d{1,4}[-/.]\d{1,2}[-/.]\d{1,4}/.test(t)) return false;
+  return /\p{L}\d{2,}/u.test(t) || /(?:^|\s)\d{1,4}\/\d{1,4}(?:$|\s)/.test(t);
+}
+
+/** De naam van een website, geen webadres: begint met een hoofdletter of cijfer, zonder punt, schuine streep of "www". */
+const isSitenaam = (t) => /^[\p{Lu}\d]/u.test(t) && !/[./]/.test(t) && !/^www\b/i.test(t);
 
 /** '31-12-2025' of '22 januari 2024' → 'JJJJ-MM-DD' (alleen een bestaande datum), anders ''. */
 function datumUitTekst(t) {
@@ -1347,12 +1363,14 @@ function datumUitTekst(t) {
  * - webpagina: de datum van een nieuwsbericht ("CBS-nieuwsbericht, 31-12-2025") of de wijzigingsdatum die op de
  *   pagina staat ("Pagina bijgewerkt op 16 september 2026"), alleen als het jaar gelijk is aan het jaar van de bron.
  *   Een datum die alleen in de metadata van de pagina staat ("volgens de paginametadata") wordt niet gebruikt.
- *   De naam van de website bij "Nieuwsbericht op …" of "Webpagina op …", als die anders is dan de organisatie.
- * - rapport: het rapportnummer na "TNO-rapport" of "SER-advies" ("TNO 2021 R11794", "22/03").
+ *   De naam van de website bij "Nieuwsbericht op …" of "Webpagina op …", als die anders is dan de organisatie en
+ *   de afkorting, en geen webadres is ("www.arboportaal.nl" wordt niet overgenomen).
+ * - rapport: het rapportnummer na "TNO-rapport" of "SER-advies" ("TNO 2021 R11794", "22/03"); een jaartal of datum
+ *   op die plek ("Rapport 2023, Den Haag") is geen rapportnummer (isRapportnummer).
  * Bij andere soorten (bijv. cijfers) wordt niets gelezen.
  * → { velden: { datum?, sitenaam?, rapportnummer? }, meldingen: [tekst] }
  */
-export function leesStartDetails(tekst, { soort, jaar = null, organisatie = '' } = {}) {
+export function leesStartDetails(tekst, { soort, jaar = null, organisatie = '', afkorting = '' } = {}) {
   const vrij = String(tekst ?? '').replace(/\s+/g, ' ').trim();
   const velden = {};
   const meldingen = [];
@@ -1369,10 +1387,15 @@ export function leesStartDetails(tekst, { soort, jaar = null, organisatie = '' }
       meldingen.push('De datum in bron_details staat alleen in de metadata van de pagina; niet overgenomen (het jaar blijft).');
     }
     const site = (nieuws?.[1] || SITE_OP.exec(vrij)?.[1] || '').trim();
-    if (site && normaliseer(site) !== normaliseer(organisatie)) velden.sitenaam = site;
+    const isAuteur = [organisatie, afkorting].some((x) => x && normaliseer(x) === normaliseer(site));
+    if (site && !isAuteur) {
+      if (isSitenaam(site)) velden.sitenaam = site;
+      else meldingen.push(`"${kort(site, 60)}" in bron_details lijkt geen naam van een website (een webadres of geen naam); niet overgenomen.`);
+    }
   } else if (soort === 'rapport') {
-    const nr = RAPPORT_NR.exec(vrij);
-    if (nr) velden.rapportnummer = nr[1].trim();
+    const nr = RAPPORT_NR.exec(vrij)?.[1].trim();
+    if (nr && isRapportnummer(nr)) velden.rapportnummer = nr;
+    else if (nr) meldingen.push(`"${kort(nr, 60)}" in bron_details lijkt een jaartal, datum of naam, geen rapportnummer; niet overgenomen.`);
   }
   const genoemd = Object.entries(velden).map(([k, w]) => `${k} "${w}"`).join(', ');
   const fragment = `"${kort(vrij, 80)}${vrij.length > 80 ? '…' : ''}"`;
