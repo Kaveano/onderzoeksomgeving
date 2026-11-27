@@ -30,6 +30,7 @@ import { INGEBOUWD, controleerSjabloonInhoud, sjabloonUit } from '../src/lib/sja
 import { voegSjablonenSamen } from '../src/lib/sjabloon-toepassen.js';
 import { vraagVeldenUit, controleerKenmerk } from '../src/routes/vragenlijsten.js';
 import { controleerAntwoord } from '../src/routes/publiek.js';
+import { bereikTekst } from '../public/js/beheer/schermen/analyse.js';
 
 const MIGRATIES = fileURLToPath(new URL('../migrations/', import.meta.url));
 const ENPS_REF = [10, 9, 9, 10, 8, 7, 7, 8, 6, 5, 9, 10, 3, 8, 9, 6, 7, 10, 9, 4];
@@ -448,6 +449,18 @@ test('analyse-model: cijferWaarde gebruikt het bereik uit de export, nooit een s
     { id: 4, type: 'meerkeuze', meerdere: true, uitsplitsen: true, kenmerk: '' },
   ] };
   assert.deepEqual(groepeerVragen(lijst).map((q) => q.id), [2, 1]);
+});
+
+test('Analyse: de zin onder een uitkomst noemt het bereik van een cijfervraag, anders de schaal van 1 tot 5', () => {
+  const l = bouwModel(maakExport()).lijsten.find((x) => x.id === 10);
+  assert.equal(bereikTekst([l], 'v:107'), 'cijfer van 0 (laagst) tot 10 (hoogst)');
+  assert.equal(bereikTekst([l], 'v:105'), 'rapportcijfer van 1 (laagst) tot 10 (hoogst)');
+  for (const sleutel of ['v:101', 't:1', 'm:1']) assert.equal(bereikTekst([l], sleutel), 'schaal van 1 (laagst) tot 5 (hoogst)', sleutel);
+  // De kopregel van "Verschil tussen meetmomenten" en "Verschil tussen groepen" gebruikt bereikTekst, geen vaste 1 tot 5.
+  const bron = readFileSync(new URL('../public/js/beheer/schermen/analyse.js', import.meta.url), 'utf8');
+  assert.equal((bron.match(/; schaal van 1 \(laagst\) tot 5 \(hoogst\)`/g) || []).length, 0);
+  assert.equal((bron.match(/\$\{bereikTekst\(/g) || []).length, 2);
+  assert.ok(bron.includes('niet gemeten met een schaal- of cijfervraag'));
 });
 
 // ---------- Criterium 7: SPSS en Codeboek ----------

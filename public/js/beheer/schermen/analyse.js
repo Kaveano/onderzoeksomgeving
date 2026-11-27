@@ -160,6 +160,22 @@ function omschrijf(model, lijsten, sleutel) {
 }
 
 const voluit = (o) => `${o.lidwoord} ${o.soort} “${o.naam}”`; // het thema “Werkdruk en balans”
+
+/**
+ * Waarop een variabele gemeten is, voor de zin onder een uitkomst: een cijfervraag met haar eigen bereik
+ * ("rapportcijfer van 1 (laagst) tot 10 (hoogst)"), anders de schaal van 1 tot 5 (thema, meetpunt, schaalvraag).
+ */
+export function bereikTekst(lijsten, sleutel) {
+  const [soort, idTekst] = String(sleutel).split(':');
+  if (soort === 'v') {
+    const id = Number(idTekst);
+    for (const l of lijsten) {
+      const q = l.vragen.find((x) => x.stam === id && x.type === 'cijfer' && x.bereik);
+      if (q) return `${q.schaal_soort === 'rapport' ? 'rapportcijfer' : 'cijfer'} van ${q.bereik.min} (laagst) tot ${q.bereik.max} (hoogst)`;
+    }
+  }
+  return 'schaal van 1 (laagst) tot 5 (hoogst)';
+}
 const alsTitel = (o) => `${hoofdletter(o.soort)} “${o.naam}”`; // Thema “Werkdruk en balans”
 
 // ---------- Privacy (de regels zelf staan in ../privacy.js) ----------
@@ -491,7 +507,7 @@ export async function toon(container, ctx) {
     }
     const opties = variabeleOpties(model, lijstenMetMoment);
     if (!opties.length) {
-      vervang(kaart.inhoud, leeg('De vragenlijsten hebben geen schaalvragen (1 tot 5), dus er zijn geen scores om te vergelijken.'));
+      vervang(kaart.inhoud, leeg('De vragenlijsten hebben geen schaalvragen (1 tot 5) of cijfervragen, dus er zijn geen scores om te vergelijken.'));
       return;
     }
     if (!metData.some((mm) => mm.id === keuze.mmA)) keuze.mmA = metData[0].id;
@@ -529,7 +545,7 @@ export async function toon(container, ctx) {
     const B = scoresOpMoment(keuze.mmB, keuze.wat1);
     const ontbreekt = [[A, naamA], [B, naamB]].filter(([s]) => !s.gemeten).map(([, naam]) => naam);
     if (ontbreekt.length) {
-      return melding(`${alsTitel(wat)} is bij ${opsomming(ontbreekt)} niet gemeten met een schaalvraag. Kies iets wat op beide meetmomenten is gevraagd.`);
+      return melding(`${alsTitel(wat)} is bij ${opsomming(ontbreekt)} niet gemeten met een schaal- of cijfervraag. Kies iets wat op beide meetmomenten is gevraagd.`);
     }
     const teWeinig = [[A, naamA], [B, naamB]].filter(([s]) => s.waarden.length < drempel).map(([, naam]) => naam);
     if (teWeinig.length) {
@@ -545,7 +561,7 @@ export async function toon(container, ctx) {
       : `Bij ${naamB} ligt de gemiddelde score ${g(Math.abs(v))} punt ${v > 0 ? 'hoger' : 'lager'} dan bij ${naamA}.`));
     const tekst = () => [
       `Verschil tussen meetmomenten – ${alsTitel(wat)}`,
-      `${naamA} vergeleken met ${naamB}; schaal van 1 (laagst) tot 5 (hoogst)`,
+      `${naamA} vergeleken met ${naamB}; ${bereikTekst(lijstenMetMoment, keuze.wat1)}`,
       ...regelsTweeGroepen(r, naamA, naamB),
       `Conclusie: ${duiding.zinnen.join(' ')}`,
       'Kanttekening: de meetmomenten zijn vergeleken als twee losse groepen, omdat anonieme antwoorden niet per persoon te koppelen zijn. Significant betekent niet automatisch belangrijk.',
@@ -642,7 +658,7 @@ export async function toon(container, ctx) {
     if (!opties.length) {
       vervang(kaart.inhoud,
         keuzeLijst ? h('div', { class: 'an-keuzes' }, keuzeLijst) : null,
-        leeg('Deze vragenlijst heeft geen schaalvragen (1 tot 5), dus er zijn geen scores om per groep te vergelijken.'));
+        leeg('Deze vragenlijst heeft geen schaalvragen (1 tot 5) of cijfervragen, dus er zijn geen scores om per groep te vergelijken.'));
       return;
     }
     if (!uitsplitsvragen.some((q) => q.stam === keuze.uitsplits)) keuze.uitsplits = uitsplitsvragen[0].stam;
@@ -681,7 +697,7 @@ export async function toon(container, ctx) {
     const titel = `${alsTitel(wat)} per groep`;
     const kopRegels = [
       `Verschil tussen groepen – ${alsTitel(wat)}`,
-      `Groepen volgens de vraag “${vraag.tekst}” – ${lijstNaam(lijst)}; schaal van 1 (laagst) tot 5 (hoogst)`,
+      `Groepen volgens de vraag “${vraag.tekst}” – ${lijstNaam(lijst)}; ${bereikTekst([lijst], keuze.wat2)}`,
     ];
     const voetRegels = [regelKlein, regelOokNiet].filter(Boolean);
 
@@ -763,7 +779,7 @@ export async function toon(container, ctx) {
     if (los.length < 2) {
       vervang(kaart.inhoud,
         keuzeLijst ? h('div', { class: 'an-keuzes' }, keuzeLijst) : null,
-        leeg('Deze vragenlijst heeft te weinig schaalvragen (1 tot 5) of ja/nee-vragen om samenhang te berekenen. Er zijn er minstens twee nodig.'));
+        leeg('Deze vragenlijst heeft te weinig schaalvragen (1 tot 5), cijfervragen of ja/nee-vragen om samenhang te berekenen. Er zijn er minstens twee nodig.'));
       return;
     }
     if (!heeftOptie(opties, keuze.x)) keuze.x = los[0].waarde;
@@ -1178,7 +1194,7 @@ export async function toon(container, ctx) {
       h('summary', {}, 'Zo lees je de uitkomsten'),
       h('dl', { class: 'an-begrippen' },
         h('dt', {}, 'Score'),
-        h('dd', {}, 'Een antwoord op een schaalvraag telt als 1 (laagst) tot 5 (hoogst). Een thema- of meetpuntscore is per respondent het gemiddelde van de schaalvragen die erbij horen, als minstens de helft daarvan is beantwoord. Daardoor kan een gemiddelde hier iets afwijken van het dashboard.'),
+        h('dd', {}, 'Een antwoord op een schaalvraag telt als 1 (laagst) tot 5 (hoogst). Een thema- of meetpuntscore is per respondent het gemiddelde van de schaalvragen die erbij horen, als minstens de helft daarvan is beantwoord. Daardoor kan een gemiddelde hier iets afwijken van het dashboard. Een cijfervraag telt als het cijfer zelf (0 tot 10 of 1 tot 10) en hoort nooit bij een thema- of meetpuntscore.'),
         h('dt', {}, 'Aantal (n) en spreiding (sd)'),
         h('dd', {}, 'n is het aantal respondenten met een geldige score. De standaarddeviatie (sd) laat zien hoe ver de scores uit elkaar liggen: hoe groter, hoe meer de respondenten van elkaar verschillen.'),
         h('dt', {}, 'p-waarde en significant'),
