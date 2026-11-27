@@ -346,6 +346,9 @@
   color: var(--tekst-zacht);
 }
 .db-vraag-meta strong { color: var(--tekst); }
+/* Achtergrondvraag: uitleg over de percentages en × (verborgen) onder de verdeling */
+.db-vraag-meta.db-beschermd { margin-top: 4px; font-size: 0.8125rem; }
+.db-teltabel .db-rij-verborgen td { color: var(--tekst-zacht); }
 .db-vraag-verloop { font-size: 0.875rem; margin-top: 4px; }
 .db-verloop-label { color: var(--tekst-zacht); }
 .db-naar-open { margin-left: -10px; }

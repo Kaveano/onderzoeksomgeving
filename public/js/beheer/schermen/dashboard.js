@@ -10,6 +10,7 @@ import { api } from '../api.js';
 import {
   h, vervang, leeg, laden, melding, meld, meldFout, getal, procent, datum, aantal, kopieer, statusLabel, bevestig, tabSubnav,
 } from '../ui.js';
+import { VERBORGEN, VERBORGEN_UITLEG } from '../privacy.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const OPEN_EERST = 10; // zoveel open antwoorden direct tonen, de rest via "Toon alle"
@@ -68,6 +69,20 @@ const nl = (n) => Number(n || 0).toLocaleString('nl-NL');
 // Verschillen altijd berekenen uit de getoonde (afgeronde) waarden, zodat de getallen optellen.
 const r1 = (x) => Math.round(x * 10) / 10;
 const nTekst = (n) => `n = ${nl(n)}`;
+
+// Achtergrondvragen (kenmerk of uitsplitsvraag): de server geeft verborgen aantallen en percentages als null.
+// Op het scherm staat dan ×, met de uitleg eronder (BOUWPLAN B29).
+const isVerborgen = (x) => x === null;
+const aantalTekst = (x) => (isVerborgen(x) ? VERBORGEN : nl(x));
+const procentTekst = (x, verborgen) => (verborgen ? VERBORGEN : procent(x));
+const ietsVerborgen = (q) => q.verdeling.some((v) => v.verborgen);
+/** Heeft een vraag antwoorden? Bij een achtergrondvraag is n verborgen zodra er iets verborgen is. */
+const heeftAntwoorden = (q) => (q.beschermd ? q.verdeling.some((v) => v.waarde !== 'niet_ingevuld' && v.aantal !== 0) : !!q.n);
+
+function verborgenCel(x, tekst) {
+  if (!isVerborgen(x)) return tekst;
+  return [h('span', { 'aria-hidden': 'true', title: VERBORGEN_UITLEG }, VERBORGEN), h('span', { class: 'sr-only' }, 'niet getoond')];
+}
 
 /** Getal met maximaal 2 decimalen, zonder overbodige nullen: 4,25 / 12 / 0,5 */
 function getalVrij(x) {
@@ -207,7 +222,11 @@ export async function toon(container, ctx) {
       return true;
     } catch (e) {
       if (mijnBeurt !== teller || e.status === 401) return false;
-      if (data) {
+      if (e.status === 413) {
+        // Meelezer bij een heel groot onderzoek: de server rekent dit niet live uit (zie src/routes/delen.js).
+        data = null;
+        vervang(inhoud, melding(e.message));
+      } else if (data) {
         meldFout(e);
       } else {
         vervang(inhoud, melding([
@@ -680,13 +699,21 @@ export async function toon(container, ctx) {
         h('thead', {}, h('tr', {},
           h('th', { scope: 'col' }, 'Antwoord'),
           h('th', { scope: 'col', class: 'rechts' }, 'Aantal'),
-          h('th', { scope: 'col', class: 'rechts' }, eenheid === 'respondenten' ? '% van respondenten' : 'Percentage'))),
-        h('tbody', {}, q.verdeling.map((v) => h('tr', {},
+          h('th', { scope: 'col', class: 'rechts' }, q.beschermd ? '% van alle respondenten' : eenheid === 'respondenten' ? '% van respondenten' : 'Percentage'))),
+        h('tbody', {}, q.verdeling.map((v) => h('tr', { class: v.verborgen ? 'db-rij-verborgen' : null },
           h('td', {}, v.label),
-          h('td', { class: 'rechts getal' }, nl(v.aantal)),
-          h('td', { class: 'rechts getal' }, procent(v.percentage))))),
+          h('td', { class: 'rechts getal' }, verborgenCel(v.aantal, nl(v.aantal))),
+          h('td', { class: 'rechts getal' }, verborgenCel(v.verborgen ? null : v.percentage, procent(v.percentage)))))),
       ),
     );
+  }
+
+  /** Bij een achtergrondvraag: waarop de percentages slaan en wat × betekent. */
+  function beschermdUitleg(q) {
+    if (!q.beschermd) return null;
+    return h('div', { class: 'db-vraag-meta db-beschermd' },
+      h('span', {}, 'Achtergrondvraag: percentages van alle respondenten van deze vragenlijst, ook wie de vraag oversloeg.'),
+      ietsVerborgen(q) ? h('span', {}, VERBORGEN_UITLEG) : null);
   }
 
   function schaalLegenda(labels, metWeetNiet) {
@@ -738,23 +765,27 @@ export async function toon(container, ctx) {
   }
 
   function janeeBlok(q) {
-    if (!q.n) return [h('p', { class: 'zacht klein' }, 'Nog geen antwoorden op deze vraag.')];
+    if (!heeftAntwoorden(q)) return [h('p', { class: 'zacht klein' }, 'Nog geen antwoorden op deze vraag.')];
     const [ja, nee] = q.verdeling;
     const vulling = h('div', { class: 'db-meter-vulling' });
     vulling.style.width = `${q.percentage_ja || 0}%`;
+    const verborgen = isVerborgen(q.percentage_ja);
     return [
-      h('div', { class: 'db-janee db-grafiek' },
-        h('div', { class: 'db-meter db-meter-groot', role: 'img', 'aria-label': `${procent(q.percentage_ja)} ja` }, vulling),
-        h('span', { class: 'db-janee-waarde', 'aria-hidden': 'true' }, `${procent(q.percentage_ja)} ja`)),
+      verborgen
+        ? null
+        : h('div', { class: 'db-janee db-grafiek' },
+          h('div', { class: 'db-meter db-meter-groot', role: 'img', 'aria-label': `${procent(q.percentage_ja)} ja` }, vulling),
+          h('span', { class: 'db-janee-waarde', 'aria-hidden': 'true' }, `${procent(q.percentage_ja)} ja`)),
       telTabel(q),
       h('div', { class: 'db-vraag-meta' },
-        h('span', {}, `${nl(ja.aantal)} ja · ${nl(nee.aantal)} nee`),
-        h('span', {}, nTekst(q.n))),
+        h('span', {}, verborgenCel(ja.aantal, nl(ja.aantal)), ' ja · ', verborgenCel(nee.aantal, nl(nee.aantal)), ' nee'),
+        isVerborgen(q.n) ? null : h('span', {}, nTekst(q.n))),
+      beschermdUitleg(q),
     ];
   }
 
   function meerkeuzeBlok(q) {
-    if (!q.n) return [h('p', { class: 'zacht klein' }, 'Nog geen antwoorden op deze vraag.')];
+    if (!heeftAntwoorden(q)) return [h('p', { class: 'zacht klein' }, 'Nog geen antwoorden op deze vraag.')];
     return [
       h('div', { class: 'db-opties db-grafiek', role: 'list' }, q.verdeling.map((v) => {
         const vulling = h('div', { class: 'db-meter-vulling' });
@@ -762,12 +793,15 @@ export async function toon(container, ctx) {
         return h('div', { class: 'db-optie', role: 'listitem' },
           h('span', { class: 'db-optie-label' }, v.label),
           h('div', { class: 'db-meter', 'aria-hidden': 'true' }, vulling),
-          h('span', { class: 'db-optie-waarde' }, h('strong', {}, procent(v.percentage)), ` (${nl(v.aantal)})`));
+          v.verborgen
+            ? h('span', { class: 'db-optie-waarde db-cel-verborgen' }, verborgenCel(null))
+            : h('span', { class: 'db-optie-waarde' }, h('strong', {}, procent(v.percentage)), ` (${nl(v.aantal)})`));
       })),
       telTabel(q, q.meerdere_antwoorden ? 'respondenten' : 'percentage'),
       h('div', { class: 'db-vraag-meta' },
-        h('span', {}, nTekst(q.n)),
+        isVerborgen(q.n) ? null : h('span', {}, nTekst(q.n)),
         q.meerdere_antwoorden ? h('span', {}, 'Meerdere antwoorden mogelijk; percentages tellen op tot meer dan 100%.') : null),
+      beschermdUitleg(q),
     ];
   }
 
@@ -776,27 +810,29 @@ export async function toon(container, ctx) {
     if (beknopt) {
       let r = `- “${q.tekst}”`;
       if (q.verborgen) return `${r}: niet getoond (te weinig antwoorden)`;
-      if (!q.n) return `${r}: nog geen antwoorden`;
+      if (!heeftAntwoorden(q)) return `${r}: nog geen antwoorden`;
       if (q.type === 'schaal') {
         const sv = schaalSamenvatting(q);
         r += `: gemiddeld ${getal(q.gemiddelde, 1)}${sv ? `; ${sv.hoogLabel.toLowerCase()} ${procent(sv.hoog)}` : ''}`;
-      } else if (q.type === 'janee') {
+      } else if (q.type === 'janee' && !isVerborgen(q.percentage_ja)) {
         r += `: ${procent(q.percentage_ja)} ja`;
-      } else if (q.type === 'meerkeuze') {
-        r += `: ${q.verdeling.map((v) => `${v.label} ${procent(v.percentage)}`).join(', ')}`;
+      } else if (q.type === 'meerkeuze' || q.type === 'janee') {
+        r += `: ${q.verdeling.map((v) => `${v.label} ${procentTekst(v.percentage, v.verborgen)}`).join(', ')}`;
       } else {
         r += `: ${aantal(q.n, 'antwoord', 'antwoorden')} (open vraag)`;
       }
       if (vl) r += ` (verloop: ${vl.tekst})`;
       return r;
     }
-    const regels = [`“${q.tekst}” – ${lijstNaam()} (${nTekst(q.n)})`];
-    if (!q.n) {
+    const regels = [`“${q.tekst}” – ${lijstNaam()}${isVerborgen(q.n) ? '' : ` (${nTekst(q.n)})`}`];
+    if (!heeftAntwoorden(q)) {
       regels.push('Nog geen antwoorden.');
     } else if (q.type === 'open') {
       regels.push(`${aantal(q.n, 'antwoord', 'antwoorden')} op deze open vraag.`);
     } else {
-      for (const v of q.verdeling) regels.push(`- ${v.label}: ${procent(v.percentage)} (${nl(v.aantal)})`);
+      for (const v of q.verdeling) regels.push(`- ${v.label}: ${procentTekst(v.percentage, v.verborgen)} (${aantalTekst(v.verborgen ? null : v.aantal)})`);
+      if (q.beschermd) regels.push('Percentages van alle respondenten van de vragenlijst, ook wie de vraag oversloeg.');
+      if (q.beschermd && ietsVerborgen(q)) regels.push(VERBORGEN_UITLEG);
       if (q.type === 'schaal') regels.push(`Gemiddelde score: ${getal(q.gemiddelde, 1)} (schaal 1–5)`);
       if (q.type === 'meerkeuze' && q.meerdere_antwoorden) regels.push('Meerdere antwoorden mogelijk; percentages tellen op tot meer dan 100%.');
     }

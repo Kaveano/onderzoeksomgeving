@@ -7,6 +7,7 @@ import {
   maskeerVerdeling, veiligAandeel, weggevallenVeilig, verzuimToonbaar,
 } from '../public/js/beheer/privacy.js';
 import { aanpassingsToets } from '../public/js/beheer/statistiek.js';
+import { verzamelFeiten, sectieFeiten, standaardInhoud, TOETS_WEGGEVALLEN } from '../public/js/beheer/rapport-feiten.js';
 
 /** Vaste reeks "willekeurige" getallen (lineaire congruentiegenerator), zodat elke run hetzelfde test. */
 function lcg(zaad) {
@@ -309,4 +310,50 @@ test('verzuimToonbaar: minstens 10 medewerkers en niemand met meer dan de helft 
   // minN kan nooit onder de drempel
   assert.deepEqual(verzuimToonbaar({ n: 4, dagenPerPersoon: [1, 1, 1, 1] }, { minN: 2 }), { toonbaar: false, reden: 'klein' });
   assert.deepEqual(verzuimToonbaar({ n: 6, dagenPerPersoon: [1, 1, 1, 1, 1, 1] }, { minN: 2 }), { toonbaar: true, reden: null });
+});
+
+// ---------- B7: toetsen in het rapport (P1 criterium 9) ----------
+
+/** Twee meetmomenten met elk één vragenlijst; een thema met drie schaalvragen. */
+function toetsData(gedeeltelijk) {
+  const vragen = [];
+  for (const [l, basis] of [[1, 10], [2, 20]]) {
+    for (let k = 1; k <= 3; k++) vragen.push({ id: basis + k, vragenlijst_id: l, thema_id: 7, type: 'schaal', tekst: `V${k}`, bron_vraag_id: l === 2 ? 10 + k : null });
+  }
+  const inzendingen = [];
+  for (let i = 0; i < 12; i++) inzendingen.push({ vragenlijst_id: 1, antwoorden: { 11: 2 + (i % 2), 12: 2 + (i % 3 === 0), 13: 3 - (i % 2) } });
+  for (let i = 0; i < 12; i++) inzendingen.push({ vragenlijst_id: 2, antwoorden: { 21: 4 + (i % 2), 22: 4, 23: 5 - (i % 2) } });
+  // Gedeeltelijk ingevuld: één van de drie vragen. Het dashboard telt dat antwoord mee, de themascore niet.
+  for (let i = 0; i < gedeeltelijk; i++) inzendingen.push({ vragenlijst_id: 2, antwoorden: { 21: 1 } });
+  return {
+    onderzoek: { titel: 'T', bedrijfsnaam: 'B' },
+    themas: [{ id: 7, naam: 'Werkdruk' }],
+    meetmomenten: [{ id: 1, naam: 'Nulmeting' }, { id: 2, naam: 'Vervolg' }],
+    vragenlijsten: [{ id: 1, titel: 'A', meetmoment_id: 1 }, { id: 2, titel: 'B', meetmoment_id: 2 }],
+    vragen,
+    inzendingen,
+  };
+}
+
+test('B7: een toets in het rapport verdwijnt als 1 tot 4 gedeeltelijk ingevulde respondenten wegvallen', () => {
+  const toetsen = (k) => verzamelFeiten({ data: toetsData(k), dashboards: [], peildatum: '2026-11-27' }).toetsen;
+  for (const k of [0, 5, 6]) {
+    const [t] = toetsen(k);
+    assert.equal(t.verborgen, undefined, `${k} weggevallen: wel tonen`);
+    assert.equal(t.van.n, 12);
+    assert.equal(t.naar.n, 12, 'de gedeeltelijke respondenten tellen niet mee in de toets');
+    assert.ok(t.p < 0.05);
+  }
+  for (const k of [1, 2, 3, 4]) {
+    const r = toetsen(k);
+    assert.equal(r.length, 1);
+    assert.deepEqual(r[0], { thema_naam: 'Werkdruk', van: { naam: 'Nulmeting' }, naar: { naam: 'Vervolg' }, verborgen: true, reden: 'weggevallen' }, `${k} weggevallen`);
+    assert.doesNotMatch(JSON.stringify(r), /"(n|p|t|g|gemiddelde|sd|verschil)":/);
+  }
+  // In de tekst van het rapport
+  const f = verzamelFeiten({ data: toetsData(2), dashboards: [], peildatum: '2026-11-27' });
+  f.verloop = { meetmomenten: [{ id: 1, naam: 'Nulmeting' }, { id: 2, naam: 'Vervolg' }], themas: [{ naam: 'Werkdruk', punten: [{ meetmoment_id: 1, gemiddelde: 2.5, n: 12 }, { meetmoment_id: 2, gemiddelde: 4.2, n: 14 }] }] };
+  const lijst = sectieFeiten({ soort: 'verloop', feiten: true }, f, standaardInhoud('eind')).find((b) => b.soort === 'lijst');
+  assert.equal(lijst.items[0], `**Werkdruk**: het verschil tussen Nulmeting en Vervolg is ${TOETS_WEGGEVALLEN}.`);
+  assert.equal(TOETS_WEGGEVALLEN, 'niet getoond: te weinig volledig ingevulde antwoorden om dit veilig naast het dashboard te tonen');
 });

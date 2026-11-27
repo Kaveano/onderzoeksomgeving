@@ -14,8 +14,9 @@
 // Diezelfde blokken gaan naar het scherm, naar de printweergave en naar Word (maakDocx in bestanden.js).
 
 import * as S from './statistiek.js';
-import { bouwModel, waardenVan, vragenVan } from './analyse-model.js';
+import { bouwModel, vragenVan, schaalScoreTelling } from './analyse-model.js';
 import { nlGetal, nlProcent, metTeken, pTekst, nlDatum } from './opmaak.js';
+import { VERBORGEN, VERBORGEN_UITLEG, maskeerVerdeling, weggevallenVeilig } from './privacy.js';
 
 // De opmaak van getallen en datums staat in opmaak.js; hier doorgegeven voor bestaande gebruikers.
 export { nlGetal, nlProcent, metTeken, pTekst, nlDatum };
@@ -25,6 +26,9 @@ const ALFA = 0.05;
 const MIN = '−';
 
 const eindig = (x) => typeof x === 'number' && Number.isFinite(x);
+
+/** B7: tekst als een toets niet getoond wordt omdat er 1 tot 4 gedeeltelijk ingevulde respondenten wegvallen. */
+export const TOETS_WEGGEVALLEN = 'niet getoond: te weinig volledig ingevulde antwoorden om dit veilig naast het dashboard te tonen';
 
 /** Getal met maximaal twee decimalen en de eenheid, zoals op het dashboard: 6,4% · 12 dagen · 0,04 */
 function waardeMetEenheid(w, eenheid) {
@@ -222,6 +226,8 @@ function privaat(l, drempel) {
  * data: de export (GET .../export/data); dashboards: per vragenlijst het antwoord van GET .../dashboard?vragenlijst=<id>
  * (de server heeft daar al gerekend; zo zijn de cijfers gelijk aan die op het dashboard).
  * Uitkomsten van minder dan `drempel` respondenten worden niet opgenomen.
+ * Achtergrondvragen (kenmerk of uitsplitsvraag) krijgen beschermd: true; hun verdeling wordt vastgelegd zoals het
+ * dashboard hem toont: met "Niet ingevuld", percentages van de hele lijst en kleine aantallen als null.
  */
 export function verzamelFeiten({ data, dashboards, peildatum }) {
   const eerste = dashboards[0] || {};
@@ -257,8 +263,25 @@ export function verzamelFeiten({ data, dashboards, peildatum }) {
       }),
       vragen: s.vragen.map((q) => {
         const klein = verborgen || kleineVraag(q);
-        const basis = { thema_naam: q.thema_naam || '', type: q.type, tekst: q.tekst, meerdere: !!q.meerdere_antwoorden, opties: (q.verdeling || []).map((v) => v.label) };
+        const beschermd = q.beschermd === true;
+        // De antwoordmogelijkheden (zonder de rij "Niet ingevuld" van een achtergrondvraag).
+        const opties = (q.verdeling || []).filter((v) => !(beschermd && v.waarde === 'niet_ingevuld')).map((v) => v.label);
+        const basis = { thema_naam: q.thema_naam || '', type: q.type, tekst: q.tekst, meerdere: !!q.meerdere_antwoorden, beschermd, opties };
         if (klein || q.type === 'open') return { ...basis, n: klein ? null : q.n, verborgen: klein, verdeling: [] };
+        if (beschermd) {
+          // Al gemaskeerd door het dashboard; voor de zekerheid opnieuw als de rij "Niet ingevuld" ontbreekt.
+          const m = (q.verdeling || []).some((v) => v.waarde === 'niet_ingevuld')
+            ? { verdeling: q.verdeling, n_beantwoord: q.n, iets_verborgen: q.verdeling.some((v) => v.verborgen) }
+            : maskeerVerdeling(q.verdeling || [], s.n, drempel);
+          return {
+            ...basis,
+            n: m.n_beantwoord,
+            verborgen: false,
+            gemiddelde: null,
+            percentage_ja: !m.iets_verborgen && eindig(q.percentage_ja) ? q.percentage_ja : null,
+            verdeling: m.verdeling.map((v) => ({ waarde: v.waarde, label: v.label, aantal: v.verborgen ? null : v.aantal, percentage: v.verborgen ? null : v.percentage, verborgen: !!v.verborgen })),
+          };
+        }
         return {
           ...basis,
           n: q.n,
@@ -291,6 +314,9 @@ export function verzamelFeiten({ data, dashboards, peildatum }) {
   };
 
   // Toetsen: per thema het eerste tegen het laatste meetmoment met voldoende scores (zoals op het tabblad Analyse).
+  // De toets gebruikt themascores per respondent (wie minstens de helft beantwoordde); het dashboard telt alle
+  // antwoorden. Vallen er in een vragenlijst 1 tot 4 respondenten weg, dan zijn hun antwoorden uit de twee samen
+  // terug te rekenen: dan wordt deze toets niet getoond (BOUWPLAN B7).
   const model = bouwModel(data);
   const toetsen = [];
   for (const t of model.themas) {
@@ -298,10 +324,14 @@ export function verzamelFeiten({ data, dashboards, peildatum }) {
     for (const mm of model.meetmomenten) {
       const scores = [];
       let kleineLijst = false;
+      let weggevallenOnveilig = false;
       for (const l of model.lijsten) {
         if (l.meetmoment_id !== mm.id) continue;
-        const w = waardenVan(l, `t:${t.id}`);
-        if (!w) continue;
+        const vragenT = vragenVan(l, `t:${t.id}`);
+        if (!vragenT.length) continue;
+        const telling = schaalScoreTelling(vragenT, l.inz);
+        if (!weggevallenVeilig(telling.weggevallen, drempel)) weggevallenOnveilig = true;
+        const w = telling.scores;
         const geldig = w.filter((x) => x !== null);
         // Ook hier: een kleine vragenlijst of een vraag die door heel weinig mensen is gescoord, zou uit de
         // uitkomst terug te rekenen zijn. Dan dit meetmoment niet toetsen.
@@ -312,11 +342,15 @@ export function verzamelFeiten({ data, dashboards, peildatum }) {
         }
         scores.push(...geldig);
       }
-      if (scores.length >= drempel && !kleineLijst) perMoment.push({ naam: mm.naam, scores });
+      if (scores.length >= drempel && !kleineLijst) perMoment.push({ naam: mm.naam, scores, weggevallenOnveilig });
     }
     if (perMoment.length < 2) continue;
     const a = perMoment[0];
     const b = perMoment[perMoment.length - 1];
+    if (a.weggevallenOnveilig || b.weggevallenOnveilig) {
+      toetsen.push({ thema_naam: t.naam, van: { naam: a.naam }, naar: { naam: b.naam }, verborgen: true, reden: 'weggevallen' });
+      continue;
+    }
     const welch = S.welchT(a.scores, b.scores);
     const d = S.cohensD(a.scores, b.scores);
     const A = S.beschrijf(a.scores);
@@ -472,6 +506,24 @@ function eensOneens(q) {
 const weetNietAantal = (q) => (q.verdeling.find((x) => x.waarde === 'weet_niet') || { aantal: 0 }).aantal;
 const scoreAantal = (q) => (Number.isInteger(q.n_score) ? q.n_score : q.verdeling.filter((x) => x.waarde !== 'weet_niet').reduce((t, x) => t + x.aantal, 0));
 
+/**
+ * De verdeling van een achtergrondvraag zoals die in het rapport komt, of null voor een gewone vraag.
+ * - Nieuwe feiten (beschermd: true): al gemaskeerd vastgelegd.
+ * - Oude feiten (vastgelegd voordat er beschermd bestond): elke meerkeuzevraag met één antwoord kan een
+ *   achtergrondvraag zijn. Die wordt daarom bij het tonen alsnog gemaskeerd, als daar iets te verbergen valt;
+ *   anders blijft de tabel zoals hij was.
+ */
+function beschermdeVerdeling(q, l, drempel) {
+  const heeft = (verdeling) => verdeling.some((v) => v.waarde !== 'niet_ingevuld' && v.aantal !== 0);
+  if (q.beschermd === true) {
+    return { verdeling: q.verdeling, iets_verborgen: q.verdeling.some((v) => v.aantal === null), heeftAntwoorden: heeft(q.verdeling) };
+  }
+  if (q.beschermd !== undefined || q.type !== 'meerkeuze' || q.meerdere || !eindig(l.n)) return null;
+  const m = maskeerVerdeling(q.verdeling.map((v) => ({ waarde: v.waarde, label: v.label, aantal: Number(v.aantal) || 0 })), l.n, drempel);
+  if (!m.iets_verborgen) return null;
+  return { verdeling: m.verdeling, iets_verborgen: true, heeftAntwoorden: heeft(m.verdeling) };
+}
+
 function feitenResultaten(f, inhoud, sectie) {
   const l = hoofdLijst(f, inhoud);
   if (!l) return [alinea('Er is nog geen vragenlijst met antwoorden.')];
@@ -539,10 +591,19 @@ function feitenResultaten(f, inhoud, sectie) {
       if (metWeetNiet) uit.push(alinea('Het gemiddelde en de percentages zijn berekend over de scores 1 tot 5; "weet niet" telt daarin niet mee.'));
     }
     for (const q of g.vragen.filter((x) => x.type !== 'schaal')) {
+      const m = q.verborgen ? null : beschermdeVerdeling(q, l, f.drempel);
       if (q.verborgen) {
         uit.push(alinea(`"${q.tekst}": niet getoond (minder dan ${f.drempel} antwoorden).`));
-      } else if (!q.n) {
+      } else if (m ? !m.heeftAntwoorden : !q.n) {
         uit.push(alinea(`"${q.tekst}": geen antwoorden.`));
+      } else if (m) {
+        // Achtergrondvraag: percentages van alle respondenten, met "Niet ingevuld"; kleine aantallen als ×.
+        uit.push(tabel(
+          ['Antwoord', 'Aantal', '% van alle respondenten'],
+          m.verdeling.map((v) => [v.label, v.aantal === null ? VERBORGEN : v.aantal, v.percentage === null ? VERBORGEN : nlProcent(v.percentage)]),
+          `"${q.tekst}" – ${q.type === 'janee' ? 'ja/nee-vraag' : 'meerkeuzevraag'} over de achtergrond, ${aantalTekst(l.n, 'respondent', 'respondenten')}`,
+        ));
+        if (m.iets_verborgen) uit.push(alinea(VERBORGEN_UITLEG));
       } else {
         uit.push(tabel(
           ['Antwoord', 'Aantal', q.meerdere ? '% van respondenten' : 'Percentage'],
@@ -562,6 +623,7 @@ const EFFECT = { verwaarloosbaar: 'verwaarloosbaar klein', klein: 'klein', midde
  * de zin noemt alleen de uitkomst van de toets, zodat er nooit twee verschillende gemiddelden naast elkaar staan.
  */
 function toetsZin(t) {
+  if (t.verborgen) return `**${t.thema_naam}**: het verschil tussen ${t.van.naam} en ${t.naar.naam} is ${TOETS_WEGGEVALLEN}.`;
   const basis = `Getoetst op de themascores van ${t.van.n} en ${t.naar.n} respondenten.`;
   const wat = `**${t.thema_naam}**: het verschil tussen ${t.van.naam} en ${t.naar.naam}`;
   if (!eindig(t.p)) return `${wat} is niet te toetsen, omdat er te weinig spreiding in de antwoorden is. ${basis}`;
