@@ -155,53 +155,23 @@ function spssCel(w) {
 }
 
 /**
- * Eén gegevensbestand voor SPSS met alle respondenten van alle vragenlijsten onder elkaar, zodat je
- * meetmomenten en groepen kunt vergelijken. Dezelfde vraag op verschillende meetmomenten (een gekopieerde
- * vragenlijst) komt in dezelfde kolom. Geeft { variabelen, rijen }.
- * - schaalvraag: 1 tot 5, 99 = weet niet (ingesteld als ontbrekende waarde);
- * - ja/nee: 1 = ja, 0 = nee;  meerkeuze met één antwoord: 1, 2, 3 … met labels;
- * - meerkeuze met meerdere antwoorden: per antwoordmogelijkheid een kolom met 1 (gekozen) of 0;
- * - open vraag: tekst;  themascore: gemiddelde van de schaalvragen van het thema (zoals bij Analyse).
+ * Stamvragen in de volgorde van de eerste vragenlijst waarin ze voorkomen, met per meerkeuzevraag de
+ * antwoordmogelijkheden over alle vragenlijsten heen, en de SPSS-namen van alle variabelen.
  */
-export function spssGegevens(data) {
-  const model = bouwModel(data);
-  const mmNaam = new Map(data.meetmomenten.map((m) => [m.id, m.naam]));
-  const themaNaam = new Map(data.themas.map((t) => [t.id, t.naam]));
-  const ruweVraag = new Map(data.vragen.map((q) => [q.id, q]));
-  const namen = new Set();
-  const variabelen = [];
-  const kolommen = []; // per variabele: (lijst, antwoorden) → waarde
-
-  const voeg = (variabele, waarde) => {
-    variabelen.push(variabele);
-    kolommen.push(waarde);
+function spssIndeling(data, model) {
+  const gebruikt = new Set();
+  // De namen worden in deze vaste volgorde uitgedeeld (spssNaam maakt ze uniek): eerst de vaste variabelen,
+  // dan de vragen, dan de themascores. Een andere volgorde geeft bij een botsing andere namen.
+  const systeem = {
+    respondent: spssNaam('respondent', gebruikt),
+    vragenlijst: spssNaam('vragenlijst', gebruikt),
+    meetmoment: data.meetmomenten.length ? spssNaam('meetmoment', gebruikt) : null,
+    datum: spssNaam('datum', gebruikt),
   };
+  const vraag = new Map();
+  const optie = new Map();
+  const thema = new Map();
 
-  voeg({ naam: spssNaam('respondent', namen), soort: 'getal', decimalen: 0, label: 'Volgnummer van de respondent (binnen de vragenlijst)', meetniveau: 'NOMINAL' }, (l, a, n) => n + 1);
-  voeg({
-    naam: spssNaam('vragenlijst', namen),
-    soort: 'getal',
-    decimalen: 0,
-    label: 'Vragenlijst',
-    waardelabels: Object.fromEntries(model.lijsten.map((l, i) => [i + 1, l.titel])),
-    meetniveau: 'NOMINAL',
-  }, (l) => model.lijsten.indexOf(l) + 1);
-  if (data.meetmomenten.length) {
-    voeg({
-      naam: spssNaam('meetmoment', namen),
-      soort: 'getal',
-      decimalen: 0,
-      label: 'Meetmoment',
-      waardelabels: Object.fromEntries(data.meetmomenten.map((m, i) => [i + 1, m.naam])),
-      meetniveau: 'ORDINAL',
-    }, (l) => {
-      const i = data.meetmomenten.findIndex((m) => m.id === l.meetmoment_id);
-      return i === -1 ? null : i + 1;
-    });
-  }
-  voeg({ naam: spssNaam('datum', namen), soort: 'tekst', breedte: 10, label: 'Datum van invullen (JJJJ-MM-DD)' }, (l, a, n, inz) => inz.datum || '');
-
-  // Vragen per stamvraag, in de volgorde van de eerste vragenlijst waarin ze voorkomen.
   const stammen = [];
   const gezien = new Map();
   for (const l of model.lijsten) {
@@ -217,33 +187,8 @@ export function spssGegevens(data) {
   }
   stammen.forEach((s, i) => {
     const q = s.eerste;
-    const ruw = ruweVraag.get(q.id) || {};
     const basis = `v${String(i + 1).padStart(2, '0')}`;
-    const label = `${themaNaam.get(q.thema_id) ? `${themaNaam.get(q.thema_id)}: ` : ''}${q.tekst}`;
-    const vraagIn = (l) => s.perLijst.get(l.id);
-    if (q.type === 'schaal') {
-      const labels = schaalLabels(data, ruw);
-      voeg({
-        naam: spssNaam(basis, namen),
-        soort: 'getal',
-        decimalen: 0,
-        label,
-        waardelabels: { ...Object.fromEntries(labels.map((t, k) => [k + 1, t])), [SPSS_WEET_NIET]: 'Weet niet / n.v.t.' },
-        ontbrekend: [SPSS_WEET_NIET],
-        meetniveau: 'ORDINAL',
-      }, (l, a) => {
-        const v = vraagIn(l);
-        if (!v) return null;
-        const w = a[v.id];
-        return w === WEET_NIET ? SPSS_WEET_NIET : Number.isInteger(w) && w >= 1 && w <= 5 ? w : null;
-      });
-    } else if (q.type === 'janee') {
-      voeg({ naam: spssNaam(basis, namen), soort: 'getal', decimalen: 0, label, waardelabels: { 1: 'Ja', 0: 'Nee' }, meetniveau: 'NOMINAL' }, (l, a) => {
-        const v = vraagIn(l);
-        const w = v ? a[v.id] : null;
-        return w === 'ja' ? 1 : w === 'nee' ? 0 : null;
-      });
-    } else if (q.type === 'meerkeuze') {
+    if (q.type === 'meerkeuze') {
       // Antwoordmogelijkheden herkennen aan hun id: een kopie voor een volgend meetmoment houdt dezelfde id's,
       // ook als een mogelijkheid daarna is hernoemd. Heeft een mogelijkheid een ander id maar dezelfde tekst
       // (en staat die tekst nog niet in deze vragenlijst), dan hoort hij er ook bij. Het label is dat van de
@@ -251,7 +196,7 @@ export function spssGegevens(data) {
       const mogelijk = []; // { ids: Set, labels: [] }
       const gelijkeTekst = (a, b) => a.trim().toLowerCase() === b.trim().toLowerCase();
       for (const l of model.lijsten) {
-        const v = vraagIn(l);
+        const v = s.perLijst.get(l.id);
         if (!v) continue;
         const idsHier = new Set(v.opties.map((o) => o.id));
         for (const o of v.opties) {
@@ -266,6 +211,113 @@ export function spssGegevens(data) {
         }
       }
       for (const m of mogelijk) m.label = m.labels.join(' / ');
+      s.mogelijk = mogelijk;
+      if (q.meerdere) {
+        mogelijk.forEach((m, k) => {
+          m.naam = spssNaam(`${basis}_${k + 1}`, gebruikt);
+          for (const id of m.ids) optie.set(`${s.stam}:${id}`, m.naam);
+        });
+        return;
+      }
+    }
+    vraag.set(s.stam, spssNaam(basis, gebruikt));
+  });
+  model.themas.forEach((t, i) => {
+    if (!model.lijsten.some((l) => l.vragen.some((q) => q.type === 'schaal' && q.thema_id === t.id))) return;
+    thema.set(t.id, spssNaam(`thema${String(i + 1).padStart(2, '0')}`, gebruikt));
+  });
+  return { namen: { vraag, optie, thema, meetpunt: new Map(), enps: new Map(), systeem, gebruikt }, stammen };
+}
+
+/**
+ * De SPSS-namen van alle variabelen, precies zoals spssGegevens ze gebruikt (BOUWPLAN §3.3, B14). Ook voor de
+ * werkbank, zodat een variabele overal dezelfde naam heeft.
+ * - vraag: stamvraag → naam (schaal, ja/nee, meerkeuze met één antwoord, open); een meerkeuzevraag met meerdere
+ *   antwoorden heeft geen eigen naam, alleen een naam per antwoordmogelijkheid in optie (`${stam}:${optieId}`);
+ * - thema: thema-id → naam van de themascore; meetpunt en enps zijn (nog) leeg;
+ * - systeem: de vaste variabelen (meetmoment is null zonder meetmomenten); gebruikt: alle uitgedeelde namen.
+ */
+export function spssVariabeleNamen(data) {
+  return spssIndeling(data, bouwModel(data)).namen;
+}
+
+/**
+ * Eén gegevensbestand voor SPSS met alle respondenten van alle vragenlijsten onder elkaar, zodat je
+ * meetmomenten en groepen kunt vergelijken. Dezelfde vraag op verschillende meetmomenten (een gekopieerde
+ * vragenlijst) komt in dezelfde kolom. Geeft { variabelen, rijen }.
+ * - schaalvraag: 1 tot 5, 99 = weet niet (ingesteld als ontbrekende waarde);
+ * - ja/nee: 1 = ja, 0 = nee;  meerkeuze met één antwoord: 1, 2, 3 … met labels;
+ * - meerkeuze met meerdere antwoorden: per antwoordmogelijkheid een kolom met 1 (gekozen) of 0;
+ * - open vraag: tekst;  themascore: gemiddelde van de schaalvragen van het thema (zoals bij Analyse).
+ * De namen komen uit spssVariabeleNamen.
+ */
+export function spssGegevens(data) {
+  const model = bouwModel(data);
+  const { namen, stammen } = spssIndeling(data, model);
+  const themaNaam = new Map(data.themas.map((t) => [t.id, t.naam]));
+  const ruweVraag = new Map(data.vragen.map((q) => [q.id, q]));
+  const variabelen = [];
+  const kolommen = []; // per variabele: (lijst, antwoorden) → waarde
+
+  const voeg = (variabele, waarde) => {
+    variabelen.push(variabele);
+    kolommen.push(waarde);
+  };
+
+  voeg({ naam: namen.systeem.respondent, soort: 'getal', decimalen: 0, label: 'Volgnummer van de respondent (binnen de vragenlijst)', meetniveau: 'NOMINAL' }, (l, a, n) => n + 1);
+  voeg({
+    naam: namen.systeem.vragenlijst,
+    soort: 'getal',
+    decimalen: 0,
+    label: 'Vragenlijst',
+    waardelabels: Object.fromEntries(model.lijsten.map((l, i) => [i + 1, l.titel])),
+    meetniveau: 'NOMINAL',
+  }, (l) => model.lijsten.indexOf(l) + 1);
+  if (namen.systeem.meetmoment) {
+    voeg({
+      naam: namen.systeem.meetmoment,
+      soort: 'getal',
+      decimalen: 0,
+      label: 'Meetmoment',
+      waardelabels: Object.fromEntries(data.meetmomenten.map((m, i) => [i + 1, m.naam])),
+      meetniveau: 'ORDINAL',
+    }, (l) => {
+      const i = data.meetmomenten.findIndex((m) => m.id === l.meetmoment_id);
+      return i === -1 ? null : i + 1;
+    });
+  }
+  voeg({ naam: namen.systeem.datum, soort: 'tekst', breedte: 10, label: 'Datum van invullen (JJJJ-MM-DD)' }, (l, a, n, inz) => inz.datum || '');
+
+  for (const s of stammen) {
+    const q = s.eerste;
+    const ruw = ruweVraag.get(q.id) || {};
+    const label = `${themaNaam.get(q.thema_id) ? `${themaNaam.get(q.thema_id)}: ` : ''}${q.tekst}`;
+    const vraagIn = (l) => s.perLijst.get(l.id);
+    const naam = namen.vraag.get(s.stam);
+    if (q.type === 'schaal') {
+      const labels = schaalLabels(data, ruw);
+      voeg({
+        naam,
+        soort: 'getal',
+        decimalen: 0,
+        label,
+        waardelabels: { ...Object.fromEntries(labels.map((t, k) => [k + 1, t])), [SPSS_WEET_NIET]: 'Weet niet / n.v.t.' },
+        ontbrekend: [SPSS_WEET_NIET],
+        meetniveau: 'ORDINAL',
+      }, (l, a) => {
+        const v = vraagIn(l);
+        if (!v) return null;
+        const w = a[v.id];
+        return w === WEET_NIET ? SPSS_WEET_NIET : Number.isInteger(w) && w >= 1 && w <= 5 ? w : null;
+      });
+    } else if (q.type === 'janee') {
+      voeg({ naam, soort: 'getal', decimalen: 0, label, waardelabels: { 1: 'Ja', 0: 'Nee' }, meetniveau: 'NOMINAL' }, (l, a) => {
+        const v = vraagIn(l);
+        const w = v ? a[v.id] : null;
+        return w === 'ja' ? 1 : w === 'nee' ? 0 : null;
+      });
+    } else if (q.type === 'meerkeuze') {
+      const mogelijk = s.mogelijk;
       const bestaatIn = (l, m) => {
         const v = vraagIn(l);
         return !!v && v.opties.some((o) => m.ids.has(o.id));
@@ -278,40 +330,40 @@ export function spssGegevens(data) {
         return (Array.isArray(w) ? w : [w]).filter((id) => v.opties.some((o) => o.id === id));
       };
       if (q.meerdere) {
-        mogelijk.forEach((m, k) => {
+        for (const m of mogelijk) {
           // 1 = gekozen, 0 = niet gekozen; leeg als deze mogelijkheid niet in de vragenlijst van die respondent stond.
-          voeg({ naam: spssNaam(`${basis}_${k + 1}`, namen), soort: 'getal', decimalen: 0, label: `${label} – ${m.label}`, waardelabels: { 1: 'Gekozen', 0: 'Niet gekozen' }, meetniveau: 'NOMINAL' }, (l, a) => {
+          voeg({ naam: m.naam, soort: 'getal', decimalen: 0, label: `${label} – ${m.label}`, waardelabels: { 1: 'Gekozen', 0: 'Niet gekozen' }, meetniveau: 'NOMINAL' }, (l, a) => {
             const g = gekozen(l, a);
             if (g === null || !bestaatIn(l, m)) return null;
             return g.some((id) => m.ids.has(id)) ? 1 : 0;
           });
-        });
+        }
       } else {
-        voeg({ naam: spssNaam(basis, namen), soort: 'getal', decimalen: 0, label, waardelabels: Object.fromEntries(mogelijk.map((m, k) => [k + 1, m.label])), meetniveau: 'NOMINAL' }, (l, a) => {
+        voeg({ naam, soort: 'getal', decimalen: 0, label, waardelabels: Object.fromEntries(mogelijk.map((m, k) => [k + 1, m.label])), meetniveau: 'NOMINAL' }, (l, a) => {
           const g = gekozen(l, a);
           if (!g || g.length !== 1) return null;
           return mogelijk.findIndex((m) => m.ids.has(g[0])) + 1 || null;
         });
       }
     } else {
-      voeg({ naam: spssNaam(basis, namen), soort: 'tekst', breedte: 1, label }, (l, a) => {
+      voeg({ naam, soort: 'tekst', breedte: 1, label }, (l, a) => {
         const v = vraagIn(l);
         const w = v ? a[v.id] : null;
         return typeof w === 'string' ? w : '';
       });
     }
-  });
+  }
 
   // Themascores per respondent (dezelfde regel als op het tabblad Analyse).
-  model.themas.forEach((t, i) => {
-    if (!model.lijsten.some((l) => l.vragen.some((q) => q.type === 'schaal' && q.thema_id === t.id))) return;
-    voeg({ naam: spssNaam(`thema${String(i + 1).padStart(2, '0')}`, namen), soort: 'getal', decimalen: 2, label: `Themascore ${t.naam} (gemiddelde van de schaalvragen, 1–5)`, meetniveau: 'SCALE' }, (l, a) => {
+  for (const t of model.themas) {
+    if (!namen.thema.has(t.id)) continue;
+    voeg({ naam: namen.thema.get(t.id), soort: 'getal', decimalen: 2, label: `Themascore ${t.naam} (gemiddelde van de schaalvragen, 1–5)`, meetniveau: 'SCALE' }, (l, a) => {
       const vragen = l.vragen.filter((q) => q.type === 'schaal' && q.thema_id === t.id);
       if (!vragen.length) return null;
       const s = schaalScore(vragen, a);
       return s === null ? null : Math.round(s * 100) / 100;
     });
-  });
+  }
 
   const rijen = [];
   for (const l of model.lijsten) {

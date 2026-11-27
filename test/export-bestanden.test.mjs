@@ -1,7 +1,7 @@
 // Tests voor de export naar Excel, SPSS, Word en de agenda (zonder server: met vaste voorbeeldgegevens).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { excelBladen, excelWerkboek, spssGegevens, spssPakket, stukkenAlsZip, agendaAfspraken, agendaBestand } from '../public/js/beheer/export-bestanden.js';
+import { excelBladen, excelWerkboek, spssGegevens, spssPakket, stukkenAlsZip, agendaAfspraken, agendaBestand, spssVariabeleNamen } from '../public/js/beheer/export-bestanden.js';
 import { leesXlsx, leesZip, leesCsv } from '../public/js/beheer/bestanden.js';
 import { volledigeJson } from '../public/js/beheer/export.js';
 
@@ -168,4 +168,23 @@ test('volledige JSON-export bevat de rapporten met leesbare inhoud', () => {
   const uit = JSON.parse(volledigeJson(voorbeeld()));
   assert.equal(uit.rapporten[0].inhoud.secties[0].tekst, 'Mijn tekst');
   assert.equal(uit.acties.length, 3);
+});
+
+test('SPSS-namen: spssVariabeleNamen geeft precies de namen die spssGegevens gebruikt', () => {
+  const data = voorbeeld();
+  const namen = spssVariabeleNamen(data);
+  const { variabelen } = spssGegevens(data);
+  assert.deepEqual(namen.systeem, { respondent: 'respondent', vragenlijst: 'vragenlijst', meetmoment: 'meetmoment', datum: 'datum' });
+  // Per stamvraag (de kopie in de vervolgmeting heeft dezelfde stam); meerdere antwoorden: per mogelijkheid.
+  assert.deepEqual([...namen.vraag.entries()], [[101, 'v01'], [102, 'v02'], [103, 'v03'], [104, 'v04'], [106, 'v06']]);
+  // De kopie heeft andere optie-id's met dezelfde tekst: die komen in dezelfde kolom.
+  assert.deepEqual([...namen.optie.entries()], [['105:x1', 'v05_1'], ['105:x2', 'v05_1'], ['105:y1', 'v05_2'], ['105:y2', 'v05_2'], ['105:z1', 'v05_3'], ['105:z2', 'v05_3']]);
+  assert.deepEqual([...namen.thema.entries()], [[1, 'thema01']]);
+  assert.deepEqual([...namen.gebruikt], variabelen.map((v) => v.naam));
+  assert.equal(namen.meetpunt.size, 0);
+  assert.equal(namen.enps.size, 0);
+  // Zonder meetmomenten is er geen variabele meetmoment.
+  const zonder = spssVariabeleNamen({ ...data, meetmomenten: [] });
+  assert.equal(zonder.systeem.meetmoment, null);
+  assert.deepEqual([...zonder.gebruikt], spssGegevens({ ...data, meetmomenten: [] }).variabelen.map((v) => v.naam));
 });
