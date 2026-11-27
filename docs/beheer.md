@@ -13,6 +13,9 @@ Dit document is voor onderhoud: waar staat wat, hoe zet je een nieuwe versie onl
 | Sjablonen | In de database (tabel `sjablonen`) | De code bevat alleen de originelen van de meegeleverde sjablonen |
 | Rapporten, deellinks, eigen datasets | In de database (tabellen `rapporten`, `deellinks`, `datasets`) | Gaan mee bij **Alles samen (JSON)**; worden verwijderd met het onderzoek |
 | Code | GitHub-repository `onderzoeksomgeving` | |
+| Gegevens in de browser | `public/js/beheer/gegevens.js` | De enige manier waarop schermen aan de antwoorden komen: één kopie per onderzoek per sessie, daarna alleen veranderde vragenlijsten (zie "Grote onderzoeken") |
+| Verschilwacht | `public/js/beheer/verschilwacht.js` | Waarschuwt als een meelezer twee uitkomsten kan vergelijken die 1 tot 4 respondenten verschillen |
+| Belastingtest | `scripts/belasting.mjs` | Meet hoe groot een onderzoek kan worden op de gratis laag (zie "Belastingtest") |
 
 Je andere projecten (AF Partners-site, InterimRadar) staan los hiervan en worden niet geraakt.
 
@@ -56,6 +59,50 @@ Er wordt niets in rekening gebracht. Bij een daglimiet weigert Cloudflare verzoe
 
 Grenzen die de app zelf stelt, zodat één verzoek altijd binnen de gratis rekentijd blijft: 300 regels per keer bij inlezen (de app verdeelt grotere bestanden zelf in delen), 100 vragen per vragenlijst, 20 rapporten en 20 deellinks per onderzoek, 10 eigen datasets per onderzoek van maximaal 2.000 rijen en 40 kolommen.
 
+### Grote onderzoeken
+
+Het zware werk zit in het doorgeven en uitrekenen van alle antwoorden. Daarom:
+- **Antwoorden in delen.** De schermen halen de antwoorden op via `GET …/export/inzendingen?vragenlijst=<id>&na=<id>&max=1000`: per vragenlijst, in delen van hooguit 1.000 inzendingen of ongeveer 1,5 miljoen tekens (de database telt dat, zodat de Worker niet meer binnenkrijgt). Eén batch per deel; de database leest via de index alleen de rijen van dat deel. De kop (alles behalve de antwoorden) komt van `GET …/export/data?zonder_inzendingen=1`, met per vragenlijst het aantal inzendingen en een controlegetal (`inzendingen_stand`). `GET …/export/data` zonder die parameter werkt zoals altijd.
+- **Eén kopie in de browser.** `gegevens.js` bewaart de antwoorden in het geheugen van het tabblad (hooguit 3 onderzoeken; weg bij vernieuwen). Een volgend scherm haalt alleen de kop opnieuw op en daarna alleen de vragenlijsten waarvan het aantal of het controlegetal veranderd is.
+- **Rapporten rekenen in de browser.** *Cijfers bijwerken* rekent de dashboards per vragenlijst zelf uit met `dashboardUitRijen`, dus zonder een verzoek per vragenlijst.
+- **Alle resultaten** rekent boven 1.500 inzendingen (`GROOT_ONDERZOEK` in `gegevens.js`) in de browser, met dezelfde code als de server. Daaronder rekent de server, zoals altijd.
+- **Meelezers** krijgen boven `KIJK_MAX_INZENDINGEN` (standaard 3.000) geen live dashboard; zie "Deellinks".
+
+### Belastingtest
+
+`scripts/belasting.mjs` maakt een onderzoek "Belastingtest" met verzonnen antwoorden (één vragenlijst: een afdelingsvraag om op uit te splitsen, een ja/nee-vraag, 3 open vragen en verder schaalvragen) en meet de zware verzoeken. Gebruik het **nooit** op de echte omgeving.
+
+```bash
+node scripts/belasting.mjs --doel http://127.0.0.1:8790 --respondenten 3000 --vragen 100 --wachtwoord <wachtwoord> --opruimen
+```
+
+Gemeten op 27 november 2026 met een lokale testserver (`npx wrangler dev`, laptop), 100 vragen. Dit zijn doorlooptijden van verzoek tot laatste byte, geen CPU-tijd; ze geven aan hoe de verzoeken zich tot elkaar verhouden.
+
+| Verzoek | 1.000 respondenten | 3.000 respondenten | 5.000 respondenten |
+|---|---:|---:|---:|
+| `export/data` in één keer (de oude manier) | 60 ms, 0,98 MB | 154 ms, 2,87 MB | 206 ms, 4,76 MB |
+| `export/data?zonder_inzendingen=1` (kop) | 18 ms, 0,03 MB | 16 ms, 0,03 MB | 13 ms, 0,03 MB |
+| `export/inzendingen`, alle delen samen | 57 ms (1 deel) | 128 ms (3 delen, langste 44 ms) | 211 ms (5 delen, langste 46 ms) |
+| `dashboard` (alle resultaten) | 49 ms | 75 ms | 78 ms |
+| `dashboard` met uitsplitsing | 37 ms | 51 ms | 78 ms |
+| meelezer: `dashboard` | 37 ms | 45 ms | geweigerd (boven 3.000) |
+| browser: `dashboardUitRijen` (gemeten in Node) | 24 ms | 33 ms | 34 ms |
+
+Wat dit zegt: één deel van de antwoorden kost ongeveer evenveel als een export van 1.000 respondenten, ongeacht de grootte van het onderzoek. De oude export en het dashboard groeien mee met het aantal respondenten; boven 1.500 inzendingen rekent *Alle resultaten* daarom in de browser. Getest tot 5.000 respondenten × 100 vragen (lokaal).
+
+**Meten op een proef-Worker (voor de beheerder).** De echte rekentijd (CPU-tijd, grens 10 ms per verzoek) is alleen bij Cloudflare te zien. Doe dit één keer, en opnieuw na grote wijzigingen:
+
+1. Maak een aparte database in de EU: `npx wrangler d1 create onderzoeksomgeving-proef --jurisdiction eu`.
+2. Kopieer `wrangler.jsonc` naar `wrangler.proef.jsonc` (niet in GitHub zetten). Zet daarin `"name": "onderzoek-proef"` en de `database_id` van de nieuwe database.
+3. `npx wrangler d1 migrations apply DB --remote --config wrangler.proef.jsonc`
+4. `npx wrangler secret put BEHEER_WACHTWOORD --config wrangler.proef.jsonc` (een ander wachtwoord dan het echte).
+5. `npx wrangler deploy --config wrangler.proef.jsonc`
+6. `node scripts/belasting.mjs --doel https://onderzoek-proef.<account>.workers.dev --respondenten 3000 --vragen 100 --wachtwoord <proefwachtwoord> --opruimen`, en daarna ook met 1000 en 5000.
+7. Lees in Cloudflare › Workers & Pages › **onderzoek-proef** › **Metrics** de CPU-tijd af (mediaan en hoogste waarden). Zet de uitkomst in de tabel hierboven ("getest tot … respondenten × … vragen") en pas zo nodig `GROOT_ONDERZOEK` (`gegevens.js`) en `KIJK_MAX_INZENDINGEN` aan.
+8. Ruim op: `npx wrangler delete --config wrangler.proef.jsonc` en `npx wrangler d1 delete onderzoeksomgeving-proef`.
+
+Die meting op Cloudflare is nog niet gedaan; tot dan geldt de lokale meting hierboven als indicatie.
+
 
 ## Privacy en beveiliging (technisch)
 
@@ -85,6 +132,14 @@ Grenzen die de app zelf stelt, zodat één verzoek altijd binnen de gratis reken
 **Rapporten**
 - De feiten in een rapport worden in de browser met vaste regels uit de gegevens samengesteld (geen AI) en met een peildatum in de database vastgelegd. Uitkomsten van minder dan 5 respondenten worden niet opgenomen.
 - Een toets (verloop tussen meetmomenten) gebruikt themascores per respondent, het dashboard alle losse antwoorden. Vallen in een vragenlijst 1 tot 4 gedeeltelijk ingevulde respondenten weg, dan wordt die toets niet getoond (anders zijn hun antwoorden uit de twee getallen terug te rekenen).
+
+**Vergelijken van uitkomsten (verschilwacht)**
+- `verschilwacht.js` verzamelt voor alle actieve deellinks wat een meelezer kan zien: per gedeeld rapport de vastgelegde n per vragenlijst (`GET /onderzoeken/:id/rapporten` geeft `lijsten_n`) en of het live dashboard gedeeld is. Een uitkomst van minder dan 5 respondenten toont niets en telt dus niet mee.
+- Weer openzetten van een gesloten, gedeelde vragenlijst en antwoorden inlezen waardoor er 1 tot 4 respondenten bijkomen, geven een waarschuwing (geen blokkade). Kan de controle niet worden gedaan (geen verbinding), dan gaat de actie gewoon door.
+
+**Exportbestanden**
+- Excel, SPSS, de antwoorden als CSV en de volledige JSON bevatten alle losse antwoorden. Afronden vraagt daarom eerst bevestiging (K S10). Een rapport heet *geschikt om te delen*.
+- Het willekeurige id van een inzending komt alleen via `export/inzendingen` bij de ingelogde beheerder (voor coderen). In de volledige JSON staan in plaats daarvan vragenlijst en respondentnummer.
 
 **Eigen datasets (Analyse, onderdeel 6)**
 - Groepen met minder dan 5 waarden doen niet mee; samenhang vraagt minstens 10 rijen. Kolommen die over gezondheid lijken te gaan (verzuim, ziekmelding, diagnose, arbo) staan bij het inlezen standaard uit, net als kolommen met persoonsgegevens.

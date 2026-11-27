@@ -318,6 +318,12 @@ Wat de meelezer ziet en kan:
 - Rapporten zien er voor de meelezer hetzelfde uit als bij jou, maar alleen met de hoofdstukken die je hebt aangezet.
 - Na 5 verkeerde toegangscodes moet diegene 15 minuten wachten. Dat geldt per apparaat of netwerk: iemand anders die de link heeft, kan de echte meelezer zo niet buitensluiten.
 
+**Let op bij kleine aanvullingen.** Heeft een meelezer de cijfers van een gesloten vragenlijst al gezien (op het dashboard of in een gedeeld rapport), dan kan hij uit het verschil met nieuwe cijfers afleiden wat een paar nieuwe respondenten hebben geantwoord. Daarom waarschuwt de app:
+- als je een gesloten, gedeelde vragenlijst weer **openzet** (knoppen **Toch openzetten** of **Annuleren**);
+- als je **antwoorden inleest** in een gesloten, gedeelde vragenlijst en er daardoor 1 tot 4 respondenten bijkomen (knoppen **Toch inlezen** of **Annuleren**).
+
+Het is een waarschuwing, geen blokkade. Wacht liever tot er minstens 5 nieuwe antwoorden zijn, of trek de deellink tijdelijk in.
+
 Je kunt een link op elk moment **Intrekken** (en later weer laten werken), een **Nieuwe code** maken of de link **Verwijderen**. Dat werkt direct, ook voor iemand die op dat moment meekijkt. Bij de link zie je wanneer hij het laatst is bekeken (alleen de datum; van meelezers wordt verder niets bewaard).
 
 ## 11. Afronden: exporteren en archiveren
@@ -332,6 +338,9 @@ Ga naar het tabblad **Afronden**.
    - Losse bestanden: **Alle antwoorden (CSV)**, **Antwoorden per vragenlijst (CSV)**, **Eigen invoer (CSV)**, **Stukken (tekstbestand)** en **Alles samen (JSON)**, een volledige kopie voor je archief.
 
    Bewaar exportbestanden op een veilige plek. Ze bevatten alle losse antwoorden, ook van kleine groepen.
+   - Bij het Excel-werkboek, het SPSS-pakket, de antwoorden als CSV en **Alles samen (JSON)** vraagt de app eerst of je het zeker weet: *"Dit bestand bevat alle losse antwoorden en is niet anoniem genoeg om te delen met de opdrachtgever."* In een klein bedrijf zijn mensen aan hun antwoorden (afdeling, leeftijd, open antwoorden) vaak te herkennen. Stuur zo'n bestand dus niet door.
+   - Wil je resultaten delen? Gebruik dan een rapport (tabblad **Rapport**, als Word of pdf) of een deellink. Een rapport heeft het label **geschikt om te delen**: daarin staan geen uitkomsten van minder dan 5 respondenten.
+   - Bij een groot onderzoek zie je op de knop hoe ver het ophalen is, bijvoorbeeld *"Gegevens laden: 2.000 van 5.000 antwoorden…"*. De gegevens worden één keer per sessie opgehaald; daarna alleen wat er veranderd is.
 2. **Archiveren.** Klik op **Onderzoek archiveren**.
    - Daarna kun je alles nog inzien en exporteren, maar niets meer wijzigen.
    - Open vragenlijsten worden gesloten; de links werken niet meer.
