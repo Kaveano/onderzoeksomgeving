@@ -148,7 +148,7 @@ Een achtergrondvraag gaat over wie de respondent is: afdeling, leeftijd, dienstt
 - Een kenmerk kan alleen bij een **meerkeuzevraag met één antwoord** of bij een **ja/nee-vraag**.
 - Per vragenlijst kan elk kenmerk één keer voorkomen. Alleen **Ander kenmerk** mag vaker.
 - Kies je een kenmerk, dan wordt ook **uitsplitsing** aangevinkt. Je kunt dat weer uitzetten. Bij een vertrekonderzoek staat uitsplitsing bewust uit: per afdeling zijn er bijna altijd minder dan 5 vertrekkers.
-- Een kenmerk mag je ook nog veranderen als er al antwoorden zijn; het is alleen een label.
+- Een kenmerk mag je ook nog veranderen als er al antwoorden zijn. **Let op:** haal je het kenmerk weg bij een vraag zonder uitsplitsing, dan worden kleine aantallen bij die vraag niet meer verborgen, ook niet voor meelezers. De editor waarschuwt je dan.
 
 **Achtergrondvragen toevoegen.** Met de knop **Achtergrondvragen toevoegen** (naast **+ Vraag toevoegen**) kies je uit kant-en-klare vragen met passende antwoorden. Ze komen in het thema *Achtergrond*, aan het eind van de vragenlijst. Kenmerken die er al in staan, kun je niet nog eens kiezen. Bij leeftijd kies je tussen 3 groepen (aangeraden bij minder dan 100 medewerkers) en 5 groepen. Dezelfde knop staat in de sjablooneditor.
 
@@ -414,9 +414,9 @@ Goed om te weten:
 
 - Van respondenten wordt **geen naam, e-mailadres, IP-adres of tijdstip** opgeslagen. Alleen de datum en de antwoorden worden bewaard.
 - Ingevulde vragenlijsten krijgen een willekeurig nummer, zodat de volgorde van invullen niet te herleiden is.
+- Het **achtergrondkenmerk** van een vraag (afdeling, leeftijd …) is alleen voor jou: het gaat nooit mee naar de vragenlijst die respondenten zien. Groepen met minder dan 5 respondenten worden nergens getoond, ook niet bij een cijfervraag.
 - De database staat in de **EU** (Cloudflare D1 met jurisdictie "eu").
 - Cloudflare houdt voor deze app geen logboek bij.
 - Van **meelezers** met een deellink wordt niets bewaard, behalve de datum waarop de link het laatst is bekeken. Van de toegangscode wordt alleen een onleesbare versie (hash) bewaard.
 - **E-mailadressen** worden nergens bewaard. Uitnodigingen verstuur je vanuit je eigen e-mailprogramma.
 - Bestanden die je **inleest** worden in je eigen browser gelezen; alleen de gegevens die je kiest, worden opgeslagen.
-- Het **achtergrondkenmerk** van een vraag (afdeling, leeftijd …) is alleen voor jou: het gaat nooit mee naar de vragenlijst die respondenten zien. Groepen met minder dan 5 respondenten worden nergens getoond, ook niet bij een cijfervraag.

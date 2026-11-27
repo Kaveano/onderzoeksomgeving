@@ -11,15 +11,15 @@ Dit document is voor onderhoud: waar staat wat, hoe zet je een nieuwe versie onl
 | Wachtwoord | Geheim **BEHEER_WACHTWOORD** bij de Worker (Settings › Variables and Secrets) | Staat nergens in de code |
 | Tweede toegang | Geheim **BEHEER_WACHTWOORD_2** bij de Worker (optioneel) | Extra beheerwachtwoord voor ondersteuning; verwijder het geheim om die toegang in te trekken |
 | Sjablonen | In de database (tabel `sjablonen`) | De code bevat alleen de originelen van de meegeleverde sjablonen |
+| Achtergrondkenmerken | `public/js/beheer/kenmerken.js` | Zuiver (Worker en browser): de kenmerken, de standaard achtergrondvragen, `kenmerkVoorTekst`, `klasseVan` (klassegrenzen zoals "35 tot 55 jaar") en `isLieverNiet` |
+| Cijfervraag | `src/lib/schalen.js` (`CIJFERSCHALEN`, `ENPS`) | Vraagtype `cijfer`; de soort staat in `vragen.schaal_soort`: `nps` (0 tot 10) of `rapport` (1 tot 10) |
+| Dialoog "Achtergrondvragen toevoegen" | `public/js/beheer/schermen/kenmerk-dialoog.js` | Gebruikt door de vragenlijsteditor (route `POST /vragenlijsten/:id/kenmerkvragen`) en de sjablooneditor |
+| Sjabloonmigratie maken | `scripts/sjablonen-migratie.mjs` | Maakt de migratie die ongewijzigde standaardsjablonen bijwerkt (zie "Standaardsjablonen bijwerken") |
 | Rapporten, deellinks, eigen datasets | In de database (tabellen `rapporten`, `deellinks`, `datasets`) | Gaan mee bij **Alles samen (JSON)**; worden verwijderd met het onderzoek |
 | Code | GitHub-repository `onderzoeksomgeving` | |
 | Gegevens in de browser | `public/js/beheer/gegevens.js` | De enige manier waarop schermen aan de antwoorden komen: één kopie per onderzoek per sessie, daarna alleen veranderde vragenlijsten (zie "Grote onderzoeken") |
 | Verschilwacht | `public/js/beheer/verschilwacht.js` | Waarschuwt als een meelezer twee uitkomsten kan vergelijken die 1 tot 4 respondenten verschillen |
 | Belastingtest | `scripts/belasting.mjs` | Meet hoe groot een onderzoek kan worden op de gratis laag (zie "Belastingtest") |
-| Achtergrondkenmerken | `public/js/beheer/kenmerken.js` | Zuiver (Worker en browser): de kenmerken, de standaard achtergrondvragen, `kenmerkVoorTekst`, `klasseVan` (klassegrenzen zoals "35 tot 55 jaar") en `isLieverNiet` |
-| Cijfervraag | `src/lib/schalen.js` (`CIJFERSCHALEN`, `ENPS`) | Vraagtype `cijfer`; de soort staat in `vragen.schaal_soort`: `nps` (0 tot 10) of `rapport` (1 tot 10) |
-| Dialoog "Achtergrondvragen toevoegen" | `public/js/beheer/schermen/kenmerk-dialoog.js` | Gebruikt door de vragenlijsteditor (route `POST /vragenlijsten/:id/kenmerkvragen`) en de sjablooneditor |
-| Sjabloonmigratie maken | `scripts/sjablonen-migratie.mjs` | Maakt de migratie die ongewijzigde standaardsjablonen bijwerkt (zie "Standaardsjablonen bijwerken") |
 
 Je andere projecten (AF Partners-site, InterimRadar) staan los hiervan en worden niet geraakt.
 
@@ -155,7 +155,9 @@ Het eerste verzoek in een vers proces kost 12 tot 30 ms, bij elke grootte vanaf 
 - Een cijfervraag (`type = 'cijfer'`) telt nooit mee in thema- of meetpuntgemiddelden, Cronbach, "% 4 of 5" of de toetsen: al die code kijkt alleen naar `type = 'schaal'`. Mist er ergens een stuk code voor cijfers, dan ontbreekt er een getal; er komt nooit een verkeerd getal.
 - De server controleert een antwoord op een cijfervraag: een geheel getal binnen de schaal (0–10 of 1–10), of `weet_niet` als dat aan staat. Na de eerste antwoorden ligt de schaal vast (409).
 - Een cijfervraag met minder dan 5 cijfers (`n_score`) is voor een meelezer helemaal verborgen (verdeling, gemiddelde en eNPS). In de uitsplitsing heeft elke cijfervraag een eigen kolom die apart wordt onderdrukt (`onderdrukKolom`), één getal per cel (gemiddelde of eNPS, geen verdeling per groep).
-- `vragen.kenmerk` (`''` = geen) mag alleen bij ja/nee of meerkeuze met één antwoord, één keer per vragenlijst (behalve `overig`). De openbare vragenlijst (`GET /api/publiek/:code`) geeft het kenmerk nooit mee; `test/vraagmodel-api.test.mjs` controleert dat.
+- `vragen.kenmerk` (`''` = geen) mag alleen bij ja/nee of meerkeuze met één antwoord, één keer per vragenlijst (behalve `overig`). De openbare vragenlijst (`GET /api/publiek/:code`) geeft het kenmerk nooit mee; `test/vraagmodel-api.test.mjs` (poort 8791) controleert dat. Een kenmerk of uitsplitsing beschermt de verdeling van de vraag (`isBeschermd`): haal je bij een vraag zonder uitsplitsing het kenmerk weg, dan zijn kleine aantallen weer zichtbaar (de vraageditor waarschuwt). De routes `PUT /vragen/:id/kenmerk` en `POST /vragenlijsten/:id/kenmerkvragen` doen elk hooguit één losse leesopdracht en één schrijfopdracht of batch (FT-02).
+- Dezelfde vraag in een gekopieerde vragenlijst heeft dezelfde stam (`bron_vraag_id`). Kreeg een kopie daarna een ander soort (`vraagSoort`: type, cijferschaal, één of meer antwoorden), dan telt die nergens samen met de stamvraag: niet in het verloop (`dashboard-rekenen.js`), en in `bouwModel` (`analyse-model.js`) krijgt hij een eigen stam, dus een eigen variabele in SPSS, Analyse en de werkbank.
+- `klasseVan`: "X tot Y" sluit Y uit, "X t/m Y" en "X tot en met Y" nemen Y mee; een streepje ("18-24 jaar") geeft geen klasse (met de hand koppelen). `kenmerkVoorTekst` herkent "Hoe lang werk je al bij …?" alleen als diensttijd als er een organisatie staat (geen afdeling, team of "voorkeur") en de antwoorden duurklassen zijn.
 - SPSS: achtergrondvragen heten naar hun kenmerk (`afdeling`, `leeftijd` …) en een cijfervraag van 0 tot 10 krijgt `vNN_enps`. Alle namen komen uit `spssVariabeleNamen` (`export-bestanden.js`), zodat de werkbank dezelfde namen gebruikt. In exports van vóór deze versie hadden achtergrondvragen een nummer (`v03`).
 
 **Rapporten**
@@ -215,7 +217,7 @@ Lokaal testen:
 npm test
 ```
 
-De servertests starten elk een eigen lokale testserver met een lege database, op een vaste poort: `api` 8799, `sjablonen` 8798, `delen` 8797, `rapport` 8796, `inlezen` 8795, `fundament` 8790 en `vraagmodel-api` 8791 (de andere uitbreidingen gebruiken 8788, 8789 en 8792 tot en met 8794). `migratie` en `dashboard-rekenen` hebben geen poort nodig; ze werken rechtstreeks op een tijdelijke lokale database. Zorg dat die poorten vrij zijn.
+De servertests starten elk een eigen lokale testserver met een lege database, op een vaste poort: `api` 8799, `sjablonen` 8798, `delen` 8797, `rapport` 8796, `inlezen` 8795 en `fundament` 8790 (de uitbreidingen gebruiken 8788 tot en met 8794). `migratie` en `dashboard-rekenen` hebben geen poort nodig; ze werken rechtstreeks op een tijdelijke lokale database. Zorg dat die poorten vrij zijn.
 
 Database-aanpassingen doorvoeren, als er nieuwe bestanden in `migrations/` staan. Doe dit altijd **vóór** het online zetten:
 

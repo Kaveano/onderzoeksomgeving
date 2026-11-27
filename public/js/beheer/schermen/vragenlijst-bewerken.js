@@ -27,6 +27,8 @@ const TYPE_UITLEG = {
 /** Label bij een cijfervraag in de lijst met vragen. */
 const CIJFER_LABEL = { nps: 'Cijfer 0–10', rapport: 'Rapportcijfer 1–10' };
 const KENMERK_HULP = 'Kies dit als de vraag gaat over wie de respondent is, zoals afdeling of leeftijd. Dan zie je bij HR-analytics wie er hebben meegedaan en kun je groepen vergelijken. Groepen met minder dan 5 respondenten worden nooit getoond.';
+// Een kenmerk of uitsplitsing beschermt de verdeling van de vraag (isBeschermd in dashboard-rekenen.js); zonder beide niet meer.
+const KENMERK_WEG = 'Let op: zonder kenmerk en zonder uitsplitsing worden kleine aantallen bij deze vraag niet meer verborgen, ook niet voor meelezers.';
 
 function meetmomentNaam(mm) {
   return mm.datum ? `${mm.naam} (${datum(mm.datum)})` : mm.naam;
@@ -1060,20 +1062,30 @@ export async function toon(container, ctx) {
 
       // Achtergrondkenmerk (alleen meerkeuze met één antwoord en ja/nee); per vragenlijst één keer, behalve "Ander kenmerk".
       const elders = new Set(vragen.filter((q) => q.id !== vraag?.id && q.kenmerk).map((q) => q.kenmerk));
-      const kenmerkKeuze = h('select', { id: `${p}kenmerk`, 'aria-describedby': `${p}kenmerk-hulp` },
+      const kenmerkKeuze = h('select', { id: `${p}kenmerk`, 'aria-describedby': `${p}kenmerk-hulp ${p}kenmerk-weg` },
         h('option', { value: '' }, 'Geen (gewone vraag)'),
         Object.entries(KENMERKEN).map(([k, km]) => {
           const bezet = !km.meerdere && elders.has(k);
           return h('option', { value: k, selected: k === (vraag?.kenmerk || ''), disabled: bezet }, bezet ? `${km.naam} (staat er al in)` : km.naam);
         }));
+      // Had de vraag een kenmerk en gaat dat weg terwijl uitsplitsing uit staat, dan zegt de editor wat dat betekent.
+      const kenmerkWeg = h('p', { class: 'veld-hulp vl-tekst-waarschuwing verborgen', id: `${p}kenmerk-weg`, 'aria-live': 'polite' });
+      const werkKenmerkWegBij = () => {
+        const weg = !!vraag?.kenmerk && !kenmerkKeuze.value && !uitsplitsen.checked;
+        kenmerkWeg.textContent = weg ? KENMERK_WEG : '';
+        kenmerkWeg.classList.toggle('verborgen', !weg);
+      };
       kenmerkKeuze.addEventListener('change', () => {
         // Een achtergrondkenmerk wil je meestal ook gebruiken om groepen te vergelijken (je kunt het weer uitzetten).
         if (kenmerkKeuze.value) uitsplitsen.checked = true;
+        werkKenmerkWegBij();
       });
+      uitsplitsen.addEventListener('change', werkKenmerkWegBij);
       const kenmerkBlok = h('div', { class: 'veld vl-kenmerk-blok' },
         h('label', { for: kenmerkKeuze.id }, 'Achtergrondkenmerk'),
         kenmerkKeuze,
-        h('div', { class: 'veld-hulp', id: `${p}kenmerk-hulp` }, KENMERK_HULP));
+        h('div', { class: 'veld-hulp', id: `${p}kenmerk-hulp` }, KENMERK_HULP),
+        kenmerkWeg);
 
       const verplicht = h('input', { type: 'checkbox', id: `${p}verplicht`, checked: !!vraag?.verplicht, 'aria-describedby': `${p}verplicht-hulp` });
       const verplichtBlok = h('div', { class: 'veld' },
