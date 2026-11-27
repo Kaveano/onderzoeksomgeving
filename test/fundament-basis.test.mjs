@@ -223,3 +223,34 @@ test('momentopname: rapportNaarBlokken geeft voor v1-feiten (nieuw en oud) preci
   const tekst = (g) => feiten.blokkenNaarTekst(g.blokken);
   assert.equal((tekst(gevallen[2]).match(/×/g) || []).length, (tekst(gevallen[0]).match(/×/g) || []).length);
 });
+
+test('oude feiten: een ja/nee-achtergrondvraag met een klein aantal wordt bij het tonen gemaskeerd (ook voor de meelezer)', async () => {
+  const { rapportVoorKijker } = await import('../src/routes/rapporten.js');
+  const { gevallen } = JSON.parse(readFileSync(new URL('./fixtures/rapport-v1-blokken.json', import.meta.url), 'utf8'));
+  const g = structuredClone(gevallen[2]);
+  const l = g.feiten.lijsten.find((x) => x.id === g.inhoud.lijst);
+  // Zoals een rapport van vóór P1 het vastlegde: geen beschermd, ruwe aantallen (ja 2, nee 36 van 38).
+  const janee = (ja, nee) => ({
+    thema_naam: l.vragen[0].thema_naam, type: 'janee', tekst: 'Geef je zelf leiding aan een of meer medewerkers?', meerdere: false, opties: ['Ja', 'Nee'],
+    n: ja + nee, verborgen: false, gemiddelde: null, percentage_ja: (ja / (ja + nee)) * 100,
+    verdeling: [{ waarde: 'ja', label: 'Ja', aantal: ja, percentage: (ja / (ja + nee)) * 100 }, { waarde: 'nee', label: 'Nee', aantal: nee, percentage: (nee / (ja + nee)) * 100 }],
+  });
+  l.vragen.push(janee(2, l.n - 2));
+  const tabelVan = (blokken) => blokken.flatMap((b) => (b.soort === 'feiten' ? b.blokken : [b])).find((b) => b.soort === 'tabel' && b.bijschrift.includes('leiding'));
+  const t = tabelVan(feiten.rapportNaarBlokken({ titel: g.titel, soort: g.soort, inhoud: g.inhoud, feiten: g.feiten }));
+  assert.deepEqual(t.kop, ['Antwoord', 'Aantal', '% van alle respondenten']);
+  assert.deepEqual(t.rijen, [['Ja', '×', '×'], ['Nee', '×', '×'], ['Niet ingevuld', '×', '×']]);
+  const rij = { id: 9, onderzoek_id: 1, soort: g.soort, titel: g.titel, inhoud: JSON.stringify(g.inhoud), feiten: JSON.stringify(g.feiten), aangemaakt_op: '', bijgewerkt_op: '' };
+  const kijker = rapportVoorKijker(rij, { verbergOpen: false });
+  assert.deepEqual(tabelVan(kijker.blokken).rijen, t.rijen);
+  assert.doesNotMatch(JSON.stringify(kijker.blokken), /Aantal: 2\b|"2","5%"/);
+  // Ook 3 die de vraag niet invulden zijn een klein aantal; ja 20 / nee 15 / leeg 3 → leeg en de kleinste andere ×.
+  l.vragen[l.vragen.length - 1] = janee(20, l.n - 23);
+  assert.deepEqual(tabelVan(feiten.rapportNaarBlokken({ titel: g.titel, soort: g.soort, inhoud: g.inhoud, feiten: g.feiten })).rijen,
+    [['Ja', 20, '53%'], ['Nee', '×', '×'], ['Niet ingevuld', '×', '×']]);
+  // Niets te verbergen: de tabel blijft zoals een oud rapport hem altijd toonde.
+  l.vragen[l.vragen.length - 1] = janee(20, l.n - 20);
+  const ongewijzigd = tabelVan(feiten.rapportNaarBlokken({ titel: g.titel, soort: g.soort, inhoud: g.inhoud, feiten: g.feiten }));
+  assert.deepEqual(ongewijzigd.kop, ['Antwoord', 'Aantal', 'Percentage']);
+  assert.deepEqual(ongewijzigd.rijen, [['Ja', 20, '53%'], ['Nee', 18, '47%']]);
+});

@@ -509,16 +509,17 @@ const scoreAantal = (q) => (Number.isInteger(q.n_score) ? q.n_score : q.verdelin
 /**
  * De verdeling van een achtergrondvraag zoals die in het rapport komt, of null voor een gewone vraag.
  * - Nieuwe feiten (beschermd: true): al gemaskeerd vastgelegd.
- * - Oude feiten (vastgelegd voordat er beschermd bestond): elke meerkeuzevraag met één antwoord kan een
- *   achtergrondvraag zijn. Die wordt daarom bij het tonen alsnog gemaskeerd, als daar iets te verbergen valt;
- *   anders blijft de tabel zoals hij was.
+ * - Oude feiten (vastgelegd voordat er beschermd bestond): elke ja/nee-vraag en elke meerkeuzevraag met één
+ *   antwoord kan een achtergrondvraag zijn (bijv. "Geef je zelf leiding aan een of meer medewerkers?"). Die wordt
+ *   daarom bij het tonen alsnog gemaskeerd, als daar iets te verbergen valt; anders blijft de tabel zoals hij was.
  */
 function beschermdeVerdeling(q, l, drempel) {
   const heeft = (verdeling) => verdeling.some((v) => v.waarde !== 'niet_ingevuld' && v.aantal !== 0);
   if (q.beschermd === true) {
     return { verdeling: q.verdeling, iets_verborgen: q.verdeling.some((v) => v.aantal === null), heeftAntwoorden: heeft(q.verdeling) };
   }
-  if (q.beschermd !== undefined || q.type !== 'meerkeuze' || q.meerdere || !eindig(l.n)) return null;
+  const eenAntwoord = q.type === 'janee' || (q.type === 'meerkeuze' && !q.meerdere);
+  if (q.beschermd !== undefined || !eenAntwoord || !eindig(l.n)) return null;
   const m = maskeerVerdeling(q.verdeling.map((v) => ({ waarde: v.waarde, label: v.label, aantal: Number(v.aantal) || 0 })), l.n, drempel);
   if (!m.iets_verborgen) return null;
   return { verdeling: m.verdeling, iets_verborgen: true, heeftAntwoorden: heeft(m.verdeling) };
