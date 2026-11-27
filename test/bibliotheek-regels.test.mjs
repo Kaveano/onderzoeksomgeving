@@ -9,7 +9,7 @@ import { performance } from 'node:perf_hooks';
 import {
   OPMAAK, apaVerwijzing, apaInTekst, apaKort, sorteerLiteratuur, citeersleutelBasis, vrijeCiteersleutel, leesAuteur, voorletters,
   leesApaVerwijzing, normaliseerStartbron, normaliseer, paginaTekst, dubbeleVan, nlDatumKort, auteursRegel, CITEERSLEUTEL,
-  BRONSOORTEN, DETAILVELDEN, ONDERWERPEN, dubbelZoeker, reeksDelen, MAX_PER_REEKS, MAX_REEKS_BYTES, MAX_REEKS_VERZOEK, kaleDoi,
+  BRONSOORTEN, DETAILVELDEN, ONDERWERPEN, onderwerpUitTekst, leesTijdschriftDeel, dubbelZoeker, reeksDelen, MAX_PER_REEKS, MAX_REEKS_BYTES, MAX_REEKS_VERZOEK, kaleDoi,
 } from '../public/js/beheer/bibliotheek-regels.js';
 import { planReeks, insertWaarden } from '../src/lib/bibliotheek.js';
 
@@ -262,6 +262,88 @@ test('startcollectie: een record van het onderzoeksteam omzetten', () => {
   r = normaliseerStartbron({ titel: 'T', soort: 'boek', url: 'https://x.nl', onderwerpen: ['methode'], samenvatting: 'x'.repeat(4100) });
   assert.equal(r.bron.samenvatting.length, 4000);
   assert.ok(r.meldingen.some((m) => m.includes('ingekort')));
+});
+
+test('startcollectie: de onderwerp-sleutels en bron_details van het onderzoeksteam', () => {
+  // Zo levert het onderzoeksteam (bronnen/startcollectie.json): eigen sleutels voor onderwerpen en de
+  // tijdschriftgegevens als vrije tekst in bron_details.
+  const record = (extra) => ({
+    titel: 'Survey response rates: Trends and a validity assessment framework', auteurs: ['Holtom, B.', 'Baruch, Y.'], jaar: 2022,
+    soort: 'wetenschappelijk artikel', taal: 'en', doi: '10.1177/00187267211070769', geraadpleegd: '2026-11-27', ...extra,
+  });
+  let r = normaliseerStartbron(record({
+    onderwerpen: ['onderzoeksmethode', 'privacy-ethiek', 'tevredenheid-bevlogenheid', 'vertrek-verloop', 'diversiteit-inclusie', 'wet-regelgeving', 'werkdruk-werkstress'],
+    bron_details: 'Human Relations, 75(8), 1560–1584',
+  }));
+  assert.deepEqual(r.fouten, []);
+  assert.deepEqual(r.bron.onderwerpen, ['methode', 'privacy', 'tevredenheid', 'vertrek', 'sociale-veiligheid', 'werkdruk']);
+  assert.deepEqual(r.bron.trefwoorden, ['wet-regelgeving'], 'geen vast onderwerp: trefwoord met een melding (P7 stap 3)');
+  assert.ok(r.meldingen.some((m) => m.includes('"wet-regelgeving"')));
+  assert.deepEqual(r.bron.details, { tijdschrift: 'Human Relations', jaargang: '75', nummer: '8', paginas: '1560–1584' });
+  assert.equal(apaVerwijzing(r.bron),
+    'Holtom, B., & Baruch, Y. (2022). Survey response rates: Trends and a validity assessment framework. *Human Relations, 75*(8), 1560–1584. https://doi.org/10.1177/00187267211070769');
+  // Een record met alleen een onbekend onderwerp blijft een harde fout (vraag het onderzoeksteam)
+  r = normaliseerStartbron(record({ onderwerpen: ['wet-regelgeving'], bron_details: 'Human Relations, 75(8), 1560–1584' }));
+  assert.deepEqual(r.fouten, ['Geen onderwerp uit de vaste lijst.']);
+  // Een toelichting na het tijdschriftdeel wordt gemeld, niet overgenomen
+  r = normaliseerStartbron(record({ onderwerpen: ['statistiek'], bron_details: 'International Review of Social Psychology, 30(1), 92–101. In 2022 is een correctie verschenen.' }));
+  assert.deepEqual(r.bron.details, { tijdschrift: 'International Review of Social Psychology', jaargang: '30', nummer: '1', paginas: '92–101' });
+  assert.ok(r.meldingen.some((m) => m.includes('niet overgenomen: "In 2022 is een correctie verschenen."')));
+  // Artikelnummers
+  assert.deepEqual(normaliseerStartbron(record({ onderwerpen: ['methode'], bron_details: 'BMC Health Services Research, 9(1), artikel 160' })).bron.details,
+    { tijdschrift: 'BMC Health Services Research', jaargang: '9', nummer: '1', artikelnummer: '160' });
+  assert.deepEqual(normaliseerStartbron(record({ onderwerpen: ['methode'], bron_details: 'Frontiers in Psychology, 4, artikel 863' })).bron.details,
+    { tijdschrift: 'Frontiers in Psychology', jaargang: '4', artikelnummer: '863' });
+  // Losse velden gaan voor; bij andere soorten wordt bron_details niet gelezen
+  r = normaliseerStartbron(record({ onderwerpen: ['methode'], tijdschrift: 'Human Relations', jaargang: '75', bron_details: 'Iets anders, 1(1), 1–2' }));
+  assert.deepEqual(r.bron.details, { tijdschrift: 'Human Relations', jaargang: '75' });
+  assert.ok(r.meldingen.some((m) => m.includes('niet gebruikt')));
+  r = normaliseerStartbron({ titel: 'Cao-lonen 2025', organisatie: 'CBS', jaar: 2025, soort: 'website', url: 'https://www.cbs.nl/x', onderwerpen: ['arbeidsvoorwaarden'], bron_details: 'CBS-nieuwsbericht, 31-12-2025.' });
+  assert.deepEqual(r.fouten, []);
+  assert.equal(r.bron.details.tijdschrift, undefined);
+  assert.ok(r.meldingen.some((m) => m.startsWith('Veld "bron_details" is niet overgenomen')));
+  r = normaliseerStartbron(record({ onderwerpen: ['methode'], bron_details: 'Zonder jaargang' }));
+  assert.deepEqual(r.bron.details, {});
+  assert.ok(r.meldingen.some((m) => m.includes('geen tijdschrift met jaargang')));
+  // Andere namen; niets raden
+  assert.equal(onderwerpUitTekst('Onderzoeksmethode'), 'methode');
+  assert.equal(onderwerpUitTekst('Tevredenheid en betrokkenheid'), 'tevredenheid');
+  assert.equal(onderwerpUitTekst('wet-regelgeving'), null);
+  assert.equal(onderwerpUitTekst('toString'), null);
+});
+
+test('leesTijdschriftDeel: pagina\'s, artikelnummers en geen tijdschrift', () => {
+  assert.deepEqual(leesTijdschriftDeel('Journal of Applied Psychology, 91(2), 392-413.'), { tijdschrift: 'Journal of Applied Psychology', jaargang: '91', nummer: '2', paginas: '392–413' });
+  assert.deepEqual(leesTijdschriftDeel('PLOS ONE, 12(10), e0184594'), { tijdschrift: 'PLOS ONE', jaargang: '12', nummer: '10', artikelnummer: 'e0184594' });
+  assert.deepEqual(leesTijdschriftDeel('Journal of Public Health Management and Practice, 23(4), e1–e4'),
+    { tijdschrift: 'Journal of Public Health Management and Practice', jaargang: '23', nummer: '4', paginas: 'e1–e4' }, 'een reeks zijn pagina\'s');
+  assert.deepEqual(leesTijdschriftDeel('Tijdschrift voor HRM, 22, Artikel e123'), { tijdschrift: 'Tijdschrift voor HRM', jaargang: '22', artikelnummer: 'e123' });
+  assert.deepEqual(leesTijdschriftDeel('Behavioral Sciences, 13(3), 244'), { tijdschrift: 'Behavioral Sciences', jaargang: '13', nummer: '3', paginas: '244' });
+  assert.equal(leesTijdschriftDeel('Boom'), null);
+  assert.equal(leesTijdschriftDeel(''), null);
+});
+
+test('Plak een verwijzing: een titel met ? en een ondertitel; "Geraadpleegd op … van" is een webpagina', () => {
+  let r = leesApaVerwijzing('Taris, T. W. (2006). Is there a relationship between burnout and objective performance? A critical review of 16 studies. Work & Stress, 20(4), 316–334. doi:10.1080/02678370601065893');
+  assert.equal(r.bron.soort, 'artikel');
+  assert.equal(r.bron.titel, 'Is there a relationship between burnout and objective performance? A critical review of 16 studies');
+  assert.deepEqual(r.bron.details, { tijdschrift: 'Work & Stress', jaargang: '20', nummer: '4', paginas: '316–334' });
+  assert.equal(r.bron.doi, '10.1080/02678370601065893');
+  // Zonder ondertitel blijft het zoals het was
+  r = leesApaVerwijzing('Bakker, A. B. (2011). Why work? Work & Stress, 20(4), 316–334.');
+  assert.equal(r.bron.titel, 'Why work?');
+  assert.equal(r.bron.details.tijdschrift, 'Work & Stress');
+  // Een afgekorte tijdschriftnaam wordt geen ondertitel
+  r = leesApaVerwijzing('Bakker, A. B. (2011). Why work? J. Appl. Psychol., 20(4), 316–334.');
+  assert.equal(r.bron.titel, 'Why work?');
+  assert.equal(r.bron.details.tijdschrift, 'J. Appl. Psychol.');
+  r = leesApaVerwijzing('Rijksoverheid. (z.d.). Werkdruk. Geraadpleegd op 3 maart 2025, van https://www.rijksoverheid.nl/werkdruk');
+  assert.equal(r.bron.soort, 'website');
+  assert.equal(r.bron.organisatie, 'Rijksoverheid');
+  assert.equal(r.bron.details.geraadpleegd, '2025-03-03');
+  assert.equal(r.bron.url, 'https://www.rijksoverheid.nl/werkdruk');
+  assert.equal(r.bron.jaar, null);
+  assert.ok(!r.ontbreekt.includes('Jaar'), '(z.d.) is herkend, dus het jaar ontbreekt niet');
 });
 
 test('vaste lijsten', () => {

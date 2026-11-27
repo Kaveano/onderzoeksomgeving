@@ -916,6 +916,27 @@ function splitsTitel(t) {
   return { titel: t.trim(), rest: '' };
 }
 
+// "Naam, 22(3), 273–285" · "Naam, 22, Artikel e123" · "Naam, 13(3), 244" · "Naam, 22(3)"
+const TIJDSCHRIFT_DEEL = /^(.+?),\s*(\d+[A-Za-z]?)\s*(?:\(([^)]+)\))?\s*(?:,\s*((?:(?:artikel|article|art\.)\s+)?[A-Za-z]?\d+[A-Za-z]?(?:\s*[-–—]\s*[A-Za-z]?\d+[A-Za-z]?)?))?$/i;
+
+/**
+ * Leest het tijdschriftdeel van een APA-verwijzing: "Journal of Applied Psychology, 91(2), 392–413".
+ * → { tijdschrift, jaargang, nummer?, paginas? of artikelnummer? } of null. Een artikelnummer is een getal na
+ * "Artikel"/"Article", of één code die met een letter begint (e0184594); een reeks (e1–e4) zijn pagina's.
+ */
+export function leesTijdschriftDeel(tekst) {
+  const m = TIJDSCHRIFT_DEEL.exec(String(tekst ?? '').replace(/\s+/g, ' ').trim().replace(/\.$/, ''));
+  if (!m) return null;
+  const uit = { tijdschrift: m[1].trim(), jaargang: m[2] };
+  if (m[3]) uit.nummer = m[3].trim();
+  if (m[4]) {
+    const deel = m[4].replace(/^(?:artikel|article|art\.)\s+/i, '');
+    if (deel !== m[4] || (/^[A-Za-z]\d/.test(deel) && !/[-–—]/.test(deel))) uit.artikelnummer = deel;
+    else uit.paginas = paginaStreep(deel);
+  }
+  return uit;
+}
+
 const RAPPORTNR = /^(?:rapportnr\.?|rapport\s*nr\.?|rapportnummer|report\s*no\.?|report\s*number|publicatienr\.?)\s*(.+)$/i;
 const DRUK = /^(\d+)\s*(?:e|de|ste|nd|rd|th)?\.?\s*(?:dr\.?|druk|ed\.?|edition)$/i;
 const SCRIPTIE = /^(proefschrift|doctoral dissertation|dissertation|masterscriptie|master'?s thesis|bachelorscriptie|bachelor'?s thesis|scriptie)(?:\s*,\s*(.+))?$/i;
@@ -993,6 +1014,7 @@ export function leesApaVerwijzing(tekst) {
   }
   // "Geraadpleegd op 20 november 2026, van https://…" of "Retrieved March 5, 2024, from https://…"
   m = /(?:Geraadpleegd|Opgehaald|Bezocht|Retrieved)(?:\s+(?:op|on))?\s+(.+?),?\s+(?:van|via|from)\s+(https?:\/\/\S+)/i.exec(t);
+  const geraadpleegdGezien = !!m; // "Geraadpleegd op … van <link>" staat in APA alleen bij een webpagina
   if (m) {
     const g = leesLosseDatum(m[1]);
     if (g) details.geraadpleegd = g;
@@ -1064,7 +1086,17 @@ export function leesApaVerwijzing(tekst) {
       zeker.add('uitgever');
     }
   } else {
-    const { titel: titelStuk, rest: na } = splitsTitel(rest);
+    let { titel: titelStuk, rest: na } = splitsTitel(rest);
+    // "Titel? Ondertitel. Tijdschrift, 20(4), 316–334": na een ? of ! kan nog een ondertitel komen. Die hoort bij de
+    // titel als het stuk daarna een tijdschrift met jaargang is. Een ondertitel heeft meer dan één woord (zo blijft
+    // een afgekorte tijdschriftnaam als "J. Appl. Psychol." heel).
+    if (/[?!]$/.test(titelStuk) && na) {
+      const verder = splitsTitel(na);
+      if (/\S\s+\S/.test(verder.titel) && verder.rest && leesTijdschriftDeel(verder.rest)) {
+        titelStuk = `${titelStuk} ${verder.titel}`;
+        na = verder.rest;
+      }
+    }
     let titel = titelStuk;
     const info = [];
     for (;;) {
@@ -1105,23 +1137,14 @@ export function leesApaVerwijzing(tekst) {
       }
       titel = `${titel} (${i})`; // onbekend: hoort bij de titel
     }
-    // Tijdschrift: "Naam, 22(3), 273–285" · "Naam, 22, Artikel e123" · "Naam, 22(3)"
-    const tijdschrift = /^(.+?),\s*(\d+[A-Za-z]?)\s*(?:\(([^)]+)\))?\s*(?:,\s*(?:(?:Artikel|Article|Art\.)\s+)?([A-Za-z]?\d+[A-Za-z]?(?:\s*[-–—]\s*[A-Za-z]?\d+)?))?$/.exec(naTitel);
+    const tijdschrift = leesTijdschriftDeel(naTitel);
     if (!soort && tijdschrift) {
       soort = 'artikel';
-      details.tijdschrift = tijdschrift[1].trim();
-      details.jaargang = tijdschrift[2];
+      Object.assign(details, tijdschrift);
       zeker.add('tijdschrift');
       zeker.add('jaargang');
-      if (tijdschrift[3]) {
-        details.nummer = tijdschrift[3].trim();
-        zeker.add('nummer');
-      }
-      if (tijdschrift[4]) {
-        if (/(?:Artikel|Article|Art\.)\s+\S+$/i.test(naTitel) || /^[A-Za-z]\d/.test(tijdschrift[4])) details.artikelnummer = tijdschrift[4];
-        else details.paginas = paginaStreep(tijdschrift[4]);
-        zeker.add('paginas');
-      }
+      if (tijdschrift.nummer) zeker.add('nummer');
+      if (tijdschrift.paginas || tijdschrift.artikelnummer) zeker.add('paginas');
     }
     if (titel) {
       bron.titel = titel;
@@ -1141,7 +1164,7 @@ export function leesApaVerwijzing(tekst) {
     const isWet = /wetten\.overheid\.nl|eur-lex\.europa\.eu|officielebekendmakingen\.nl/i.test(bron.url) || (!bron.auteurs.length && !bron.organisatie && /wet(?:boek)?$/i.test(bron.titel));
     if (!soort) {
       if (isWet) soort = 'wet';
-      else if (dagMaandTekst && bron.url) soort = 'website';
+      else if ((dagMaandTekst || geraadpleegdGezien) && bron.url) soort = 'website';
       else if (bron.auteurs.length && naTitel && !bron.url && !bron.doi) soort = 'boek';
       else if (bron.url || bron.organisatie) soort = 'rapport';
       else soort = 'overig';
@@ -1168,7 +1191,7 @@ export function leesApaVerwijzing(tekst) {
     if (veld === 'auteurs') return bron.auteurs.length > 0 || !!bron.organisatie;
     if (veld === 'vindplaats') return !!(bron.doi || bron.url);
     if (veld === 'titel') return !!bron.titel;
-    if (veld === 'jaar') return Number.isInteger(bron.jaar);
+    if (veld === 'jaar') return Number.isInteger(bron.jaar) || zeker.has('jaar'); // (z.d.) is ook herkend
     if (veld === 'redacteuren') return Array.isArray(details.redacteuren) && details.redacteuren.length > 0;
     return !!details[veld];
   };
@@ -1222,7 +1245,23 @@ export function taalUitTekst(t) {
   return TAAL_ALIASSEN[s] || (s ? 'anders' : null);
 }
 
-/** Onderwerp-sleutel uit een sleutel, naam of sjabloon-id, of null. */
+/**
+ * Andere namen voor de vaste onderwerpen (genormaliseerd, zoals normaliseer() ze maakt). Alleen namen die precies
+ * één onderwerp bedoelen; o.a. de sleutels uit het bestand van het onderzoeksteam (bronnen/startcollectie.json).
+ * Niet hier: "wet-regelgeving" (geen vast onderwerp; wordt een trefwoord met een melding, zie BOUWPLAN P7 stap 3).
+ */
+const ONDERWERP_ALIASSEN = {
+  onderzoeksmethode: 'methode', onderzoeksmethoden: 'methode', methodologie: 'methode', vragenlijsten: 'methode',
+  'privacy ethiek': 'privacy', 'privacy en ethiek': 'privacy', avg: 'privacy',
+  'tevredenheid bevlogenheid': 'tevredenheid', 'tevredenheid en bevlogenheid': 'tevredenheid', betrokkenheid: 'tevredenheid', bevlogenheid: 'tevredenheid',
+  'vertrek verloop': 'vertrek', 'vertrek en verloop': 'vertrek', verloop: 'vertrek', behoud: 'vertrek',
+  'diversiteit inclusie': 'sociale-veiligheid', 'diversiteit en inclusie': 'sociale-veiligheid',
+  'werkdruk werkstress': 'werkdruk', werkstress: 'werkdruk', 'verzuim vitaliteit': 'verzuim', vitaliteit: 'verzuim',
+  'hybride werken': 'hybride', 'verandering cultuur': 'cultuur', 'ontwikkeling loopbaan': 'ontwikkeling', loopbaan: 'ontwikkeling',
+  beloning: 'arbeidsvoorwaarden', kengetallen: 'hr-analytics', 'people analytics': 'hr-analytics',
+};
+
+/** Onderwerp-sleutel uit een sleutel, naam, sjabloon-id of andere naam (ONDERWERP_ALIASSEN), of null. */
 export function onderwerpUitTekst(t) {
   const s = String(t ?? '').trim();
   if (Object.hasOwn(ONDERWERPEN, s)) return s;
@@ -1230,7 +1269,7 @@ export function onderwerpUitTekst(t) {
   for (const [k, o] of Object.entries(ONDERWERPEN)) {
     if (normaliseer(o.naam) === n || normaliseer(k) === n || o.sjablonen.includes(s)) return k;
   }
-  return null;
+  return Object.hasOwn(ONDERWERP_ALIASSEN, n) ? ONDERWERP_ALIASSEN[n] : null;
 }
 
 const kort = (t, max) => (t.length > max ? t.slice(0, max) : t);
@@ -1343,6 +1382,31 @@ export function normaliseerStartbron(record) {
   // Details: velden bovenin het record of in r.details; alleen de velden die bij de soort horen.
   const ruw = { ...(r.details && typeof r.details === 'object' ? r.details : {}) };
   for (const k of DETAIL_SLEUTELS) if (r[k] !== undefined && r[k] !== null && r[k] !== '') ruw[k] = r[k];
+  // bron_details (vrije tekst, zoals het onderzoeksteam die levert): bij een artikel zonder losse tijdschriftvelden
+  // staat daar "Tijdschrift, 22(3), 273–285", soms met een toelichting erachter. Dat deel lezen we; de rest wordt
+  // gemeld en niet overgenomen. Bij andere soorten heeft bron_details geen vast formaat: melden, niet overnemen.
+  const vrij = tekst(r.bron_details);
+  if (vrij) {
+    let gelezen = null;
+    let rest = '';
+    if (bron.soort === 'artikel' && !ruw.tijdschrift) {
+      gelezen = leesTijdschriftDeel(vrij);
+      for (let i = vrij.indexOf('. '); !gelezen && i > 0; i = vrij.indexOf('. ', i + 1)) {
+        gelezen = leesTijdschriftDeel(vrij.slice(0, i));
+        if (gelezen) rest = vrij.slice(i + 2).trim();
+      }
+    }
+    if (gelezen) {
+      for (const [k, w] of Object.entries(gelezen)) if (ruw[k] === undefined || ruw[k] === null || ruw[k] === '') ruw[k] = w;
+      if (rest) meldingen.push(`Uit bron_details is alleen het tijdschriftdeel overgenomen; niet overgenomen: "${kort(rest, 80)}${rest.length > 80 ? '…' : ''}".`);
+    } else if (bron.soort !== 'artikel') {
+      meldingen.push('Veld "bron_details" is niet overgenomen: alleen bij een artikel worden daar tijdschrift, jaargang, nummer en pagina\'s uit gelezen.');
+    } else if (ruw.tijdschrift) {
+      meldingen.push('Veld "bron_details" is niet gebruikt: het tijdschrift staat al in de losse velden.');
+    } else {
+      meldingen.push('In bron_details staat geen tijdschrift met jaargang (zoals "Tijdschrift, 22(3), 273–285"); het veld is niet overgenomen.');
+    }
+  }
   if (r.controle && !ruw.gecontroleerd_door) ruw.gecontroleerd_door = r.controle;
   const toegestaan = new Set(detailveldenVan(bron.soort).map((v) => v.sleutel));
   for (const [k, w] of Object.entries(ruw)) {
