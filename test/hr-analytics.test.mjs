@@ -388,6 +388,14 @@ test('benchmarks: de eigen waarde ernaast, nooit zelf ingevuld; de zin "Ter verg
   assert.equal(k.benchmarks[2].eigen_waarde, null, 'geen personeelsbestand');
   assert.equal(R.benchmarkZin({ sleutel: 'verzuim_pct', waarde: 5 }, '(CBS, 2025)'), 'Ter vergelijking: 5,0% (CBS, 2025)');
   assert.equal(R.benchmarkZin(k.benchmarks[2], '(CBS, 2025)'), 'Ter vergelijking: 5,0% (CBS, 2025) – Landelijk verzuim 2025');
+  // Vergelijkingscijfers van de vragenlijst staan bij de kerncijfers; die van het personeelsbestand bij HR-kengetallen.
+  const blokken = R.kerncijferBlokken(k, 'kerncijfers', { bronnen: { cbs2025: '(CBS, 2025)' } });
+  const lijst = blokken.find((b) => b.soort === 'lijst' && b.items.some((i) => i.includes('Ter vergelijking')));
+  assert.deepEqual(lijst.items, ['Respons (hier 60%): Ter vergelijking: 55,0% – Gangbare respons', `Werkdruk (hier ${k.scores.themas[0].gemiddelde.toFixed(1).replace('.', ',')}): Ter vergelijking: 3,6`]);
+  assert.ok(!JSON.stringify(blokken).includes('Landelijk verzuim'));
+  // Excel: een onbekende respons is leeg, geen × (× betekent: verborgen).
+  const zonderUitnodiging = R.kerncijferBladen(kern(standaardExport({ n: 30 }))).find((b) => b.naam === 'Deelname').rijen[1];
+  assert.equal(zonderUitnodiging[5], '');
 });
 
 test('kenmerksuggesties en standaardsignalen voor de instellingen', () => {

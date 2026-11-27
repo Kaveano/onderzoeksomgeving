@@ -205,6 +205,19 @@ function drijverZin(dr) {
   const delen = sterk.map((r) => `${r.naam} (r = ${nlGetal(r.r, 2)})`);
   return `Het sterkst samen met ${uitkomst} ${sterk.length > 1 ? 'hangen' : 'hangt'} ${delen.join(' en ')}. Samenhang is geen oorzaak.`;
 }
+/** Benchmarks van het personeelsbestand (in het hoofdstuk HR-kengetallen); de andere staan bij de kerncijfers. */
+export const isPersoneelBenchmark = (b) => b?.sleutel === 'verzuim_pct' || b?.sleutel === 'verloop_pct';
+/** Waarbij een benchmark hoort: "Respons", "eNPS", een thema of een vraag (met de eigen waarde). */
+export function benchmarkNaam(b, k) {
+  const eigen = (w, f) => (eindig(w) ? ` (hier ${f(w)})` : '');
+  if (b.sleutel === 'respons_pct') return `Respons${eigen(b.eigen_waarde, nlProcent)}`;
+  if (b.sleutel === 'enps') return `eNPS${eigen(b.eigen_waarde, score)}`;
+  if (b.sleutel === 'verzuim_pct') return `Verzuim${eigen(b.eigen_waarde, (x) => `${nlGetal(x, 1)}%`)}`;
+  if (b.sleutel === 'verloop_pct') return `Verloop${eigen(b.eigen_waarde, nlProcent)}`;
+  const [soort, id] = String(b.sleutel).split(':');
+  if (soort === 't') return `${k?.scores?.themas?.find((t) => t.thema_id === Number(id))?.naam || 'Thema'}${eigen(b.eigen_waarde, (x) => nlGetal(x, 1))}`;
+  return `Vraag${eigen(b.eigen_waarde, (x) => nlGetal(x, 1))}`;
+}
 /** Een benchmark: "Ter vergelijking: 5,0% (CBS, 2025)". bronKort: de korte bronvermelding ("(CBS, 2025)") of ''. */
 export function benchmarkZin(b, bronKort = '') {
   const eenheid = b.sleutel === 'enps' ? 'score' : /_pct$/.test(b.sleutel) ? '%' : 'gem';
@@ -346,7 +359,7 @@ function deelnameBlokken(k, figuren) {
   return uit;
 }
 
-function kerncijferBlokkenScores(k, figuren) {
+function kerncijferBlokkenScores(k, figuren, bronnen = {}) {
   const uit = [];
   const themas = k.scores?.themas || [];
   if (themas.length) {
@@ -385,6 +398,8 @@ function kerncijferBlokkenScores(k, figuren) {
     if (f('prioriteiten')) uit.push(f('prioriteiten'));
   }
   if (k.signalen?.length) uit.push(kop('Signalen', 3), lijst(k.signalen.map(signaalZin)));
+  const vergelijk = (k.benchmarks || []).filter((b) => !isPersoneelBenchmark(b));
+  if (vergelijk.length) uit.push(kop(TER_VERGELIJKING, 3), lijst(vergelijk.map((b) => `${benchmarkNaam(b, k)}: ${benchmarkZin(b, bronnen[b.citeersleutel] || '')}`)));
   return uit;
 }
 
@@ -430,7 +445,7 @@ function personeelBlokken(k, figuren, bronnen = {}) {
   uit.push(tabel(['Kengetal', 'Waarde'], rijen, 'HR-kengetallen van de organisatie'));
   if (t.verzuim_reden) uit.push(alinea(`*${VERZUIM_VERBORGEN}*`));
   else if (eindig(t.verzuim_pct)) uit.push(alinea(`*${DAGEN_UITLEG}*`));
-  for (const b of k.benchmarks || []) uit.push(alinea(benchmarkZin(b, bronnen[b.citeersleutel] || '')));
+  for (const b of (k.benchmarks || []).filter(isPersoneelBenchmark)) uit.push(alinea(benchmarkZin(b, bronnen[b.citeersleutel] || '')));
   for (const g of p.per_groep || []) {
     if (!g.rijen.length) continue;
     uit.push(tabel([g.dimensie_naam, 'Medewerkers', 'Fte', 'Gem. leeftijd', '% vrouw', 'Verzuim', 'Meldingsfreq.', 'Verloop'], g.rijen.map((r) => [
@@ -479,7 +494,7 @@ export function kerncijferBlokken(k, deel = 'alles', { bronnen = {} } = {}) {
     : null;
   if (klein && deel !== 'personeel' && deel !== 'alles') return [klein];
   if (deel === 'deelname') return deelnameBlokken(k, figuren);
-  if (deel === 'kerncijfers') return kerncijferBlokkenScores(k, figuren);
+  if (deel === 'kerncijfers') return kerncijferBlokkenScores(k, figuren, bronnen);
   if (deel === 'groepen') return groepenBlokken(k);
   if (deel === 'personeel') return personeelBlokken(k, figuren, bronnen);
   const uit = [];
@@ -487,7 +502,7 @@ export function kerncijferBlokken(k, deel = 'alles', { bronnen = {} } = {}) {
   if (klein) sectie('Deelname en samenstelling', [klein]);
   else {
     sectie('Deelname en samenstelling', deelnameBlokken(k, figuren));
-    sectie('Kernscores', kerncijferBlokkenScores(k, figuren));
+    sectie('Kernscores', kerncijferBlokkenScores(k, figuren, bronnen));
     sectie("Thema's per groep", groepenBlokken(k));
     sectie('Ontwikkeling', verloopBlokken(k, figuren));
   }
@@ -515,7 +530,8 @@ export function kerncijferBladen(k) {
   const bladen = [];
   const ls = k.deelname?.lijsten || [];
   bladen.push({ naam: 'Deelname', rijen: [['Vragenlijst', 'Meetmoment', 'Status', 'Uitgenodigd', 'Ingevuld', 'Respons (%)', 'Foutmarge (procentpunt)'],
-    ...ls.map((l) => [l.titel, l.meetmoment_naam || '', l.status, l.uitgenodigd ?? '', l.klein ? VERBORGEN : l.n, l.controleer_aantallen ? 'controleer de aantallen' : xr(l.respons_pct, 0), l.foutmarge_pp === null ? '' : xr(l.foutmarge_pp, 1)]), ...uitleg] });
+    ...ls.map((l) => [l.titel, l.meetmoment_naam || '', l.status, l.uitgenodigd ?? '', l.klein ? VERBORGEN : l.n,
+      l.controleer_aantallen ? 'controleer de aantallen' : l.klein ? VERBORGEN : l.respons_pct === null ? '' : xr(l.respons_pct, 0), l.foutmarge_pp === null ? '' : xr(l.foutmarge_pp, 1)]), ...uitleg] });
   const samenstelling = [['Vraag', 'Groep', 'Respondenten', '% respondenten', 'Medewerkers', '% medewerkers', 'Verschil (procentpunt)', 'Respons (%)']];
   for (const km of k.kenmerken || []) {
     for (const g of km.groepen) {
