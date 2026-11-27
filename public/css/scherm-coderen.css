@@ -1,2 +1,132 @@
 /* Scherm Analyse · Open antwoorden: open antwoorden en interviews coderen, citaten kiezen.
-   Gebruikt de variabelen uit app.css. Voorvoegsel: cd-. Wordt gevuld in pakket P5. */
+   Gebruikt de variabelen uit app.css. Voorvoegsel: cd-. */
+
+.cd-hulp { max-width: 80ch; }
+.cd-sneltoetsen { margin: var(--ruimte-2) 0 0; }
+
+.cd-tabs { display: flex; gap: var(--ruimte-1); border-bottom: 1px solid var(--rand); margin-top: var(--ruimte-3); flex-wrap: wrap; }
+.cd-tab {
+  border: 0;
+  border-bottom: 3px solid transparent;
+  background: none;
+  color: var(--tekst-zacht);
+  font: inherit;
+  font-weight: 600;
+  padding: 8px 12px;
+  min-height: 44px;
+  cursor: pointer;
+}
+.cd-tab:hover { color: var(--tekst); }
+.cd-tab[aria-selected='true'] { color: var(--tekst); border-bottom-color: var(--oker); }
+
+.cd-indeling {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 340px);
+  gap: var(--ruimte-4);
+  align-items: start;
+}
+.cd-werkvlak { min-width: 0; }
+.cd-keuzes { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: var(--ruimte-3); }
+.cd-keuzes select { width: 100%; }
+.cd-zonder { margin-bottom: var(--ruimte-2); }
+
+/* De stroom met antwoorden */
+.cd-stroom { list-style: none; margin: var(--ruimte-3) 0 0; padding: 0; display: flex; flex-direction: column; gap: var(--ruimte-2); }
+.cd-antwoord {
+  background: var(--vlak);
+  border: 1px solid transparent;
+  border-left: 4px solid transparent;
+  border-radius: var(--radius);
+  padding: var(--ruimte-3) var(--ruimte-4);
+  cursor: pointer;
+}
+.cd-antwoord:hover { border-color: var(--rand); }
+.cd-antwoord.cd-actief { border-color: var(--rand-sterk); border-left-color: var(--oker); background: var(--vlak-licht); cursor: default; }
+.cd-antwoord:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.cd-tekst { margin: 0 0 var(--ruimte-2); white-space: pre-line; overflow-wrap: anywhere; max-width: 80ch; }
+.cd-chips { display: flex; flex-wrap: wrap; gap: var(--ruimte-1); margin: 0; }
+.cd-chip {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  background: var(--primair-zacht);
+  color: var(--primair);
+  overflow-wrap: anywhere;
+}
+.cd-codeknoppen { display: flex; flex-wrap: wrap; gap: var(--ruimte-1); margin-bottom: var(--ruimte-2); }
+.cd-codeknop {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 4px 12px 4px 6px;
+  border: 1px solid var(--rand-sterk);
+  border-radius: 999px;
+  background: var(--vlak-knop);
+  color: var(--tekst);
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+.cd-codeknop:hover { background: var(--vlak-hover); }
+.cd-codeknop[aria-pressed='true'] { background: var(--primair); border-color: var(--primair); color: var(--tekst-omgekeerd); }
+.cd-codeknop:disabled { cursor: default; opacity: 0.75; }
+.cd-nieuw { border-style: dashed; color: var(--primair); padding-left: 12px; }
+.cd-nummer {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: var(--vlak-2);
+  color: var(--tekst-zacht);
+}
+.cd-codeknop[aria-pressed='true'] .cd-nummer { background: var(--primair-hover); color: var(--tekst-omgekeerd); }
+.cd-nummer-leeg { background: transparent; }
+.cd-meer { justify-content: center; margin: var(--ruimte-3) 0; }
+.cd-ivtekst { width: 100%; background: var(--vlak-licht); }
+
+/* Codeboek */
+.cd-codeboek { position: sticky; top: var(--ruimte-4); padding: var(--ruimte-4); margin: 0; max-height: calc(100dvh - 2 * var(--ruimte-4)); overflow-y: auto; }
+.cd-codeboek > summary { cursor: pointer; font-weight: 650; color: var(--primair); margin-bottom: var(--ruimte-2); }
+.cd-codes { list-style: none; margin: var(--ruimte-2) 0; padding: 0; }
+.cd-code { padding: var(--ruimte-2) 0; border-bottom: 1px solid var(--rand); }
+.cd-code:last-child { border-bottom: 0; }
+.cd-code-kop { display: flex; align-items: center; gap: var(--ruimte-2); }
+.cd-code-naam { flex: 1 1 auto; min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+.cd-telling { flex: none; font-variant-numeric: tabular-nums; font-weight: 600; min-width: 2.5ch; text-align: right; }
+.cd-code-oms { margin: 2px 0 0 calc(22px + var(--ruimte-2)); }
+.cd-code-acties { display: flex; flex-wrap: wrap; gap: 0; margin-left: calc(22px + var(--ruimte-2) - 8px); }
+.cd-code-acties .knop { padding: 4px 8px; }
+.cd-zonder-code { display: flex; justify-content: space-between; gap: var(--ruimte-2); border-top: 1px solid var(--rand-sterk); padding-top: var(--ruimte-2); margin: var(--ruimte-2) 0; }
+
+/* Citaten */
+.cd-citatenlijst { list-style: none; margin: 0; padding: 0; }
+.cd-citaat { padding: var(--ruimte-3) 0; border-bottom: 1px solid var(--rand); }
+.cd-citaat:last-child { border-bottom: 0; }
+.cd-citaat > p { margin: 0 0 var(--ruimte-1); overflow-wrap: anywhere; }
+.cd-citaat textarea { width: 100%; }
+.cd-citaat .veld { margin-bottom: var(--ruimte-2); }
+.cd-citaat-voet { display: flex; flex-wrap: wrap; gap: var(--ruimte-2) var(--ruimte-4); align-items: center; }
+.cd-citaat-voet select { max-width: 100%; }
+.cd-vinkjes { display: flex; flex-wrap: wrap; gap: var(--ruimte-1) var(--ruimte-4); }
+.cd-vinkjes .keuze { margin: 0; }
+dialog.cd-dialoog { width: min(640px, calc(100vw - 24px)); }
+dialog.cd-dialoog textarea, dialog.cd-dialoog select { width: 100%; }
+
+@media (max-width: 900px) {
+  .cd-indeling { grid-template-columns: minmax(0, 1fr); }
+  .cd-codeboek { position: static; max-height: none; order: -1; }
+}
+@media (max-width: 600px) {
+  .cd-keuzes { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .cd-antwoord { padding: var(--ruimte-3); }
+  .cd-sneltoetsen { display: none; }
+}

@@ -354,7 +354,13 @@ export async function toon(container, ctx) {
       tekstBlok = h('div', { class: 'iv-tekstblok' }, tekstEl, knop);
     }
 
-    const acties = ro ? null : h('div', { class: 'lijst-item-acties iv-acties' },
+    // [P5] Interviews en observaties kun je coderen (Analyse · Open antwoorden). De "/" voor "?" is nodig, omdat de
+    // adresverwerking in app.js geen zoekdeel kent; het scherm Coderen leest invoer= zelf uit het adres.
+    const coderen = e.soort === 'interview' || e.soort === 'observatie'
+      ? h('a', { class: 'knop knop-klein', href: `${basis}/analyse/coderen/?invoer=${e.id}`, 'aria-label': `Coderen: "${e.titel}"` }, 'Coderen')
+      : null;
+    const acties = ro ? (coderen ? h('div', { class: 'lijst-item-acties iv-acties' }, coderen) : null) : h('div', { class: 'lijst-item-acties iv-acties' },
+      coderen,
       h('button', {
         type: 'button',
         class: 'knop knop-klein',

@@ -19,6 +19,7 @@ Dit document is voor onderhoud: waar staat wat, hoe zet je een nieuwe versie onl
 | Bibliotheek (P5) | Tabellen `bronnen` en `bron_koppelingen`; `src/routes/bibliotheek.js`, `src/lib/bibliotheek.js` (controle, citeersleutels) | Eén bibliotheek voor alle onderzoeken. Elke wijziging verhoogt `instellingen.bibliotheek_versie`; de browser (`public/js/beheer/bibliotheek-data.js`) haalt de lijst alleen opnieuw op als die versie veranderd is |
 | APA, zoeken en bestanden van de bibliotheek | `public/js/beheer/bibliotheek-regels.js` (APA 7 met de Nederlandse afspraken in `OPMAAK`, "Plak een verwijzing", namen en citeersleutels), `bibliotheek-zoeken.js` (zoeken zonder index), `bibliotheek-bestanden.js` (RIS, Excel, Word) | Zuiver (geen DOM): de Worker, de schermen en de tests gebruiken dezelfde code |
 | Schermen van de bibliotheek | `schermen/bibliotheek.js`, `bron-bewerken.js`, `bronnen.js` (Rapport · Bronnen), `bronkiezer.js` (dialoog "Bron noemen"), `bibliotheek-ui.js` (Citeer, Koppel, Plak een verwijzing, exports) | CSS: `public/css/scherm-bibliotheek.css` |
+| Coderen van open antwoorden (P5) | Tabellen `codes`, `coderingen`, `citaten`; `src/routes/codering.js`; `public/js/beheer/codering-regels.js` (tellen en `coderingFeiten`, zuiver); scherm `schermen/coderen.js` (Analyse · Open antwoorden) | CSS: `public/css/scherm-coderen.css`. Coderingen en citaten verdwijnen met hun inzending of eigen invoer (`ON DELETE CASCADE`) |
 | Startcollectie (P5/P7) | `scripts/startcollectie.mjs`, `data/startcollectie.json`, `data/startcollectie-sleutels.json`, migratie `0016_bibliotheek_start.sql` | Zie "De startcollectie van de bibliotheek" |
 
 Je andere projecten (AF Partners-site, InterimRadar) staan los hiervan en worden niet geraakt.
@@ -182,6 +183,11 @@ Het eerste verzoek in een vers proces kost 12 tot 30 ms, bij elke grootte vanaf 
 - Links worden alleen bewaard als ze met `http://` of `https://` beginnen en alleen als link getoond via `h()` (met `rel="noopener noreferrer"`).
 - Een bron die in een rapport genoemd wordt (zoeken met `GLOB '*@<sleutel>[^a-z0-9]*'` in de rapporttekst), wordt alleen na bevestiging verwijderd.
 
+**Coderen (P5)**
+- Een codering hoort bij één antwoord (het willekeurige `inzendingen.id` plus de vraag) of bij één stuk eigen invoer. De server controleert dat de inzending bij een vragenlijst van dit onderzoek hoort, dat de vraag een open vraag van die vragenlijst is en dat er iets is ingevuld. `PUT /onderzoeken/:id/coderingen` vervangt de codes van één stuk in één batch.
+- `codering-regels.js coderingFeiten` (voor het rapport, P6) neemt alleen vragen met minstens 5 niet-lege antwoorden op; aantallen per code gaan door `verbergReeks` over [codes…, antwoorden zonder code]. Citaten alleen met `gecontroleerd = 1` én `in_rapport = 1` (de server weigert `in_rapport` zonder `gecontroleerd`; een nieuwe tekst zet beide terug op 0), en bij een vragenlijst alleen bij een vraag met minstens 5 antwoorden.
+- Grenzen: 200 codes, 50.000 coderingen en 300 citaten per onderzoek; een citaat hooguit 1.000 tekens.
+
 **Overig**
 - Er geldt een strikte Content-Security-Policy, de app wordt niet door zoekmachines geïndexeerd en geeft geen *referrer* door.
 - Het logboek van Cloudflare (*observability*) staat uit.
@@ -214,7 +220,7 @@ Lokaal testen:
 npm test
 ```
 
-De servertests starten elk een eigen lokale testserver met een lege database, op een vaste poort: `api` 8799, `sjablonen` 8798, `delen` 8797, `rapport` 8796, `inlezen` 8795 en `fundament` 8790 (de uitbreidingen gebruiken 8788 tot en met 8794; de bibliotheek 8794, met inspectiepoort 9794). `migratie` en `dashboard-rekenen` hebben geen poort nodig; ze werken rechtstreeks op een tijdelijke lokale database. Zorg dat die poorten vrij zijn.
+De servertests starten elk een eigen lokale testserver met een lege database, op een vaste poort: `api` 8799, `sjablonen` 8798, `delen` 8797, `rapport` 8796, `inlezen` 8795 en `fundament` 8790 (de uitbreidingen gebruiken 8788 tot en met 8794; de bibliotheek 8794 en het coderen 8789, met inspectiepoort 9794 en 9789). `migratie` en `dashboard-rekenen` hebben geen poort nodig; ze werken rechtstreeks op een tijdelijke lokale database. Zorg dat die poorten vrij zijn.
 
 Database-aanpassingen doorvoeren, als er nieuwe bestanden in `migrations/` staan. Doe dit altijd **vóór** het online zetten:
 

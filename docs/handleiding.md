@@ -240,6 +240,30 @@ Een groep met minder dan 5 waarden doet niet mee aan een vergelijking, net als b
 
 **Gegevens over gezondheid.** Kolommen die over verzuim, ziekmeldingen of diagnoses lijken te gaan, staan bij het inlezen uit, met de melding *"Deze kolom lijkt over gezondheid te gaan. Gebruik hiervoor 'Personeelsbestand voor HR-analytics'; dan worden alleen groepscijfers bewaard."* Verzuim per medewerker is een gegeven over iemands gezondheid; dat hoort niet als losse rijen in een eigen dataset.
 
+### Open antwoorden en interviews coderen
+
+<!-- [P5] Coderen -->
+
+In het tabblad **Analyse**, onderdeel **Open antwoorden**, geef je open antwoorden en interviews een of meer **codes**. Een code is een kort label voor wat iemand zegt, bijvoorbeeld *werkdruk* of *waardering*. Zo zie je wat vaak genoemd wordt.
+
+**Vragenlijsten**
+1. Kies een vragenlijst en een open vraag. De antwoorden staan onder elkaar, in een vaste maar willekeurige volgorde (zodat de volgorde niets over personen zegt).
+2. Klik op een antwoord. Je ziet dan knoppen met alle codes: klik een code aan of weer uit. Met **+ Nieuwe code** maak je ter plekke een code.
+3. Op een laptop gaat het sneller met het toetsenbord: **1 tot 9** zet de eerste negen codes aan of uit, **J** gaat naar het volgende antwoord, **K** naar het vorige en **N** maakt een nieuwe code.
+4. Met **Alleen antwoorden zonder code** zie je wat je nog moet doen.
+
+**Interviews** (en observaties uit Eigen invoer): kies het interview; de codes gelden voor het hele stuk. Bij een interview in **Eigen invoer** brengt de knop **Coderen** je hier direct naartoe.
+
+**Codeboek**: hier voeg je codes toe, wijzig je de naam of omschrijving, **voeg je codes samen** (alle antwoorden en citaten gaan naar de andere code) of verwijder je een code. Je ziet ook hoe vaak elke code bij deze vraag voorkomt. Net als in het rapport staan aantallen van 1 tot 4 er niet: die zie je als **×**. Soms is ook een groter aantal verborgen, zodat een klein aantal niet terug te rekenen is. Heeft een vraag minder dan 5 antwoorden, dan zie je geen aantallen.
+
+**Citaten**
+- Klik bij een antwoord op **Citaat maken**. Het citaat is een kopie die je kunt inkorten of aanpassen. Bij een interview selecteer je eerst het stuk tekst dat je wilt citeren.
+- **Controleer of dit citaat iemand herkenbaar maakt. Haal namen, functies en andere herkenbare details weg.** Vink daarna **Gecontroleerd: dit citaat maakt niemand herkenbaar** aan. Pas dan kun je **In rapport** aanvinken.
+- Pas je de tekst later aan, dan moet je hem opnieuw controleren: het vinkje Gecontroleerd (en In rapport) gaat er dan af.
+- In het rapport komen alleen citaten die gecontroleerd zijn en waarbij In rapport aan staat, en alleen bij vragen met minstens 5 antwoorden.
+
+Codes zijn in de **Werkbank** ook te gebruiken, als variabele (wel of niet genoemd), bijvoorbeeld om te zien of werkdruk vaker genoemd wordt op de ene afdeling dan op de andere. Ook daar gelden de regels voor kleine aantallen.
+
 ## 6. Eigen invoer
 
 Op het tabblad **Eigen invoer** leg je vast wat je buiten de vragenlijst te weten komt: interviews, observaties, documentanalyse en cijfers zoals verzuim of verloop. Koppel elk item aan een thema en een datum, en eventueel aan een meetpunt en meetmoment.
@@ -425,4 +449,5 @@ Goed om te weten:
 - Van **meelezers** met een deellink wordt niets bewaard, behalve de datum waarop de link het laatst is bekeken. Van de toegangscode wordt alleen een onleesbare versie (hash) bewaard.
 - **E-mailadressen** worden nergens bewaard. Uitnodigingen verstuur je vanuit je eigen e-mailprogramma.
 - Bestanden die je **inleest** worden in je eigen browser gelezen; alleen de gegevens die je kiest, worden opgeslagen.
+- **Coderen** (P5): codes en citaten zie alleen jij. In het rapport staan aantallen per code alleen bij vragen met minstens 5 antwoorden, en aantallen van 1 tot 4 zie je als ×. Een citaat komt pas in het rapport als je hebt aangevinkt dat het niemand herkenbaar maakt.
 - **Bibliotheek** (P5): alleen jij kunt de bibliotheek zien. Een meelezer krijgt van een bron hooguit de verwijzing (auteur, jaar, titel, vindplaats) als die in een gedeeld rapport wordt genoemd. Je eigen notities bij een bron en bij een koppeling komen nooit in een rapport, een deellink of een RIS-bestand (tenzij je dat bij exporteren zelf aanzet).
