@@ -79,7 +79,7 @@ a.vl-item-titel:hover { color: var(--primair); text-decoration: underline; }
 .vl-leeg-mm {
   margin-top: var(--ruimte-4);
   padding: var(--ruimte-3) var(--ruimte-4);
-  border: 1px dashed var(--rand-sterk);
+  border: 0;
   border-radius: var(--radius);
   background: var(--vlak-2);
 }
@@ -103,13 +103,13 @@ a.vl-item-titel:hover { color: var(--primair); text-decoration: underline; }
 .vl-kop-soort {
   margin: 0;
   font-size: 0.8rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
+  font-weight: 700;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--tekst-zacht);
+  color: var(--accent);
 }
 .vl-kop-titel {
-  font-size: 1.4rem;
+  font-size: 1.6rem;
   margin: 0 0 var(--ruimte-2);
   overflow-wrap: anywhere;
 }
@@ -128,7 +128,7 @@ a.vl-item-titel:hover { color: var(--primair); text-decoration: underline; }
   margin-right: var(--ruimte-1);
 }
 
-.vl-sectie-titel { font-size: 1.15rem; }
+.vl-sectie-titel { font-family: var(--lettertype-kop); font-weight: 400; font-synthesis: none; color: var(--kop); font-size: 1.4rem; line-height: 1.2; }
 .vl-sectie-titel:focus { outline: none; }
 .vl-sectie-titel:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 
@@ -142,7 +142,7 @@ a.vl-item-titel:hover { color: var(--primair); text-decoration: underline; }
 }
 .vl-status,
 .vl-telling {
-  border: 1px solid var(--rand);
+  border: 1px solid transparent;
   border-radius: var(--radius);
   padding: var(--ruimte-3) var(--ruimte-4);
   background: var(--vlak-2);
@@ -155,7 +155,7 @@ a.vl-item-titel:hover { color: var(--primair); text-decoration: underline; }
   justify-content: space-between;
   gap: var(--ruimte-3);
 }
-.vl-status-open { background: var(--succes-zacht); border-color: var(--succes); }
+.vl-status-open { background: var(--succes-zacht); border-color: transparent; }
 .vl-status-hoofd {
   display: flex;
   align-items: flex-start;
@@ -177,8 +177,10 @@ a.vl-item-titel:hover { color: var(--primair); text-decoration: underline; }
 }
 .vl-status-woord {
   margin: 0;
-  font-size: 1.45rem;
-  font-weight: 700;
+  font-family: var(--lettertype-kop);
+  font-size: 1.5rem;
+  font-weight: 400;
+  font-synthesis: none;
   line-height: 1.25;
 }
 .vl-status-open .vl-status-woord { color: var(--succes); }
@@ -187,10 +189,12 @@ a.vl-item-titel:hover { color: var(--primair); text-decoration: underline; }
 
 .vl-telling p { margin: 0; }
 .vl-telling-getal {
-  font-size: 1.6rem;
-  font-weight: 700;
-  line-height: 1.2;
-  font-variant-numeric: tabular-nums;
+  font-size: 2rem;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: var(--kop);
+  line-height: 1.15;
+  font-variant-numeric: lining-nums tabular-nums;
 }
 .vl-telling-label { color: var(--tekst-zacht); font-size: 0.9rem; margin-bottom: var(--ruimte-1) !important; }
 .vl-telling .klein + .klein { margin-top: 2px; }
@@ -322,17 +326,11 @@ a.vl-item-titel:hover { color: var(--primair); text-decoration: underline; }
 }
 .vl-vraag-nr {
   flex: 0 0 auto;
-  min-width: 30px;
-  height: 30px;
-  padding: 0 6px;
-  border-radius: 15px;
-  display: grid;
-  place-items: center;
-  background: var(--primair-zacht);
-  color: var(--primair);
+  min-width: 28px;
+  text-align: right;
   font-weight: 700;
-  font-size: 0.85rem;
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: lining-nums tabular-nums;
+  color: var(--accent);
 }
 .vl-vraag-hoofd { flex: 1 1 auto; min-width: 0; }
 .vl-vraag-hoofd p { margin: 0; }
@@ -363,7 +361,7 @@ a.vl-item-titel:hover { color: var(--primair); text-decoration: underline; }
   border: 1px solid var(--rand);
   border-radius: var(--radius-klein);
   font-size: 0.85rem;
-  background: var(--vlak);
+  background: var(--vlak-licht);
   overflow-wrap: anywhere;
 }
 .vl-vraag-tags {
@@ -387,7 +385,7 @@ a.vl-item-titel:hover { color: var(--primair); text-decoration: underline; }
 .vl-andere-themas {
   margin-top: var(--ruimte-5);
   padding-top: var(--ruimte-3);
-  border-top: 1px dashed var(--rand-sterk);
+  border-top: 1px solid var(--rand);
 }
 .vl-andere-themas p { margin-bottom: var(--ruimte-2); }
 .vl-andere-themas .knop { white-space: normal; text-align: left; }
@@ -495,12 +493,12 @@ dialog.vl-voorbeelddialoog { width: min(780px, calc(100vw - 24px)); }
 .vl-vb-intro { white-space: pre-line; overflow-wrap: anywhere; }
 .vl-vb-thema { margin-top: var(--ruimte-5); }
 .vl-vb-themanaam {
-  font-size: 1.05rem;
+  font-size: 1.2rem;
   padding-bottom: var(--ruimte-2);
-  border-bottom: 2px solid var(--primair);
+  border-bottom: 2px solid var(--oker);
 }
 .vl-vb-vraag {
-  background: var(--vlak);
+  background: var(--vlak-licht);
   border: 1px solid var(--rand) !important;
   border-radius: var(--radius);
   padding: var(--ruimte-3) var(--ruimte-4) !important;
@@ -554,7 +552,7 @@ dialog.vl-voorbeelddialoog { width: min(780px, calc(100vw - 24px)); }
   margin: var(--ruimte-4) 0;
 }
 .vl-vb-bedankt {
-  border-top: 1px dashed var(--rand-sterk);
+  border-top: 1px solid var(--rand);
   padding-top: var(--ruimte-3);
 }
 .vl-vb-bedankt-kop { font-size: 0.85rem; color: var(--tekst-zacht); font-weight: 600; margin-bottom: var(--ruimte-1); }

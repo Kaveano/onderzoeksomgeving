@@ -244,3 +244,19 @@ textarea.rp-tekst { width: 100%; line-height: 1.6; font-size: 1rem; resize: vert
 }
 .rp-deel[open] > summary::before { transform: rotate(45deg); }
 @media (prefers-reduced-motion: reduce) { .rp-deel > summary::before { transition: none; } }
+
+/* Huisstijl Atelier: feiten, eigen tekst en het document staan op een licht "blad" op het zandkleurige paneel. */
+.rp-deel-feiten,
+.rp-deel-eigen { --vlak: var(--vlak-licht); background: var(--vlak); }
+.rp-deel-hulp { background: transparent; }
+.rp-document { --vlak: var(--vlak-licht); background: var(--vlak); border: 1px solid var(--rand); }
+.rp-document .rp-titel { color: var(--kop); }
+.rp-document .rp-kop-1 { font-family: var(--lettertype-kop); font-weight: 400; color: var(--kop); }
+.rp-soort { color: var(--accent); }
+.rp-principe-feiten { border-left-color: var(--primair); }
+.rp-principe-eigen { border-left-color: var(--oker); }
+.rp-deel-eigen { border-left-color: var(--oker); }
+.rp-keuze { --vlak: var(--vlak-licht); background: var(--vlak); }
+@media print {
+  .rp-document { background: #fff; }
+}

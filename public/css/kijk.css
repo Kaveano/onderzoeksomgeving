@@ -62,3 +62,8 @@
 
 /* Het document: zelfde opmaak als het voorbeeld bij Stukken, maar zonder schrijfvlak-marges. */
 .kijk-tekst.st-voorbeeld { min-height: 0; padding: 0; }
+
+/* Huisstijl Atelier: gedeelde documenten staan op een licht blad. */
+.kijk-document { --vlak: var(--vlak-licht); background: var(--vlak); border: 1px solid var(--rand); }
+.kijk-vraag { border-left-color: var(--oker); }
+.kijk-vraag-label { color: var(--accent); }

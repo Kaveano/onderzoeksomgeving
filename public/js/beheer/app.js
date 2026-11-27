@@ -13,7 +13,7 @@
 //   zetTitel(tekst)    – titel van het browsertabblad
 
 import { api } from './api.js';
-import { h, vervang, laden, melding, meld, statusLabel, lokaleDatum, uniekeId, bevestig } from './ui.js';
+import { h, vervang, laden, melding, meld, statusLabel, lokaleDatum, uniekeId, bevestig, beeldmerk } from './ui.js';
 
 const app = document.getElementById('app');
 let instellingen = null;
@@ -98,7 +98,7 @@ function kopbalk(actief) {
   return h('header', { class: 'kop' },
     h('div', { class: 'kop-binnen' },
       h('a', { class: 'kop-logo', href: '#/' },
-        h('span', { class: 'kop-logo-merk', 'aria-hidden': 'true' }, 'O'),
+        beeldmerk(),
         h('span', { class: 'kop-logo-tekst' }, 'Onderzoeksomgeving')),
       h('nav', { class: 'kop-nav', 'aria-label': 'Hoofdmenu' },
         h('a', { href: '#/', 'aria-current': actief === 'start' ? 'page' : null }, 'Onderzoeken'),
@@ -123,13 +123,15 @@ function onderzoekKop(detail, tab) {
   const o = detail.onderzoek;
   const basis = `#/onderzoek/${o.id}`;
   return [
-    h('div', { class: 'kruimel' }, h('a', { href: '#/' }, '← Alle onderzoeken')),
-    h('div', { class: 'paginakop' },
-      h('div', {},
-        h('h1', {}, o.titel),
-        h('p', { class: 'ondertitel' }, o.bedrijfsnaam),
+    h('div', { class: 'onderzoek-kop' },
+      h('div', { class: 'kruimel' }, h('a', { href: '#/' }, '← Alle onderzoeken')),
+      h('div', { class: 'paginakop' },
+        h('div', {},
+          h('p', { class: 'bovenschrift' }, o.bedrijfsnaam),
+          h('h1', {}, o.titel),
+        ),
+        h('div', { class: 'rij onderzoek-status' }, statusLabel(o.status)),
       ),
-      h('div', { class: 'rij' }, statusLabel(o.status)),
     ),
     o.status === 'gearchiveerd'
       ? melding(
@@ -194,6 +196,14 @@ async function weergeven() {
     };
     document.title = detail ? `${detail.onderzoek.titel} – Onderzoeksomgeving` : 'Onderzoeksomgeving';
     vervang(hoofd, detail ? onderzoekKop(detail, adres.tab) : null, container);
+    // Op een telefoon schuift de rij tabbladen: het actieve tabblad in beeld zetten.
+    const tabs = hoofd.querySelector('.tabs');
+    const actieveTab = tabs && tabs.querySelector('a[aria-current]');
+    if (actieveTab && tabs.scrollWidth > tabs.clientWidth) {
+      const t = tabs.getBoundingClientRect();
+      const a = actieveTab.getBoundingClientRect();
+      tabs.scrollLeft += a.left - t.left - (t.width - a.width) / 2;
+    }
     container.append(laden());
     const module = await SCHERMEN[adres.scherm]();
     if (mijnBeurt !== weergaveTeller) return;
@@ -254,10 +264,13 @@ function toonInlog(foutmelding = '') {
   );
   document.title = 'Inloggen – Onderzoeksomgeving';
   vervang(app, h('main', { class: 'inlog' },
-    h('div', { class: 'kaart' },
-      h('h1', {}, 'Onderzoeksomgeving'),
-      h('p', { class: 'zacht' }, 'Log in met je beheerwachtwoord.'),
-      formulier,
+    h('div', { class: 'inlog-blad' },
+      h('div', { class: 'kaart' },
+        h('div', { class: 'inlog-merk' }, beeldmerk()),
+        h('h1', {}, 'Onderzoeksomgeving'),
+        h('p', { class: 'zacht' }, 'Log in met je beheerwachtwoord.'),
+        formulier,
+      ),
     ),
   ));
   invoer.focus();

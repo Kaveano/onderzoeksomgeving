@@ -35,24 +35,35 @@ html {
 .vl-verstuur,
 .vl-bericht {
   background: var(--vlak);
-  border: 1px solid var(--rand);
+  border: 1px solid transparent;
   border-radius: var(--radius);
-  box-shadow: var(--schaduw);
   padding: var(--ruimte-5);
   margin-bottom: var(--ruimte-4);
   min-width: 0;
 }
 
+/* De kop staat los op het papier (geen paneel), met een kort okeren streepje erboven. */
 .vl-kop {
-  border-top: 4px solid var(--primair);
+  background: transparent;
+  padding: var(--ruimte-3) 0 0;
+  margin-bottom: var(--ruimte-3);
+}
+.vl-kop::before {
+  content: '';
+  display: block;
+  width: 48px;
+  height: 4px;
+  margin-bottom: var(--ruimte-4);
+  background: var(--oker);
 }
 .vl-kop h1 {
   margin-bottom: var(--ruimte-3);
   overflow-wrap: anywhere;
 }
 .vl-intro {
-  font-size: 1.02rem;
+  font-size: 1.05rem;
   line-height: 1.6;
+  max-width: 62ch;
   overflow-wrap: anywhere;
 }
 .vl-intro p:last-child {
@@ -88,16 +99,16 @@ html {
 }
 .vl-voortgang-balk {
   display: block;
-  height: 6px;
-  border-radius: 999px;
-  background: var(--rand);
+  height: 5px;
+  border-radius: 2px;
+  background: var(--vlak-hover);
   overflow: hidden;
 }
 .vl-voortgang-vulling {
   display: block;
   height: 100%;
   width: 0;
-  border-radius: 999px;
+  border-radius: 2px;
   background: var(--primair);
   transition: width 0.25s ease;
 }
@@ -105,7 +116,7 @@ html {
 /* ---------- Thema's en vragen ---------- */
 
 .vl-thema > h2 {
-  font-size: 1.2rem;
+  font-size: 1.4rem;
   margin-bottom: var(--ruimte-1);
   overflow-wrap: anywhere;
 }
@@ -135,17 +146,18 @@ html {
   width: 100%;
   padding: 0;
   margin: 0 0 var(--ruimte-3);
-  font-size: 1.05rem;
-  font-weight: 600;
-  line-height: 1.45;
+  font-size: 1.08rem;
+  font-weight: 650;
+  line-height: 1.4;
   overflow-wrap: anywhere;
 }
 .vl-vraag > :not(legend) {
   clear: both;
 }
 .vl-vraag-nr {
-  color: var(--tekst-zacht);
-  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-variant-numeric: lining-nums tabular-nums;
+  color: var(--accent);
   margin-right: 0.35em;
 }
 
@@ -241,7 +253,7 @@ html {
   padding: var(--ruimte-2) var(--ruimte-3);
   border: 1px solid var(--rand-sterk);
   border-radius: var(--radius);
-  background: var(--vlak);
+  background: var(--vlak-licht);
   color: var(--tekst);
   line-height: 1.35;
   transition: background-color 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
@@ -273,10 +285,10 @@ html {
   height: 22px;
   border: 2px solid var(--rand-sterk);
   border-radius: 50%;
-  background: var(--vlak);
+  background: var(--vlak-licht);
 }
 .vl-optie-teken-vierkant {
-  border-radius: 4px;
+  border-radius: 3px;
 }
 .vl-optie-invoer:checked + .vl-optie-vlak .vl-optie-teken {
   border-color: var(--primair);
@@ -324,7 +336,7 @@ html {
   height: 34px;
   border: 2px solid var(--rand-sterk);
   border-radius: 50%;
-  background: var(--vlak);
+  background: var(--vlak-licht);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
@@ -339,12 +351,14 @@ html {
   margin-top: var(--ruimte-2);
 }
 .vl-weetniet .vl-optie-vlak {
-  border-style: dashed;
+  border-color: var(--rand);
+  background: transparent;
   color: var(--tekst-zacht);
   padding-right: var(--ruimte-4);
 }
 .vl-weetniet .vl-optie-invoer:checked + .vl-optie-vlak {
-  border-style: solid;
+  border-color: var(--primair);
+  background: var(--primair-zacht);
   color: var(--tekst);
 }
 
@@ -512,10 +526,12 @@ html {
     --vl-zijruimte: var(--ruimte-3);
     padding-top: var(--ruimte-3);
   }
-  .vl-kop,
   .vl-thema,
   .vl-verstuur {
     padding: var(--ruimte-4);
+  }
+  .vl-kop {
+    padding-top: var(--ruimte-2);
   }
   .vl-bericht {
     padding: var(--ruimte-5) var(--ruimte-4);

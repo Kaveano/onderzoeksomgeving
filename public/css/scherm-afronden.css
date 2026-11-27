@@ -30,3 +30,6 @@ dialog.im-dialoog { width: min(780px, calc(100vw - 24px)); }
 .an-ds-uitkomst { margin-top: var(--ruimte-3); }
 .an-zacht-blok { background: var(--vlak-2); border-radius: var(--radius-klein); padding: var(--ruimte-3) var(--ruimte-4); }
 .an-zacht-blok p { margin: 0 0 var(--ruimte-2); }
+
+/* Inlezen: in de dialoog staat het voorbeeld van het bestand op een licht blad. */
+.im-voorbeeld { --vlak: var(--vlak-licht); background: var(--vlak); border: 1px solid var(--rand); border-radius: var(--radius-klein); }

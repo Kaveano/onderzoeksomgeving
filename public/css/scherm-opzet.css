@@ -110,6 +110,7 @@
   gap: var(--ruimte-3);
 }
 .opzet-thema {
+  --vlak: var(--vlak-licht);
   border: 1px solid var(--rand);
   border-radius: var(--radius);
   padding: var(--ruimte-3) var(--ruimte-4) var(--ruimte-4);
@@ -143,13 +144,9 @@
   flex: 0 0 auto;
   min-width: 26px;
   height: 26px;
-  padding: 0 6px;
-  border-radius: 999px;
-  background: var(--primair-zacht);
-  color: var(--primair);
-  font-size: 0.85rem;
+  color: var(--accent);
   font-weight: 700;
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: lining-nums tabular-nums;
 }
 .opzet-thema-tekst .opzet-omschrijving,
 .opzet-thema-tekst .opzet-meta { padding-left: 34px; }

@@ -84,10 +84,12 @@
   gap: 2px 6px;
 }
 .start-cijfer-waarde {
-  font-size: 1.35rem;
-  font-weight: 700;
-  line-height: 1.25;
-  font-variant-numeric: tabular-nums;
+  font-size: 1.6rem;
+  font-weight: 600;
+  font-variant-numeric: lining-nums tabular-nums;
+  letter-spacing: -0.015em;
+  color: var(--kop);
+  line-height: 1.2;
 }
 .start-cijfer-open { font-size: 0.75rem; padding: 0 6px; }
 .start-kaart-voet { margin: var(--ruimte-3) 0 0; font-size: 0.8rem; color: var(--tekst-zacht); }
@@ -115,13 +117,10 @@
   left: 0;
   top: 0;
   width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  background: var(--primair-zacht);
-  color: var(--primair);
-  font-weight: 700;
+  font-family: var(--lettertype-kop);
+  font-size: 1.9rem;
+  line-height: 1;
+  color: var(--accent);
 }
 .start-stap-titel { display: block; margin: 4px 0 2px; }
 .start-stap-tekst { display: block; color: var(--tekst-zacht); font-size: 0.925rem; }
@@ -189,10 +188,10 @@
   align-items: center;
   gap: var(--ruimte-2);
   padding: var(--ruimte-2) var(--ruimte-3);
-  border: 1px solid var(--rand);
-  border-bottom: 3px solid var(--rand-sterk);
-  border-radius: var(--radius-klein);
-  background: var(--vlak);
+  border: 0;
+  border-top: 3px solid var(--rand);
+  border-radius: 0;
+  background: transparent;
   color: var(--tekst-zacht);
   font: inherit;
   font-size: 0.925rem;
@@ -200,24 +199,20 @@
   text-align: left;
   cursor: pointer;
 }
-.nieuw-stapknop:hover { background: var(--vlak-hover); color: var(--tekst); }
+.nieuw-stapknop:hover { background: var(--vlak); color: var(--tekst); border-top-color: var(--rand-sterk); }
 .nieuw-stapknop-nr {
   flex: 0 0 auto;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  background: var(--vlak-2);
-  border: 1px solid var(--rand-sterk);
-  font-weight: 700;
-  font-size: 0.85rem;
+  min-width: 22px;
+  font-family: var(--lettertype-kop);
+  font-size: 1.5rem;
+  line-height: 1;
+  font-weight: 400;
 }
 .nieuw-stapknop-naam { min-width: 0; overflow-wrap: anywhere; line-height: 1.25; }
-.is-nu > .nieuw-stapknop { border-color: var(--primair); border-bottom-color: var(--primair); color: var(--tekst); font-weight: 700; }
-.is-nu .nieuw-stapknop-nr { background: var(--primair); border-color: var(--primair); color: var(--tekst-omgekeerd); }
-.is-klaar > .nieuw-stapknop { border-bottom-color: var(--succes); color: var(--tekst); }
-.is-klaar .nieuw-stapknop-nr { background: var(--succes-zacht); border-color: var(--succes); color: var(--succes); }
+.is-nu > .nieuw-stapknop { border-top-color: var(--oker); color: var(--tekst); font-weight: 700; }
+.is-nu .nieuw-stapknop-nr { color: var(--accent); }
+.is-klaar > .nieuw-stapknop { border-top-color: var(--succes); color: var(--tekst); }
+.is-klaar .nieuw-stapknop-nr { color: var(--succes); }
 
 .nieuw-rij {
   display: grid;
@@ -273,8 +268,9 @@
   gap: var(--ruimte-2) var(--ruimte-3);
   padding: var(--ruimte-3) var(--ruimte-4);
   margin-bottom: var(--ruimte-3);
-  border: 1px dashed var(--rand-sterk);
+  border: 0;
   border-radius: var(--radius);
+  background: var(--vlak-2);
   color: var(--tekst-zacht);
 }
 .nieuw-keuze { margin: 0; font-weight: 500; }
@@ -301,10 +297,10 @@
   position: sticky;
   bottom: 0;
   z-index: 10;
-  background: var(--vlak);
-  border: 1px solid var(--rand-sterk);
-  border-radius: var(--radius) var(--radius) 0 0;
-  box-shadow: 0 -4px 16px rgba(16, 24, 40, 0.12);
+  background: var(--vlak-2);
+  border: 0;
+  border-top: 2px solid var(--primair);
+  border-radius: 0;
   padding: var(--ruimte-3) var(--ruimte-4);
 }
 .nieuw-voet-knoppen {
@@ -378,8 +374,8 @@ body:has(.nieuw-voet) .toasts { bottom: 84px; }
   font-size: 0.85rem;
   padding: 2px 10px;
   border: 1px solid var(--rand);
-  border-radius: 999px;
-  background: var(--vlak);
+  border-radius: var(--radius-klein);
+  background: var(--vlak-licht);
 }
 .sjabloon-vragen ol { margin: 0; padding-left: 1.6rem; }
 .sjabloon-vragen li { margin-bottom: var(--ruimte-2); font-size: 0.95rem; }
@@ -436,8 +432,6 @@ body:has(.nieuw-voet) .toasts { bottom: 84px; }
     margin: 0 calc(-1 * var(--ruimte-3));
     padding: var(--ruimte-2) var(--ruimte-3);
     border-radius: 0;
-    border-left: 0;
-    border-right: 0;
   }
   body:has(.nieuw-voet) .toasts { bottom: 72px; }
   .nieuw-voet-knoppen { flex-wrap: nowrap; }
@@ -450,3 +444,12 @@ body:has(.nieuw-voet) .toasts { bottom: 84px; }
   /* Inhoud van een sjabloon over de volle breedte op smalle schermen */
   .nieuw-sjabloon-voorbeeld { padding-left: var(--ruimte-3); }
 }
+
+/* ---------- Atelier ---------- */
+.start-kaart { padding-top: var(--ruimte-4); }
+.start-kaart-bedrijf { letter-spacing: 0.08em; font-weight: 700; color: var(--accent); margin-bottom: 4px; }
+.start-kaart-titel { font-family: var(--lettertype-kop); font-weight: 400; font-synthesis: none; font-size: 1.35rem; line-height: 1.2; }
+.start-kaart-link { color: var(--kop); }
+.start-sectie-kop { padding-bottom: var(--ruimte-2); border-bottom: 1px solid var(--rand); margin-bottom: var(--ruimte-4); }
+.start-stap-titel { font-size: 1.02rem; }
+.nieuw-sjabloon { --vlak: var(--vlak-licht); background: var(--vlak); }

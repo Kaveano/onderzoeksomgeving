@@ -349,3 +349,23 @@ export function statusLabel(status) {
 export function vragenlijstLink(code) {
   return `${location.origin}/v/${code}`;
 }
+
+/** Het beeldmerk: een ring (de O) met één uitgelicht part, als inline SVG (kleuren via CSS). */
+export function beeldmerk() {
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('class', 'merk');
+  svg.setAttribute('viewBox', '0 0 32 32');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('focusable', 'false');
+  for (const [klasse, d] of [
+    ['merk-ring', 'M26.47 16.73A10.5 10.5 0 1 1 15.27 5.53'],
+    ['merk-part', 'M17.82 5.66a10.5 10.5 0 0 1 8.52 8.52'],
+  ]) {
+    const pad = document.createElementNS(NS, 'path');
+    pad.setAttribute('class', klasse);
+    pad.setAttribute('d', d);
+    svg.append(pad);
+  }
+  return svg;
+}

@@ -2,7 +2,7 @@
 // De kijker ziet alleen wat de onderzoeker heeft vrijgegeven en kan niets wijzigen.
 // Tekst uit het onderzoek gaat altijd via h()/textContent, nooit via innerHTML.
 
-import { h, vervang, laden, melding, lokaleDatum } from './beheer/ui.js';
+import { h, vervang, laden, melding, lokaleDatum, beeldmerk } from './beheer/ui.js';
 
 const CODE = (location.pathname.split('/')[2] || '').replace(/[^A-Za-z0-9_-]/g, '');
 const API = `/api/kijk/${CODE}`;
@@ -62,10 +62,11 @@ function toonWerktNiet(tekst) {
   ruimOp();
   document.title = 'Deze link werkt niet';
   vervang(app, h('main', { class: 'inlog' },
-    h('div', { class: 'kaart' },
+    h('div', { class: 'inlog-blad' }, h('div', { class: 'kaart' },
+      h('div', { class: 'inlog-merk' }, beeldmerk()),
       h('h1', {}, 'Deze link werkt niet (meer)'),
       h('p', {}, tekst || 'De link is verlopen, ingetrokken of niet goed overgenomen.'),
-      h('p', { class: 'zacht' }, 'Vraag degene van wie je de link kreeg om een nieuwe link.'))));
+      h('p', { class: 'zacht' }, 'Vraag degene van wie je de link kreeg om een nieuwe link.')))));
 }
 
 // ---------- Toegangscode invullen ----------
@@ -117,11 +118,12 @@ function toonCodeScherm(bericht = '') {
   h('div', { class: 'knoppen' }, knop));
 
   vervang(app, h('main', { class: 'inlog' },
-    h('div', { class: 'kaart' },
-      h('h1', {}, 'Onderzoeksresultaten bekijken'),
+    h('div', { class: 'inlog-blad' }, h('div', { class: 'kaart' },
+      h('div', { class: 'inlog-merk' }, beeldmerk()),
+      h('h1', {}, 'Resultaten bekijken'),
       bericht ? melding(bericht) : null,
       h('p', { class: 'zacht' }, 'Je hebt een link gekregen om de resultaten van een onderzoek in te zien. Vul de toegangscode in die je daarbij apart hebt ontvangen.'),
-      formulier)));
+      formulier))));
   invoer.focus();
 }
 
@@ -148,7 +150,7 @@ function kopbalk() {
   return h('header', { class: 'kop' },
     h('div', { class: 'kop-binnen' },
       h('span', { class: 'kop-logo' },
-        h('span', { class: 'kop-logo-merk', 'aria-hidden': 'true' }, 'O'),
+        beeldmerk(),
         h('span', { class: 'kop-logo-tekst' }, 'Onderzoeksresultaten')),
       h('nav', { class: 'kop-nav', 'aria-label': 'Inzage' },
         h('span', { class: 'label kijk-label' }, 'Alleen-lezen'),
@@ -178,11 +180,12 @@ async function toonInzage() {
     : null;
   const container = h('div', { class: 'kijk-inhoud' }, laden());
   const hoofd = h('main', { class: 'inhoud', id: 'inhoud', tabindex: '-1' },
-    h('div', { class: 'paginakop' },
-      h('div', {},
-        h('h1', {}, o.titel),
-        h('p', { class: 'ondertitel' }, o.bedrijfsnaam)),
-      o.status === 'gearchiveerd' ? h('div', { class: 'rij' }, h('span', { class: 'label' }, 'Afgerond')) : null),
+    h('div', { class: 'onderzoek-kop' },
+      h('div', { class: 'paginakop' },
+        h('div', {},
+          h('p', { class: 'bovenschrift' }, o.bedrijfsnaam),
+          h('h1', {}, o.titel)),
+        o.status === 'gearchiveerd' ? h('div', { class: 'rij onderzoek-status' }, h('span', { class: 'label label-archief' }, 'Afgerond')) : null)),
     o.onderzoeksvraag
       ? h('div', { class: 'kijk-vraag' },
         h('span', { class: 'kijk-vraag-label' }, 'Onderzoeksvraag'),

@@ -116,8 +116,7 @@
   gap: var(--ruimte-2);
 }
 .db-respons-getal .kengetal-waarde {
-  font-size: 2rem;
-  font-variant-numeric: normal;
+  font-size: 2.3rem;
 }
 .db-respons-pct { font-size: 0.875rem; }
 
@@ -125,14 +124,14 @@
 .db-meter {
   position: relative;
   height: 8px;
-  border-radius: 999px;
-  background: var(--primair-zacht);
+  border-radius: 2px;
+  background: var(--vlak-hover);
   overflow: hidden;
 }
 .db-meter-vulling {
   height: 100%;
   background: var(--reeks-1);
-  border-radius: 999px;
+  border-radius: 0;
 }
 .db-meter-groot { height: 14px; }
 
@@ -158,7 +157,7 @@
 .db-dag-balk {
   width: 100%;
   background: var(--reeks-1);
-  border-radius: 3px 3px 0 0;
+  border-radius: 2px 2px 0 0;
 }
 .db-dag:hover .db-dag-balk { background: var(--primair-hover); }
 .db-dag-nul { height: 0; }
@@ -219,7 +218,7 @@
   height: 16px;
   min-width: 2px;
   background: var(--reeks-1);
-  border-radius: 0 4px 4px 0;
+  border-radius: 0 2px 2px 0;
 }
 .db-score-rij:hover .db-score-balk { background: var(--primair-hover); }
 .db-score-waarde {
@@ -371,7 +370,7 @@
   flex: none;
   width: 12px;
   height: 12px;
-  border-radius: 3px;
+  border-radius: 2px;
 }
 
 /* 100%-gestapelde balk 1..5 (+ weet niet), met 2px ruimte tussen de delen */
@@ -386,7 +385,7 @@
   min-width: 2px;
   display: flex;
   align-items: center;
-  border-radius: 4px;
+  border-radius: 2px;
   container-type: inline-size;
 }
 .db-seg-tekst {
@@ -403,7 +402,7 @@
 .db-seg:hover { filter: brightness(1.08); }
 .db-seg.db-swn { margin-left: 4px; }
 
-.db-s1, .db-s2, .db-s3, .db-s4, .db-s5, .db-swn { color: #10151b; }
+.db-s1, .db-s2, .db-s3, .db-s4, .db-s5, .db-swn { color: #1d141c; }
 .db-s1 { background: var(--schaal-1); color: #ffffff; }
 .db-s2 { background: var(--schaal-2); }
 .db-s3 { background: var(--schaal-3); }
@@ -414,7 +413,7 @@
   box-shadow: inset 0 0 0 1px var(--rand-sterk);
 }
 @media (prefers-color-scheme: dark) {
-  .db-s1, .db-s2, .db-s4, .db-s5 { color: #10151b; }
+  .db-s1, .db-s2, .db-s4, .db-s5 { color: #1d141c; }
   .db-s3, .db-swn { color: #ffffff; }
 }
 
@@ -443,9 +442,9 @@
 .db-optie-label { font-size: 0.925rem; overflow-wrap: anywhere; }
 .db-optie .db-meter {
   height: 12px;
-  border-radius: 0 4px 4px 0;
+  border-radius: 0 2px 2px 0;
 }
-.db-optie .db-meter-vulling { border-radius: 0 4px 4px 0; }
+.db-optie .db-meter-vulling { border-radius: 0 2px 2px 0; }
 .db-optie-waarde {
   text-align: right;
   font-size: 0.875rem;
@@ -578,7 +577,7 @@
   align-items: baseline;
   gap: 2px 10px;
 }
-.db-reeks-waarde { font-size: 1.6rem; font-weight: 700; line-height: 1.15; }
+.db-reeks-waarde { font-size: 1.75rem; font-weight: 600; font-variant-numeric: lining-nums tabular-nums; letter-spacing: -0.015em; color: var(--kop); line-height: 1.15; }
 .db-reeks-wanneer { font-size: 0.85rem; color: var(--tekst-zacht); }
 .db-reeks .db-uitklap { margin-top: 0; }
 .db-reeks-tabel { font-size: 0.875rem; }
@@ -620,8 +619,8 @@
 }
 .db-open-lijst li {
   padding: var(--ruimte-2) var(--ruimte-3);
-  background: var(--vlak-2);
-  border-left: 3px solid var(--rand-sterk);
+  background: var(--vlak-licht);
+  border-left: 3px solid var(--oker);
   border-radius: 0 var(--radius-klein) var(--radius-klein) 0;
   white-space: pre-line;
   overflow-wrap: anywhere;
@@ -696,3 +695,17 @@
 @media (max-width: 400px) {
   .dashboard .db-uitsplits-tabel .db-vraag-cel { min-width: 8rem; max-width: 9rem; width: 9rem; }
 }
+
+/* ---------- Atelier: bladen op het paneel ----------
+   Grafiekblokken liggen als lichte bladen op het zandkleurige paneel; alles wat binnen zo'n blad
+   "de ondergrond" (--vlak) gebruikt, krijgt vanzelf de kleur van het blad. */
+.db-thema,
+.db-mini,
+.db-reeks,
+.db-respons-tegel {
+  --vlak: var(--vlak-licht);
+  background: var(--vlak);
+}
+.db-thema-naam { font-size: 1.08rem; }
+.db-subkop { font-family: var(--lettertype); font-weight: 700; color: var(--tekst); }
+.db-filter-label { font-weight: 700; }

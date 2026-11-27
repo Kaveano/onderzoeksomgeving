@@ -26,7 +26,9 @@ const eindig = (x) => typeof x === 'number' && Number.isFinite(x);
 
 export function nlGetal(x, decimalen = 1) {
   if (!eindig(x)) return '–';
-  return x.toLocaleString('nl-NL', { minimumFractionDigits: decimalen, maximumFractionDigits: decimalen });
+  const t = x.toLocaleString('nl-NL', { minimumFractionDigits: decimalen, maximumFractionDigits: decimalen });
+  // Een echt minteken (−) in plaats van een streepje; en geen "−0,0".
+  return /^-0(,0+)?$/.test(t) ? t.slice(1) : t.replace(/^-/, MIN);
 }
 
 function nlProcent(x) {

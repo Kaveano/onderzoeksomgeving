@@ -80,7 +80,7 @@
   line-height: 1.15;
   overflow-wrap: anywhere;
 }
-.iv-waarde-getal { font-size: 1.75rem; font-weight: 700; }
+.iv-waarde-getal { font-size: 1.9rem; font-weight: 600; font-variant-numeric: lining-nums tabular-nums; letter-spacing: -0.015em; color: var(--kop); }
 .iv-waarde-eenheid {
   margin-left: 0.35em;
   font-weight: 600;
