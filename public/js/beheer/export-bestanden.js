@@ -244,32 +244,53 @@ export function spssGegevens(data) {
         return w === 'ja' ? 1 : w === 'nee' ? 0 : null;
       });
     } else if (q.type === 'meerkeuze') {
-      // Antwoordmogelijkheden herkennen aan hun tekst, zodat ook een gekopieerde vragenlijst dezelfde codes krijgt.
-      const teksten = [];
+      // Antwoordmogelijkheden herkennen aan hun id: een kopie voor een volgend meetmoment houdt dezelfde id's,
+      // ook als een mogelijkheid daarna is hernoemd. Heeft een mogelijkheid een ander id maar dezelfde tekst
+      // (en staat die tekst nog niet in deze vragenlijst), dan hoort hij er ook bij. Het label is dat van de
+      // eerste vragenlijst, met de nieuwe naam erbij als die later is veranderd.
+      const mogelijk = []; // { ids: Set, labels: [] }
+      const gelijkeTekst = (a, b) => a.trim().toLowerCase() === b.trim().toLowerCase();
       for (const l of model.lijsten) {
         const v = vraagIn(l);
-        if (v) for (const o of v.opties) if (!teksten.includes(o.label)) teksten.push(o.label);
+        if (!v) continue;
+        const idsHier = new Set(v.opties.map((o) => o.id));
+        for (const o of v.opties) {
+          let m = mogelijk.find((x) => x.ids.has(o.id));
+          if (!m) m = mogelijk.find((x) => x.labels.some((t) => gelijkeTekst(t, o.label)) && ![...x.ids].some((id) => idsHier.has(id)));
+          if (!m) {
+            mogelijk.push({ ids: new Set([o.id]), labels: [o.label] });
+            continue;
+          }
+          m.ids.add(o.id);
+          if (!m.labels.some((t) => gelijkeTekst(t, o.label))) m.labels.push(o.label);
+        }
       }
+      for (const m of mogelijk) m.label = m.labels.join(' / ');
+      const bestaatIn = (l, m) => {
+        const v = vraagIn(l);
+        return !!v && v.opties.some((o) => m.ids.has(o.id));
+      };
       const gekozen = (l, a) => {
         const v = vraagIn(l);
         if (!v) return null;
         const w = a[v.id];
         if (w === undefined || w === null) return null;
-        const perId = new Map(v.opties.map((o) => [o.id, o.label]));
-        return (Array.isArray(w) ? w : [w]).map((id) => perId.get(id)).filter((t) => t !== undefined);
+        return (Array.isArray(w) ? w : [w]).filter((id) => v.opties.some((o) => o.id === id));
       };
       if (q.meerdere) {
-        teksten.forEach((tekst, k) => {
-          voeg({ naam: spssNaam(`${basis}_${k + 1}`, namen), soort: 'getal', decimalen: 0, label: `${label} – ${tekst}`, waardelabels: { 1: 'Gekozen', 0: 'Niet gekozen' }, meetniveau: 'NOMINAL' }, (l, a) => {
+        mogelijk.forEach((m, k) => {
+          // 1 = gekozen, 0 = niet gekozen; leeg als deze mogelijkheid niet in de vragenlijst van die respondent stond.
+          voeg({ naam: spssNaam(`${basis}_${k + 1}`, namen), soort: 'getal', decimalen: 0, label: `${label} – ${m.label}`, waardelabels: { 1: 'Gekozen', 0: 'Niet gekozen' }, meetniveau: 'NOMINAL' }, (l, a) => {
             const g = gekozen(l, a);
-            return g === null ? null : g.includes(tekst) ? 1 : 0;
+            if (g === null || !bestaatIn(l, m)) return null;
+            return g.some((id) => m.ids.has(id)) ? 1 : 0;
           });
         });
       } else {
-        voeg({ naam: spssNaam(basis, namen), soort: 'getal', decimalen: 0, label, waardelabels: Object.fromEntries(teksten.map((t, k) => [k + 1, t])), meetniveau: 'NOMINAL' }, (l, a) => {
+        voeg({ naam: spssNaam(basis, namen), soort: 'getal', decimalen: 0, label, waardelabels: Object.fromEntries(mogelijk.map((m, k) => [k + 1, m.label])), meetniveau: 'NOMINAL' }, (l, a) => {
           const g = gekozen(l, a);
           if (!g || g.length !== 1) return null;
-          return teksten.indexOf(g[0]) + 1 || null;
+          return mogelijk.findIndex((m) => m.ids.has(g[0])) + 1 || null;
         });
       }
     } else {
@@ -331,6 +352,7 @@ export function spssPakket(data) {
     'Goed om te weten:',
     '- Alle vragenlijsten staan onder elkaar; de variabelen "vragenlijst" en "meetmoment" geven aan bij welke meting een rij hoort.',
     '- Dezelfde vraag op verschillende meetmomenten staat in dezelfde kolom. Een vraag die in een vragenlijst niet voorkomt, is daar leeg.',
+    '- Bij meerkeuzevragen blijft een antwoordmogelijkheid in dezelfde kolom, ook als die later is hernoemd (het label noemt dan beide namen). Kwam een mogelijkheid in een vragenlijst niet voor, dan is die kolom daar leeg.',
     '- De vragenlijsten zijn anoniem: je kunt meetmomenten vergelijken als groepen, maar niet per persoon koppelen.',
     '- Bij schaalvragen is 99 "weet niet / n.v.t."; die waarde telt SPSS niet mee in gemiddelden.',
     '- De variabelen thema01, thema02 … zijn de gemiddelde score per thema per respondent (alleen als minstens de helft van de vragen is beantwoord).',

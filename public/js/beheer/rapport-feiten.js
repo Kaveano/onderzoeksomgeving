@@ -31,6 +31,13 @@ export function nlGetal(x, decimalen = 1) {
   return /^-0(,0+)?$/.test(t) ? t.slice(1) : t.replace(/^-/, MIN);
 }
 
+/** Getal met maximaal twee decimalen en de eenheid, zoals op het dashboard: 6,4% · 12 dagen · 0,04 */
+function waardeMetEenheid(w, eenheid) {
+  const g = eindig(w) ? w.toLocaleString('nl-NL', { maximumFractionDigits: 2 }).replace(/^-/, MIN) : '–';
+  if (!eenheid) return g;
+  return eenheid === '%' ? `${g}%` : `${g} ${eenheid}`;
+}
+
 function nlProcent(x) {
   return eindig(x) ? `${Math.round(x)}%` : '–';
 }
@@ -285,6 +292,7 @@ export function verzamelFeiten({ data, dashboards, peildatum }) {
         return {
           ...basis,
           n: q.n,
+          n_score: q.type === 'schaal' && Number.isInteger(q.n_score) ? q.n_score : undefined,
           verborgen: false,
           gemiddelde: eindig(q.gemiddelde) ? q.gemiddelde : null,
           percentage_ja: eindig(q.percentage_ja) ? q.percentage_ja : null,
@@ -408,7 +416,11 @@ function responsZin(l, drempel) {
     return `De vragenlijst "${lijstNaam(l)}" is door minder dan ${drempel} personen ingevuld. Om de anonimiteit te beschermen worden daarvan geen uitkomsten gerapporteerd.`;
   }
   let zin = `De vragenlijst "${lijstNaam(l)}" is ${aantalTekst(l.n, 'keer', 'keer')} ingevuld`;
-  if (l.aantal_uitgenodigd) zin += `; er waren ${aantalTekst(l.aantal_uitgenodigd, 'persoon', 'personen')} uitgenodigd (respons ${nlProcent(l.percentage)})`;
+  if (l.aantal_uitgenodigd && l.n > l.aantal_uitgenodigd) {
+    zin += `, terwijl er ${l.aantal_uitgenodigd === 1 ? 'één persoon was' : `${aantalTekst(l.aantal_uitgenodigd, 'persoon', 'personen')} waren`} uitgenodigd. Een responspercentage is daarom niet te geven; controleer het aantal uitgenodigden bij de vragenlijst`;
+  } else if (l.aantal_uitgenodigd) {
+    zin += `; er ${l.aantal_uitgenodigd === 1 ? 'was één persoon' : `waren ${aantalTekst(l.aantal_uitgenodigd, 'persoon', 'personen')}`} uitgenodigd (respons ${nlProcent(l.percentage)})`;
+  }
   zin += '.';
   if (l.van && l.tot) zin += l.van === l.tot ? ` Alle antwoorden zijn van ${nlDatum(l.van)}.` : ` De antwoorden zijn binnengekomen van ${nlDatum(l.van)} tot en met ${nlDatum(l.tot)}.`;
   return zin;
@@ -423,7 +435,7 @@ function lijstenTabel(f) {
       l.aantal_vragen,
       l.aantal_uitgenodigd ? l.aantal_uitgenodigd : '–',
       l.verborgen ? `minder dan ${f.drempel}` : l.n,
-      l.verborgen || !l.aantal_uitgenodigd ? '–' : nlProcent(l.percentage),
+      l.verborgen || !l.aantal_uitgenodigd || l.n > l.aantal_uitgenodigd ? '–' : nlProcent(l.percentage),
     ]),
     'Vragenlijsten en respons',
   );
@@ -472,13 +484,18 @@ function feitenAanpak(f, { metMethode = true } = {}) {
   return uit;
 }
 
+/** Percentages "4 of 5" en "1 of 2", berekend over de scores 1 tot 5 ("weet niet" telt niet mee, net als bij het gemiddelde). */
 function eensOneens(q) {
   const v = q.verdeling.filter((x) => x.waarde !== 'weet_niet');
-  if (v.length < 5 || !q.n) return [null, null];
+  const scores = v.reduce((t, x) => t + x.aantal, 0);
+  if (v.length < 5 || !scores) return [null, null];
   const hoog = v[3].aantal + v[4].aantal;
   const laag = v[0].aantal + v[1].aantal;
-  return [(hoog / q.n) * 100, (laag / q.n) * 100];
+  return [(hoog / scores) * 100, (laag / scores) * 100];
 }
+
+const weetNietAantal = (q) => (q.verdeling.find((x) => x.waarde === 'weet_niet') || { aantal: 0 }).aantal;
+const scoreAantal = (q) => (Number.isInteger(q.n_score) ? q.n_score : q.verdeling.filter((x) => x.waarde !== 'weet_niet').reduce((t, x) => t + x.aantal, 0));
 
 function feitenResultaten(f, inhoud, sectie) {
   const l = hoofdLijst(f, inhoud);
@@ -495,13 +512,20 @@ function feitenResultaten(f, inhoud, sectie) {
       `Gemiddelde score per thema – ${lijstNaam(l)}`,
     ));
     if (themas.length >= 2) {
-      const gesorteerd = themas.slice().sort((a, b) => b.gemiddelde - a.gemiddelde);
-      const hoogste = gesorteerd[0];
-      const laagste = gesorteerd[gesorteerd.length - 1];
-      if (Number(hoogste.gemiddelde.toFixed(1)) !== Number(laagste.gemiddelde.toFixed(1))) {
-        uit.push(alinea(`Het hoogste gemiddelde heeft het thema ${hoogste.naam} (${nlGetal(hoogste.gemiddelde, 1)}), het laagste het thema ${laagste.naam} (${nlGetal(laagste.gemiddelde, 1)}).`));
+      // Hoogste en laagste op de afgeronde waarden die in de tabel staan; bij een gelijke stand alle thema's noemen.
+      const afgerond = (t) => Number(t.gemiddelde.toFixed(1));
+      const max = Math.max(...themas.map(afgerond));
+      const min = Math.min(...themas.map(afgerond));
+      if (max !== min) {
+        const deel = (waarde, woord) => {
+          const namen = themas.filter((t) => afgerond(t) === waarde).map((t) => t.naam);
+          return namen.length === 1
+            ? `${woord} gemiddelde (${nlGetal(waarde, 1)}) heeft het thema ${namen[0]}`
+            : `${woord} gemiddelde (${nlGetal(waarde, 1)}) hebben de thema's ${opsomming(namen)}`;
+        };
+        uit.push(alinea(`${deel(max, 'Het hoogste')}; ${deel(min, 'het laagste')}.`));
       } else {
-        uit.push(alinea(`De thema's scoren afgerond gelijk (${nlGetal(hoogste.gemiddelde, 1)}).`));
+        uit.push(alinea(`De thema's scoren afgerond gelijk (${nlGetal(max, 1)}).`));
       }
     }
   } else {
@@ -524,16 +548,20 @@ function feitenResultaten(f, inhoud, sectie) {
     uit.push(kop(g.naam || 'Zonder thema', 3));
     const schaal = g.vragen.filter((q) => q.type === 'schaal');
     if (schaal.length) {
+      const metWeetNiet = schaal.some((q) => !q.verborgen && weetNietAantal(q) > 0);
       uit.push(tabel(
-        ['Stelling of vraag', 'Gemiddelde', 'Score 4 of 5', 'Score 1 of 2', 'Antwoorden'],
+        ['Stelling of vraag', 'Gemiddelde', 'Score 4 of 5', 'Score 1 of 2', 'Scores (1–5)', ...(metWeetNiet ? ['Weet niet'] : [])],
         schaal.map((q) => {
-          if (q.verborgen) return [q.tekst, 'niet getoond', '–', '–', `minder dan ${f.drempel}`];
-          if (!q.n) return [q.tekst, '–', '–', '–', 0];
+          if (q.verborgen) return [q.tekst, 'niet getoond', '–', '–', `minder dan ${f.drempel}`, ...(metWeetNiet ? ['–'] : [])];
+          const scores = scoreAantal(q);
+          const wn = metWeetNiet ? [weetNietAantal(q)] : [];
+          if (!scores) return [q.tekst, '–', '–', '–', 0, ...wn];
           const [hoog, laag] = eensOneens(q);
-          return [q.tekst, nlGetal(q.gemiddelde, 1), nlProcent(hoog), nlProcent(laag), q.n];
+          return [q.tekst, nlGetal(q.gemiddelde, 1), nlProcent(hoog), nlProcent(laag), scores, ...wn];
         }),
         `Schaalvragen – ${g.naam}`,
       ));
+      if (metWeetNiet) uit.push(alinea('Het gemiddelde en de percentages zijn berekend over de scores 1 tot 5; "weet niet" telt daarin niet mee.'));
     }
     for (const q of g.vragen.filter((x) => x.type !== 'schaal')) {
       if (q.verborgen) {
@@ -542,9 +570,9 @@ function feitenResultaten(f, inhoud, sectie) {
         uit.push(alinea(`"${q.tekst}": geen antwoorden.`));
       } else {
         uit.push(tabel(
-          [q.tekst, 'Aantal', q.meerdere ? '% van respondenten' : 'Percentage'],
+          ['Antwoord', 'Aantal', q.meerdere ? '% van respondenten' : 'Percentage'],
           q.verdeling.map((v) => [v.label, v.aantal, nlProcent(v.percentage)]),
-          `${q.type === 'janee' ? 'Ja/nee-vraag' : 'Meerkeuzevraag'} (${aantalTekst(q.n, 'antwoord', 'antwoorden')})${q.meerdere ? '; meerdere antwoorden mogelijk' : ''}`,
+          `"${q.tekst}" – ${q.type === 'janee' ? 'ja/nee-vraag' : 'meerkeuzevraag'}, ${aantalTekst(q.n, 'antwoord', 'antwoorden')}${q.meerdere ? '; meerdere antwoorden mogelijk' : ''}`,
         ));
       }
     }
@@ -554,19 +582,19 @@ function feitenResultaten(f, inhoud, sectie) {
 
 const EFFECT = { verwaarloosbaar: 'verwaarloosbaar klein', klein: 'klein', middelgroot: 'middelgroot', groot: 'groot' };
 
+/**
+ * Eén zin per getoetst thema. De gemiddelden zelf staan in de tabel erboven (zoals op het dashboard);
+ * de zin noemt alleen de uitkomst van de toets, zodat er nooit twee verschillende gemiddelden naast elkaar staan.
+ */
 function toetsZin(t) {
-  // Het verschil volgt uit de afgeronde gemiddelden die de lezer ziet (3,9 − 2,8 = 1,1).
-  const verschil = Number(t.naar.gemiddelde.toFixed(1)) - Number(t.van.gemiddelde.toFixed(1));
-  const richting = Number(verschil.toFixed(1)) === 0
-    ? `bleef afgerond gelijk (${nlGetal(t.naar.gemiddelde, 1)}; ${t.van.naam} n = ${t.van.n}, ${t.naar.naam} n = ${t.naar.n})`
-    : `ging van ${nlGetal(t.van.gemiddelde, 1)} (${t.van.naam}, n = ${t.van.n}) naar ${nlGetal(t.naar.gemiddelde, 1)} (${t.naar.naam}, n = ${t.naar.n}), een verschil van ${metTeken(verschil, 1)}`;
-  let zin = `**${t.thema_naam}** ${richting}.`;
-  if (!eindig(t.p)) return `${zin} Dit verschil is niet te toetsen (te weinig spreiding in de antwoorden).`;
-  zin += t.p < ALFA
-    ? ` Dit verschil is statistisch significant (${pTekst(t.p)}): het is onwaarschijnlijk dat het alleen door toeval komt.`
-    : ` Dit verschil is niet statistisch significant (${pTekst(t.p)}): het kan door toeval komen.`;
+  const basis = `Getoetst op de themascores van ${t.van.n} en ${t.naar.n} respondenten.`;
+  const wat = `**${t.thema_naam}**: het verschil tussen ${t.van.naam} en ${t.naar.naam}`;
+  if (!eindig(t.p)) return `${wat} is niet te toetsen, omdat er te weinig spreiding in de antwoorden is. ${basis}`;
+  let zin = t.p < ALFA
+    ? `${wat} is statistisch significant (${pTekst(t.p)}): het is onwaarschijnlijk dat het alleen door toeval komt.`
+    : `${wat} is niet statistisch significant (${pTekst(t.p)}): het kan door toeval komen.`;
   if (t.effect && eindig(t.g)) zin += ` De grootte van het verschil is ${EFFECT[t.effect] || t.effect} (Hedges' g = ${nlGetal(t.g, 2)}).`;
-  return zin;
+  return `${zin} ${basis}`;
 }
 
 function feitenVerloop(f) {
@@ -589,7 +617,7 @@ function feitenVerloop(f) {
     'Gemiddelde score per thema en meetmoment (schaal 1–5)',
   )];
   if (f.toetsen.length) {
-    uit.push(alinea('Per thema is getoetst of het verschil tussen het eerste en het laatste meetmoment groter is dan op grond van toeval te verwachten is (t-toets van Welch op de themascore per respondent, tweezijdig, grens 5%):'));
+    uit.push(alinea('Per thema is getoetst of het verschil tussen het eerste en het laatste meetmoment groter is dan op grond van toeval te verwachten is (t-toets van Welch, tweezijdig, grens 5%). De toets gebruikt per respondent de themascore: het gemiddelde van de schaalvragen van dat thema die iemand beantwoordde, als dat minstens de helft was. De tabel hierboven middelt alle losse antwoorden, zoals het dashboard. Daardoor kunnen de aantallen en de gemiddelden van de toets iets afwijken van de tabel.'));
     uit.push({ soort: 'lijst', items: f.toetsen.map(toetsZin) });
     uit.push(alinea('Bij het lezen: de vragenlijsten zijn anoniem, dus de metingen worden vergeleken als twee groepen en niet per persoon. Een significant verschil zegt niets over de oorzaak, en significant betekent niet automatisch belangrijk.'));
   }
@@ -601,7 +629,7 @@ function feitenCijfers(f) {
   if (f.cijfers.length) {
     uit.push(tabel(
       ['Cijfer', 'Datum', 'Meetmoment', 'Waarde'],
-      f.cijfers.flatMap((r) => r.punten.map((p) => [r.naam, nlDatum(p.datum), p.meetmoment_naam || '–', `${nlGetal(p.waarde, Number.isInteger(p.waarde) ? 0 : 1)}${r.eenheid ? ` ${r.eenheid}` : ''}`])),
+      f.cijfers.flatMap((r) => r.punten.map((p) => [r.naam, nlDatum(p.datum), p.meetmoment_naam || '–', waardeMetEenheid(p.waarde, r.eenheid)])),
       'Eigen cijfers',
     ));
   } else {
@@ -622,7 +650,7 @@ function actieTabel(f, acties, bijschrift) {
 
 function feitenAanbevelingen(f) {
   if (!f.acties.length) return [alinea('Op de actielijst van dit onderzoek staan nog geen acties.')];
-  return [alinea(`Op de actielijst van dit onderzoek staan ${aantalTekst(f.acties.length, 'actie', 'acties')}:`), actieTabel(f, f.acties, 'Actielijst')];
+  return [alinea(`Op de actielijst van dit onderzoek ${f.acties.length === 1 ? 'staat één actie' : `staan ${aantalTekst(f.acties.length, 'actie', 'acties')}`}:`), actieTabel(f, f.acties, 'Actielijst')];
 }
 
 function feitenVervolg(f) {
@@ -697,6 +725,7 @@ export function sectieFeiten(sectie, feiten, inhoud) {
 const P_KOP = /^[ \t]{0,3}(#{1,6})[ \t]+(.*)$/;
 const P_OPSOMMING = /^[ \t]*[-*+][ \t]+/;
 const P_GENUMMERD = /^[ \t]*\d{1,9}[.)][ \t]+/;
+const P_GENUMMERD_NR = /^[ \t]*(\d{1,9})[.)]/;
 const P_CITAAT = /^[ \t]{0,3}>[ \t]?/;
 
 /**
@@ -729,12 +758,13 @@ export function tekstNaarBlokken(tekst, kopNiveau = 3) {
     if (isOps || P_GENUMMERD.test(regel)) {
       const patroon = isOps ? P_OPSOMMING : P_GENUMMERD;
       const items = [];
+      const begin = isOps ? null : parseInt(P_GENUMMERD_NR.exec(regel)[1], 10);
       while (i < regels.length && patroon.test(regels[i])) {
         let item = regels[i++].replace(patroon, '');
         while (i < regels.length && /^[ \t]{2,}\S/.test(regels[i]) && !P_OPSOMMING.test(regels[i]) && !P_GENUMMERD.test(regels[i])) item += ` ${regels[i++].trim()}`;
         items.push(item.trim());
       }
-      uit.push({ soort: 'lijst', genummerd: !isOps, items });
+      uit.push(isOps ? { soort: 'lijst', genummerd: false, items } : { soort: 'lijst', genummerd: true, start: begin, items });
       continue;
     }
     const delen = [];
@@ -853,7 +883,7 @@ export function blokkenNaarTekst(blokken) {
       } else if (b.soort === 'citaat') {
         uit.push(`> ${b.tekst}`, '');
       } else if (b.soort === 'lijst') {
-        b.items.forEach((item, i) => uit.push(b.genummerd ? `${i + 1}. ${item}` : `- ${item}`));
+        b.items.forEach((item, i) => uit.push(b.genummerd ? `${(b.start || 1) + i}. ${item}` : `- ${item}`));
         uit.push('');
       } else if (b.soort === 'tabel') {
         if (b.bijschrift) uit.push(`**${b.bijschrift}**`);

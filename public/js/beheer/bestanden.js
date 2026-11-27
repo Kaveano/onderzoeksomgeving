@@ -900,7 +900,8 @@ function rapportBlokken(blokken) {
     else if (soort === 'citaat') uit.push({ soort, blokken: [{ soort: 'alinea', regels: tekstRegels(blok.tekst) }] });
     else if (soort === 'lijst') {
       const punten = (Array.isArray(blok.items) ? blok.items : []).map(tekstRegels);
-      if (punten.length) uit.push({ soort, genummerd: Boolean(blok.genummerd), start: 1, punten });
+      const start = Number.isInteger(blok.start) && blok.start > 0 ? blok.start : 1;
+      if (punten.length) uit.push({ soort, genummerd: Boolean(blok.genummerd), start, punten });
     } else if (soort === 'tabel' || soort === 'paginaeinde') uit.push(blok);
     else throw new TypeError(`Onbekend soort blok op plaats ${i + 1} van het document: "${soort}".`);
   });
@@ -1066,7 +1067,7 @@ function docxNummering(lijsten) {
  * blokken is voor rapporten met tabellen en komt, als het een lijst is, in de plaats van markdown:
  *   { soort: 'kop', niveau: 1 | 2 | 3, tekst }
  *   { soort: 'alinea', tekst }                      met **vet** en *cursief*; een regeleinde blijft een regeleinde
- *   { soort: 'lijst', genummerd?, items: [tekst] }  opsomming, of met genummerd een lijst 1. 2. 3.
+ *   { soort: 'lijst', genummerd?, start?, items: [tekst] }  opsomming, of met genummerd een lijst 1. 2. 3. (vanaf start)
  *   { soort: 'citaat', tekst }
  *   { soort: 'tabel', kop: [tekst], rijen: [[tekst of getal]], breedtes?: [getal] }
  *   { soort: 'paginaeinde' }

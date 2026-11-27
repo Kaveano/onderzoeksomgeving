@@ -54,7 +54,7 @@ function blokEl(b) {
     case 'citaat':
       return h('blockquote', { class: 'rp-citaat' }, inline(b.tekst));
     case 'lijst':
-      return h(b.genummerd ? 'ol' : 'ul', { class: 'rp-lijst' }, b.items.map((item) => h('li', {}, inline(item))));
+      return h(b.genummerd ? 'ol' : 'ul', { class: 'rp-lijst', start: b.genummerd && b.start > 1 ? String(b.start) : null }, b.items.map((item) => h('li', {}, inline(item))));
     case 'tabel':
       return tabelEl(b);
     case 'paginaeinde':

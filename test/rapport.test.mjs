@@ -162,7 +162,7 @@ test('feitenblokken: vaste zinnen en tabellen, zonder verzonnen inhoud', () => {
   const themaTabel = per.resultaten.find((b) => b.soort === 'tabel');
   assert.equal(themaTabel.rijen.length, f.lijsten[1].themas.length);
   assert.match(themaTabel.rijen[0][1], /^\d,\d$/);
-  assert.ok(per.resultaten.some((b) => b.soort === 'alinea' && /^Het hoogste gemiddelde heeft het thema /.test(b.tekst)));
+  assert.ok(per.resultaten.some((b) => b.soort === 'alinea' && /^Het hoogste gemiddelde \(\d,\d\) (heeft het thema|hebben de thema's) .*; het laagste gemiddelde \(\d,\d\) /.test(b.tekst)));
   // Geen oordelende woorden in de automatische zinnen (teksten uit het onderzoek zelf, tussen aanhalingstekens
   // of vetgedrukt, tellen niet mee: dat zijn de eigen vragen en thema's van de onderzoeker).
   const zinnen = Object.values(per).flat()
@@ -191,6 +191,45 @@ test('feitenblokken: vaste zinnen en tabellen, zonder verzonnen inhoud', () => {
   const tussen = standaardInhoud('tussen');
   const beknopt = sectieFeiten(tussen.secties.find((x) => x.soort === 'resultaten'), f, tussen);
   assert.equal(beknopt.filter((b) => b.soort === 'tabel').length, 1);
+});
+
+test('vaste zinnen: gelijke standen, weet niet, eigen nummering, cijfers en grammatica', () => {
+  const vraag = (tekst, verdeling, extra = {}) => ({ thema_naam: 'T', type: 'schaal', tekst, meerdere: false, opties: [], n: verdeling.reduce((t, v) => t + v.aantal, 0), verborgen: false, gemiddelde: 3, verdeling, ...extra });
+  const schaal = (a, wn = 0) => [...a.map((aantal, i) => ({ waarde: i + 1, label: String(i + 1), aantal })), ...(wn ? [{ waarde: 'weet_niet', label: 'Weet niet', aantal: wn }] : [])];
+  const f = {
+    peildatum: '2026-11-26', drempel: 5, onderzoek: { titel: 'T', bedrijfsnaam: 'B', onderzoeksvraag: '' }, themas: [], meetmomenten: [], invoer: {}, invoersoorten: {},
+    verloop: { meetmomenten: [], themas: [] }, toetsen: [], actiestatussen: { te_doen: 'Te doen' },
+    acties: [{ titel: 'Eén ding', status: 'te_doen', datum: null }],
+    cijfers: [{ naam: 'Ratio', eenheid: '', punten: [{ datum: '2026-06-30', waarde: 0.04 }] }, { naam: 'Verzuim', eenheid: '%', punten: [{ datum: '2026-06-30', waarde: 5.25 }] }],
+    lijsten: [{
+      id: 1, titel: 'L', status: 'gesloten', meetmoment_naam: null, aantal_vragen: 2, n: 6, aantal_uitgenodigd: 1, percentage: 600, van: '2026-11-01', tot: '2026-11-01', verborgen: false,
+      themas: [{ naam: 'A', aantal_vragen: 1, n: 6, gemiddelde: 3.8112 }, { naam: 'B', aantal_vragen: 1, n: 6, gemiddelde: 3.8241 }, { naam: 'C', aantal_vragen: 1, n: 6, gemiddelde: 2.7 }],
+      vragen: [vraag('Met weet niet', schaal([0, 1, 1, 1, 0], 3), { n_score: 3 })],
+      open: [],
+    }],
+  };
+  const inhoud = standaardInhoud('eind');
+  const zin = (sec) => sectieFeiten(inhoud.secties.find((x) => x.soort === sec), f, inhoud);
+  const res = zin('resultaten');
+  assert.ok(res.some((b) => b.tekst === "Het hoogste gemiddelde (3,8) hebben de thema's A en B; het laagste gemiddelde (2,7) heeft het thema C."));
+  assert.match(res[0].tekst, /6 keer ingevuld, terwijl er één persoon was uitgenodigd\. Een responspercentage is daarom niet te geven/);
+  const tabel = res.find((b) => b.soort === 'tabel' && b.kop[0] === 'Stelling of vraag');
+  assert.deepEqual(tabel.kop, ['Stelling of vraag', 'Gemiddelde', 'Score 4 of 5', 'Score 1 of 2', 'Scores (1–5)', 'Weet niet']);
+  assert.deepEqual(tabel.rijen[0].slice(2), ['33%', '33%', 3, 3], 'percentages over de 3 scores, niet over 6 antwoorden');
+  assert.ok(res.some((b) => /"weet niet" telt daarin niet mee/.test(b.tekst || '')));
+  assert.deepEqual(zin('aanpak').find((b) => b.soort === 'tabel').rijen[0].slice(4), [6, '–']);
+  assert.equal(zin('aanbevelingen')[0].tekst, 'Op de actielijst van dit onderzoek staat één actie:');
+  assert.deepEqual(zin('cijfers')[0].rijen.map((r) => r[3]), ['0,04', '5,25%']);
+  // Eigen nummering blijft staan, ook als er tekst tussen de punten staat
+  const blokken = tekstNaarBlokken('1. Eerste\n\nToelichting.\n\n2. Tweede\n\n7) Zevende');
+  assert.deepEqual(blokken.filter((b) => b.soort === 'lijst').map((b) => b.start), [1, 2, 7]);
+  assert.match(blokkenNaarTekst(blokken), /2\. Tweede\n[\s\S]*7\. Zevende/);
+  // Toetszin: geen eigen gemiddelden (die staan in de tabel), wel n
+  const t = { thema_naam: 'Werkdruk', van: { naam: 'Nul', n: 37, gemiddelde: 2.66 }, naar: { naam: 'Vervolg', n: 32, gemiddelde: 3.18 }, verschil: 0.52, p: 0.006, g: 0.69, effect: 'middelgroot' };
+  const verloop = sectieFeiten({ soort: 'verloop', feiten: true }, { ...f, toetsen: [t], verloop: { meetmomenten: [{ id: 1, naam: 'Nul' }, { id: 2, naam: 'Vervolg' }], themas: [{ naam: 'Werkdruk', punten: [{ meetmoment_id: 1, gemiddelde: 2.7, n: 38 }, { meetmoment_id: 2, gemiddelde: 3.2, n: 32 }] }] } }, inhoud);
+  const lijst = verloop.find((b) => b.soort === 'lijst');
+  assert.equal(lijst.items[0], "**Werkdruk**: het verschil tussen Nul en Vervolg is statistisch significant (p = 0,006): het is onwaarschijnlijk dat het alleen door toeval komt. De grootte van het verschil is middelgroot (Hedges' g = 0,69). Getoetst op de themascores van 37 en 32 respondenten.");
+  assert.doesNotMatch(lijst.items[0], /2,7|3,2/);
 });
 
 test('dezelfde gegevens geven altijd precies hetzelfde rapport', async () => {

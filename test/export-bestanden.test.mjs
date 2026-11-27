@@ -98,6 +98,28 @@ test('SPSS: alle respondenten onder elkaar, dezelfde vraag in dezelfde kolom, me
   assert.ok(variabelen[11].breedte >= 30);
 });
 
+test('SPSS: een hernoemde of toegevoegde antwoordmogelijkheid in een kopie blijft in de juiste kolom', () => {
+  const data = voorbeeld();
+  // Zoals een echte kopie: dezelfde optie-id's als het origineel; daarna één hernoemd en één toegevoegd
+  for (const q of data.vragen.filter((x) => x.vragenlijst_id === 2 && x.type === 'meerkeuze')) {
+    const bron = data.vragen.find((x) => x.id === q.id - 100);
+    const opties = JSON.parse(bron.opties);
+    if (q.meerdere_antwoorden) {
+      opties[0].label = 'Salaris en voorwaarden';
+      opties.push({ id: 'nieuw', label: 'Thuiswerken' });
+    }
+    q.opties = JSON.stringify(opties);
+  }
+  data.inzendingen[3].antwoorden = { 201: 5, 203: 'ja', 204: 'b1', 205: ['x1', 'nieuw'] };
+  const { variabelen, rijen } = spssGegevens(data);
+  const meer = variabelen.filter((v) => /^v05_/.test(v.naam));
+  assert.deepEqual(meer.map((v) => v.label.replace(/^.*– /, '')), ['Salaris / Salaris en voorwaarden', 'Sfeer', 'Vrije tijd', 'Thuiswerken']);
+  const k = (naam) => variabelen.findIndex((v) => v.naam === naam);
+  assert.deepEqual([rijen[3][k('v05_1')], rijen[3][k('v05_2')], rijen[3][k('v05_4')]], [1, 0, 1]);
+  assert.equal(rijen[0][k('v05_4')], null, 'in de nulmeting bestond "Thuiswerken" niet: leeg, niet 0');
+  assert.equal(rijen[3][k('v04')], 2, 'zelfde code voor Productie in beide metingen');
+});
+
 test('SPSS-pakket: zip met leesmij, gegevens (punt als decimaalteken, geen regeleinden in cellen) en syntax', async () => {
   const pakket = spssPakket(voorbeeld());
   assert.equal(pakket.naam, 'bakkerij-zoe-zn-2026-11-26-spss.zip');

@@ -89,17 +89,29 @@ export async function toon(container, ctx) {
             h('button', {
               type: 'button',
               class: 'knop',
-              onclick: async () => {
-                conflict = false;
+              onclick: async (e) => {
+                const knop = e.currentTarget;
+                knop.disabled = true;
+                // Zoals bij gewoon opslaan: wat tijdens het verzoek wordt getypt, gaat daarna alsnog mee.
+                bewaarLater.annuleer();
+                bezig = true;
+                vuil = false;
+                statusEl.textContent = 'Bezig met opslaan…';
                 try {
                   const r = await api.put(`/rapporten/${rapportId}`, { titel: rapport.titel, inhoud, overschrijven: true });
                   basis = r.bijgewerkt_op;
-                  vuil = false;
+                  conflict = false;
                   vervang(meldingEl);
-                  statusEl.textContent = 'Alles is opgeslagen';
+                  statusEl.textContent = vuil ? 'Wijzigingen worden opgeslagen…' : 'Alles is opgeslagen';
                 } catch (fout) {
-                  conflict = true;
+                  vuil = true;
+                  knop.disabled = false;
+                  statusEl.textContent = 'Niet opgeslagen';
                   meldFout(fout);
+                } finally {
+                  bezig = false;
+                  nogEens = false;
+                  if (vuil && !conflict) bewaar();
                 }
               },
             }, 'Mijn versie hier bewaren'),

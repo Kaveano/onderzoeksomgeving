@@ -140,7 +140,7 @@ export async function feiten({ request, env, params }) {
   if (!f || typeof f !== 'object' || Array.isArray(f)) throw new Fout(400, 'De feiten zijn ongeldig.');
   if (v.datum(f.peildatum, 'Peildatum', { verplicht: true }) !== f.peildatum) throw new Fout(400, 'De peildatum is ongeldig.');
   const tekst = JSON.stringify(f);
-  if (tekst.length > MAX_FEITEN) throw new Fout(413, 'Dit onderzoek heeft te veel gegevens om in één rapport vast te leggen. Zet de bijlage met open antwoorden uit of kies een kleinere vragenlijst.');
+  if (tekst.length > MAX_FEITEN) throw new Fout(413, 'Dit onderzoek heeft te veel gegevens (vooral open antwoorden) om in één rapport vast te leggen.');
   await env.DB.prepare('UPDATE rapporten SET feiten = ? WHERE id = ?').bind(tekst, id).run();
   return json({ ok: true, peildatum: f.peildatum });
 }
