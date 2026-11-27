@@ -14,6 +14,9 @@ import { VERBORGEN, VERBORGEN_UITLEG } from '../privacy.js';
 import { haalGegevens, voortgangTekst, bekendAantal, GROOT_ONDERZOEK } from '../gegevens.js';
 import { dashboardUitRijen, rijenUitExport } from '../dashboard-rekenen.js';
 
+/** Basis van het percentage ja bij een achtergrondvraag (de tabel ernaast is van alle respondenten). */
+const JA_BASIS = 'van wie de vraag beantwoordde';
+
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const OPEN_EERST = 10; // zoveel open antwoorden direct tonen, de rest via "Toon alle"
 const MAX_DAGEN = 92; // langer dan dit: alleen de dagen mét antwoorden tonen
@@ -705,6 +708,7 @@ export async function toon(container, ctx) {
   function verloopRegel(q) {
     if (!q.verloop) return null;
     const isJaNee = q.type === 'janee';
+    const label = isJaNee && q.beschermd ? `Verloop (% ja ${JA_BASIS}): ` : 'Verloop: ';
     const punten = q.verloop.filter((p) => heeft(isJaNee ? p.percentage_ja : p.gemiddelde));
     if (punten.length < 2) return null;
     const w = (p) => (isJaNee ? p.percentage_ja : p.gemiddelde);
@@ -714,9 +718,10 @@ export async function toon(container, ctx) {
       : r1(w(punten[punten.length - 1])) - r1(w(punten[0]));
     return {
       tekst,
+      label,
       verschil: dlt,
       el: h('div', { class: 'db-vraag-verloop' },
-        h('span', { class: 'db-verloop-label' }, 'Verloop: '),
+        h('span', { class: 'db-verloop-label' }, label),
         h('span', {}, tekst), ' ',
         isJaNee ? verschilEl(dlt, 0, ' procentpunt') : verschilEl(dlt, 1)),
     };
@@ -800,12 +805,16 @@ export async function toon(container, ctx) {
     const vulling = h('div', { class: 'db-meter-vulling' });
     vulling.style.width = `${q.percentage_ja || 0}%`;
     const verborgen = isVerborgen(q.percentage_ja);
+    // Achtergrondvraag: de tabel geeft percentages van alle respondenten; het percentage ja hierboven is van wie de
+    // vraag beantwoordde. Dat staat er dan bij, zodat 50% ja naast Ja 40% in de tabel niet verwart.
+    const basis = q.beschermd ? JA_BASIS : null;
     return [
       verborgen
         ? null
         : h('div', { class: 'db-janee db-grafiek' },
-          h('div', { class: 'db-meter db-meter-groot', role: 'img', 'aria-label': `${procent(q.percentage_ja)} ja` }, vulling),
+          h('div', { class: 'db-meter db-meter-groot', role: 'img', 'aria-label': `${procent(q.percentage_ja)} ja${basis ? `, ${basis}` : ''}` }, vulling),
           h('span', { class: 'db-janee-waarde', 'aria-hidden': 'true' }, `${procent(q.percentage_ja)} ja`)),
+      !verborgen && basis ? h('p', { class: 'zacht klein db-janee-basis', 'aria-hidden': 'true' }, `Het percentage ja is ${basis}.`) : null,
       telTabel(q),
       h('div', { class: 'db-vraag-meta' },
         h('span', {}, verborgenCel(ja.aantal, nl(ja.aantal)), ' ja · ', verborgenCel(nee.aantal, nl(nee.aantal)), ' nee'),
@@ -845,7 +854,7 @@ export async function toon(container, ctx) {
         const sv = schaalSamenvatting(q);
         r += `: gemiddeld ${getal(q.gemiddelde, 1)}${sv ? `; ${sv.hoogLabel.toLowerCase()} ${procent(sv.hoog)}` : ''}`;
       } else if (q.type === 'janee' && !isVerborgen(q.percentage_ja)) {
-        r += `: ${procent(q.percentage_ja)} ja`;
+        r += `: ${procent(q.percentage_ja)} ja${q.beschermd ? ` (${JA_BASIS})` : ''}`;
       } else if (q.type === 'meerkeuze' || q.type === 'janee') {
         r += `: ${q.verdeling.map((v) => `${v.label} ${procentTekst(v.percentage, v.verborgen)}`).join(', ')}`;
       } else {
@@ -866,7 +875,7 @@ export async function toon(container, ctx) {
       if (q.type === 'schaal') regels.push(`Gemiddelde score: ${getal(q.gemiddelde, 1)} (schaal 1–5)`);
       if (q.type === 'meerkeuze' && q.meerdere_antwoorden) regels.push('Meerdere antwoorden mogelijk; percentages tellen op tot meer dan 100%.');
     }
-    if (vl) regels.push(`Verloop: ${vl.tekst} (${q.type === 'janee' ? `${metTeken(vl.verschil, 0)} procentpunt` : metTeken(vl.verschil, 1)})`);
+    if (vl) regels.push(`${vl.label}${vl.tekst} (${q.type === 'janee' ? `${metTeken(vl.verschil, 0)} procentpunt` : metTeken(vl.verschil, 1)})`);
     return regels.join('\n');
   }
 
