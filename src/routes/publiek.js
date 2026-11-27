@@ -4,7 +4,7 @@
 
 import { Fout, json, leesJson } from '../lib/http.js';
 import { alle, een, vandaagNL } from '../lib/db.js';
-import { SCHALEN, WEET_NIET } from '../lib/schalen.js';
+import { SCHALEN, WEET_NIET, CIJFERSCHALEN } from '../lib/schalen.js';
 
 // Limieten tegen misbruik, per link.
 export const LIMIET_PER_10_MIN = 100;
@@ -53,6 +53,8 @@ export async function ophalen({ env, params }) {
       t = { id: q.t_id, naam: q.thema_naam, vragen: [] };
       themas.push(t);
     }
+    // Een cijfervraag krijgt de grenzen en de teksten bij de uitersten. Een achtergrondkenmerk gaat nooit mee.
+    const cijfer = q.type === 'cijfer' ? cijferschaal(q) : null;
     t.vragen.push({
       id: q.id,
       type: q.type,
@@ -61,7 +63,8 @@ export async function ophalen({ env, params }) {
       opties: q.type === 'meerkeuze' ? JSON.parse(q.opties || '[]') : undefined,
       meerdere_antwoorden: q.type === 'meerkeuze' ? !!q.meerdere_antwoorden : undefined,
       schaal_labels: q.type === 'schaal' ? SCHALEN[q.schaal_soort] || SCHALEN.eens : undefined,
-      weet_niet: q.type === 'schaal' ? !!q.weet_niet : undefined,
+      cijfer: cijfer ? { min: cijfer.min, max: cijfer.max, laag: cijfer.laag, hoog: cijfer.hoog } : undefined,
+      weet_niet: q.type === 'schaal' || q.type === 'cijfer' ? !!q.weet_niet : undefined,
       verplicht: !!q.verplicht,
     });
   }
@@ -71,6 +74,11 @@ export async function ophalen({ env, params }) {
     introtekst: vl.introtekst,
     themas: themas.map(({ naam, vragen: vr }) => ({ naam, vragen: vr })),
   });
+}
+
+/** De cijferschaal van een cijfervraag (0 tot 10 of 1 tot 10); onbekend telt als rapportcijfer. */
+export function cijferschaal(q) {
+  return CIJFERSCHALEN[q.schaal_soort] || CIJFERSCHALEN.rapport;
 }
 
 /** Controleert één antwoord; geeft de schone waarde of undefined (= niet beantwoord). */
@@ -84,6 +92,16 @@ export function controleerAntwoord(vraag, waarde) {
       }
       const n = typeof waarde === 'string' ? Number(waarde) : waarde;
       if (!Number.isInteger(n) || n < 1 || n > 5) throw new Fout(400, 'Ongeldig antwoord op een schaalvraag.');
+      return n;
+    }
+    case 'cijfer': {
+      if (waarde === WEET_NIET) {
+        if (!vraag.weet_niet) throw new Fout(400, 'Ongeldig antwoord op een cijfervraag.');
+        return WEET_NIET;
+      }
+      const { min, max } = cijferschaal(vraag);
+      const n = typeof waarde === 'string' ? Number(waarde) : waarde;
+      if (!Number.isInteger(n) || n < min || n > max) throw new Fout(400, 'Ongeldig antwoord op een cijfervraag.');
       return n;
     }
     case 'janee':

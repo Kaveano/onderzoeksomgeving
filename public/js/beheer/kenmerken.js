@@ -5,8 +5,10 @@
 // een meerkeuzevraag met één antwoord, en per vragenlijst hooguit één vraag per kenmerk (behalve 'overig').
 // Groepen met minder dan 5 respondenten worden nooit getoond (privacy.js).
 //
-// In deze module staan alleen vaste lijsten. De functies kenmerkVoorTekst, klasseVan en isLieverNiet
-// komen er later bij (BOUWPLAN §3.3, pakket P2).
+// Naast de vaste lijsten staan hier drie hulpfuncties (BOUWPLAN §3.3):
+// - kenmerkVoorTekst: herkent een bekende achtergrondvraag aan de tekst (sjablonen, inlezen);
+// - klasseVan: de klassegrenzen van een antwoordmogelijkheid zoals "35 tot 55 jaar" (eerst opzoeken, dan een patroon);
+// - isLieverNiet: is dit het antwoord "Dat zeg ik liever niet"?
 
 /**
  * De kenmerken. rol = de bijbehorende kolom in een personeelsbestand (null: geen);
@@ -140,3 +142,87 @@ export const KLASSEGRENZEN = Object.freeze(Object.fromEntries([
   klasse('6 tot 12 maanden', 6, 12, 'maand'),
   klasse('Een jaar of langer', 12, null, 'maand'),
 ].filter((o) => o.eenheid).map((o) => [o.label, { van: o.van, tot: o.tot, eenheid: o.eenheid }])));
+
+// ---------- Hulpfuncties ----------
+
+/** Tekst zonder accenten en leestekens, in kleine letters (zoals normaal() bij het inlezen). */
+function normaal(tekst) {
+  return String(tekst ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+// Bekende teksten van achtergrondvragen (genormaliseerd). {bedrijf} mag elke naam zijn.
+const TEKST_PATRONEN = [
+  ['afdeling', /^op welke afdeling (werk|werkte) je$/],
+  ['diensttijd', /^hoe lang (werk je al|werk je) bij .+$/],
+  ['diensttijd', /^hoe lang heb je bij .+ gewerkt$/],
+  ['leidinggevend', /^geef je zelf leiding aan een of meer medewerkers$/],
+];
+const TEKST_EXACT = new Map(Object.entries(KENMERKVRAGEN)
+  .filter(([, v]) => !v.tekst.includes('{bedrijf}'))
+  .map(([sleutel, v]) => [normaal(v.tekst), sleutel]));
+
+/**
+ * Het kenmerk van een bekende achtergrondvraag, herkend aan de tekst: de vragen uit "Achtergrondvragen toevoegen"
+ * en de achtergrondvragen uit de standaardsjablonen (dezelfde teksten als migratie 0011). Anders ''.
+ * Of de vraag het kenmerk mag hebben (soort vraag, één per vragenlijst), controleert de aanroeper.
+ */
+export function kenmerkVoorTekst(tekst) {
+  const t = normaal(tekst);
+  if (!t) return '';
+  if (TEKST_EXACT.has(t)) return TEKST_EXACT.get(t);
+  for (const [sleutel, patroon] of TEKST_PATRONEN) if (patroon.test(t)) return sleutel;
+  return '';
+}
+
+/** Mag deze vraag een kenmerk hebben? Alleen een ja/nee-vraag of een meerkeuzevraag met één antwoord. */
+export function magKenmerk(q) {
+  return !!q && (q.type === 'janee' || (q.type === 'meerkeuze' && !q.meerdere_antwoorden && !q.meerdere));
+}
+
+const KLASSEN_NORMAAL = new Map(Object.entries(KLASSEGRENZEN).map(([label, k]) => [normaal(label), k]));
+const EENHEID = { jaar: 'jaar', jaren: 'jaar', maand: 'maand', maanden: 'maand', uur: 'uur', uren: 'uur' };
+const GETAL = '(\\d+(?:[.,]\\d+)?|een)';
+const EENHEDEN = '(jaar|jaren|maand|maanden|uur|uren)';
+const getal = (t) => (t === 'een' ? 1 : Number(t.replace(',', '.')));
+const KLASSE_PATRONEN = [
+  // Jonger dan 35 jaar, Korter dan 3 maanden, Minder dan 20 uur → tot X
+  [new RegExp(`^(?:jonger|korter|minder) dan ${GETAL} ${EENHEDEN}$`), (m) => ({ van: null, tot: getal(m[1]), eenheid: EENHEID[m[2]] })],
+  // 35 tot 55 jaar, 1 tot 5 jaar, 20 tot 35 uur → van X tot Y
+  [new RegExp(`^${GETAL} (?:tot|tot en met|t m) ${GETAL} ${EENHEDEN}$`), (m) => ({ van: getal(m[1]), tot: getal(m[2]), eenheid: EENHEID[m[3]] })],
+  // 35 55 jaar (met een streepje geschreven)
+  [new RegExp(`^${GETAL} ${GETAL} ${EENHEDEN}$`), (m) => ({ van: getal(m[1]), tot: getal(m[2]), eenheid: EENHEID[m[3]] })],
+  // Een jaar of langer = 12 maanden of langer
+  [/^een jaar of langer$/, () => ({ van: 12, tot: null, eenheid: 'maand' })],
+  // 55 jaar of ouder, 10 jaar of langer, 35 uur of meer → vanaf X
+  [new RegExp(`^${GETAL} ${EENHEDEN} (?:of|en) (?:ouder|langer|meer)$`), (m) => ({ van: getal(m[1]), tot: null, eenheid: EENHEID[m[2]] })],
+  // Ouder dan 55 jaar, Langer dan 10 jaar, Meer dan 35 uur → vanaf X
+  [new RegExp(`^(?:ouder|langer|meer) dan ${GETAL} ${EENHEDEN}$`), (m) => ({ van: getal(m[1]), tot: null, eenheid: EENHEID[m[2]] })],
+];
+
+/**
+ * Klassegrenzen van een antwoordmogelijkheid (BOUWPLAN B12): { van, tot, eenheid: 'jaar'|'maand'|'uur' }, met
+ * van inbegrepen en tot niet inbegrepen (null = geen grens). Eerst exact opzoeken in de vaste tabel
+ * KLASSEGRENZEN, daarna een paar vaste patronen ("Jonger dan X jaar", "X tot Y jaar", "X jaar of ouder", …).
+ * null als het label geen klasse is (bijvoorbeeld "Dat zeg ik liever niet"); dan koppel je het met de hand.
+ */
+export function klasseVan(label) {
+  const t = normaal(label);
+  if (!t) return null;
+  const vast = KLASSEN_NORMAAL.get(t);
+  if (vast) return { ...vast };
+  for (const [patroon, maak] of KLASSE_PATRONEN) {
+    const m = patroon.exec(t);
+    if (!m) continue;
+    const k = maak(m);
+    if ((k.van === null || Number.isFinite(k.van)) && (k.tot === null || Number.isFinite(k.tot)) && (k.van === null || k.tot === null || k.van < k.tot)) return k;
+  }
+  return null;
+}
+
+const LIEVER_NIET_TEKSTEN = new Set(['dat zeg ik liever niet', 'zeg ik liever niet', 'liever niet', 'wil ik liever niet zeggen',
+  'dat wil ik liever niet zeggen', 'zeg ik niet', 'wil ik niet zeggen']);
+
+/** Is dit het antwoord "Dat zeg ik liever niet" (ook in een iets andere schrijfwijze)? */
+export function isLieverNiet(label) {
+  return LIEVER_NIET_TEKSTEN.has(normaal(label));
+}

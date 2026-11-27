@@ -19,6 +19,7 @@ export const VRAAGTYPEN = {
   schaal: 'Schaal 1 tot 5',
   meerkeuze: 'Meerkeuze',
   janee: 'Ja / nee',
+  cijfer: 'Cijfer (0–10 of 1–10)',
   open: 'Open tekst',
 };
 
