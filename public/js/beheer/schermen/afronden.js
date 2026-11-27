@@ -149,7 +149,7 @@ export async function toon(container, ctx) {
         const ok = await bevestig({
           titel: 'Onderzoek archiveren?',
           tekst: [
-            'Na archiveren kun je alles nog inzien en exporteren, maar niets meer wijzigen. Open vragenlijsten worden gesloten; respondenten kunnen dan niet meer invullen.',
+            'Na archiveren kun je alles nog inzien en exporteren, maar niets meer wijzigen. Open vragenlijsten worden gesloten; respondenten kunnen dan niet meer invullen. Deellinks blijven werken tot hun einddatum; trek ze in bij Delen als dat niet meer nodig is.',
             'Heb je alle bestanden gedownload die je nodig hebt?',
           ],
           knop: 'Archiveren',
@@ -188,7 +188,7 @@ export async function toon(container, ctx) {
         const ok = await bevestig({
           titel: 'Onderzoek definitief verwijderen?',
           tekst: [
-            `Alles van "${o.titel}" (${o.bedrijfsnaam}) wordt definitief verwijderd: vragenlijsten, antwoorden, eigen invoer, stukken en acties. Dit kan niet ongedaan worden gemaakt.`,
+            `Alles van "${o.titel}" (${o.bedrijfsnaam}) wordt definitief verwijderd: vragenlijsten, antwoorden, eigen invoer, stukken, rapporten, eigen datasets, acties en deellinks. Dit kan niet ongedaan worden gemaakt.`,
             'Download eerst een volledige kopie (JSON) als je die wilt bewaren.',
           ],
           knop: 'Definitief verwijderen',

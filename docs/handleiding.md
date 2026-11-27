@@ -7,6 +7,9 @@ De onderzoeksomgeving heeft twee delen:
 
 - **De beheeromgeving.** Alleen voor jou, achter een wachtwoord. Hier richt je onderzoeken in, maak je vragenlijsten, volg je de resultaten en schrijf je je stukken.
 - **De openbare vragenlijst.** Respondenten openen een link zoals `…/v/Ab3dE…`. Ze hebben geen account nodig.
+- **De inzage voor meelezers.** Een opdrachtgever of ondernemingsraad kan met een deellink (`…/d/…`) en een toegangscode de resultaten bekijken, zonder iets te kunnen wijzigen. Zie hoofdstuk 10.
+
+De tabbladen van een onderzoek: **Dashboard · Analyse · Opzet · Vragenlijsten · Eigen invoer · Stukken · Rapport · Acties · Delen · Afronden**.
 
 ---
 
@@ -101,7 +104,7 @@ Je kunt alles toevoegen, wijzigen, verwijderen en in een andere volgorde zetten.
    - Pas eerst de afdelingen aan; in het sjabloon staan voorbeeldnamen.
 5. Bekijk het resultaat met **Voorbeeld** of **Bekijk als respondent**.
 6. Klik op **Vragenlijst openzetten**.
-7. Klik op **Link kopiëren** en stuur de link naar de medewerkers, bijvoorbeeld per e-mail of intranet.
+7. Klik op **Link kopiëren** en stuur de link naar de medewerkers, bijvoorbeeld per e-mail of intranet. Een kant-en-klare uitnodiging, een herinnering en een QR-code vind je op het tabblad **Delen** (hoofdstuk 10).
 8. Heb je de vragenlijst zelf getest? Wis dan je testantwoorden met **Antwoorden wissen** voordat het echte onderzoek begint.
 
 **Tips**
@@ -109,6 +112,7 @@ Je kunt alles toevoegen, wijzigen, verwijderen en in een andere volgorde zetten.
 - Met **Maximum aantal inzendingen** stel je een bovengrens in. Elke link kan daarnaast maximaal 100 inzendingen per 10 minuten en 1.000 per dag ontvangen, als bescherming tegen misbruik.
 - **Nieuwe link maken** maakt de oude link onbruikbaar, bijvoorbeeld als die op de verkeerde plek terecht is gekomen.
 - Zijn er al antwoorden binnen, dan kun je het vraagtype niet meer veranderen. Je kunt een vraag wel herformuleren, maar doe dat alleen als de betekenis gelijk blijft.
+- Staan je vragen al in Excel? Lees ze in één keer in (hoofdstuk 6, "Inlezen uit Excel of CSV").
 
 ### Een vervolgmeting
 
@@ -148,6 +152,7 @@ Het dashboard laat zien wat de uitkomsten zijn. Op het tabblad **Analyse** toets
 | **3. Samenhang** | Hangen twee scores met elkaar samen, bijvoorbeeld werkdruk en betrokkenheid? Er is ook een overzicht van alle thema's. |
 | **4. Betrouwbaarheid van de thema's** | Meten de vragen van een thema samen hetzelfde onderwerp? |
 | **5. Verband tussen twee keuzevragen** | Hangen de antwoorden op twee keuzevragen (meerkeuze of ja/nee) met elkaar samen? |
+| **6. Eigen dataset onderzoeken** | Wat laat een eigen Excel- of CSV-bestand zien, bijvoorbeeld verzuim per afdeling? Zie hieronder. |
 
 ### De uitkomsten lezen
 
@@ -168,12 +173,54 @@ Met **Neem op in stuk** zet je een uitkomst, met de uitleg erbij, in een van je 
 - **Samenhang is geen oorzaak.** Dat twee scores samen op- en neergaan, bewijst niet dat de een de ander veroorzaakt.
 - De berekeningen gebruiken gangbare toetsen (Welch t-toets, Mann-Whitney, ANOVA, Kruskal-Wallis, Pearson, Spearman, chi-kwadraat) en zijn gecontroleerd tegen een standaard statistiekpakket.
 
+### Een eigen dataset onderzoeken (onderdeel 6)
+
+Hiermee onderzoek je gegevens die niet uit een vragenlijst komen, zoals een overzicht uit het HR-systeem.
+
+1. Klik bij onderdeel 6 op **Dataset toevoegen** en kies een Excel-bestand (.xlsx) of CSV-bestand.
+   - De eerste rij moet de namen van de kolommen bevatten. Elke rij daaronder is één waarneming, bijvoorbeeld één medewerker of één maand.
+2. Je ziet de kolommen met hun soort: **getallen**, **indeling in groepen** (bijvoorbeeld afdeling) of **tekst**. Vink uit wat je niet nodig hebt.
+   - Kolommen die op persoonsgegevens lijken (naam, personeelsnummer, e-mail, geboortedatum) staan al uit. Laat ze uit.
+3. Klik op **Dataset opslaan**. Kies daarna bij **Wat wil je weten?** een van de vier vragen:
+   - **Hoe ziet één kolom eruit?** Gemiddelde, middelste waarde, spreiding, of de verdeling over de groepen.
+   - **Verschillen groepen van elkaar?** Bijvoorbeeld verzuimdagen per afdeling.
+   - **Hangen twee getallen met elkaar samen?** Bijvoorbeeld leeftijd en verzuimdagen.
+   - **Hangen twee indelingen met elkaar samen?** Bijvoorbeeld afdeling en soort contract (kruistabel).
+
+Een groep met minder dan 3 waarden doet niet mee aan een vergelijking. Een dataset kan maximaal 2.000 rijen en 40 kolommen hebben; een onderzoek maximaal 10 datasets.
+
 ## 6. Eigen invoer
 
 Op het tabblad **Eigen invoer** leg je vast wat je buiten de vragenlijst te weten komt: interviews, observaties, documentanalyse en cijfers zoals verzuim of verloop. Koppel elk item aan een thema en een datum, en eventueel aan een meetpunt en meetmoment.
 
 - Kies je de soort **Cijfer** en vul je een waarde in, dan verschijnt die op het dashboard onder **Eigen cijfers**.
 - Schrijf aantekeningen van interviews zonder namen van medewerkers.
+
+### Inlezen uit Excel of CSV
+
+Onderaan het tabblad **Eigen invoer** staat **Inlezen uit Excel of CSV**. Gegevens die al in een bestand staan, hoef je dan niet over te typen. Er zijn vier mogelijkheden:
+
+| Wat | Waarvoor | Wat er moet in het bestand |
+|---|---|---|
+| **Cijfers in één keer** | Bijvoorbeeld verzuim per maand | Per rij een naam (zoals *Verzuimpercentage*), een datum en een waarde. Eenheid, thema en meetmoment mogen erbij. |
+| **Antwoorden op een vragenlijst** | Papieren formulieren of antwoorden uit een ander programma | Per rij één respondent, per kolom één vraag. Schaalvragen als cijfer 1 tot 5, ja/nee als *ja* of *nee*, meerkeuze als de tekst van het antwoord. |
+| **Vragen voor een vragenlijst** | Een vragenlijst die je al in Excel hebt | Per rij één vraag, met thema, soort (*schaal*, *ja/nee*, *meerkeuze* of *open*) en bij meerkeuze de mogelijkheden gescheiden door een puntkomma. |
+| **Eigen dataset voor Analyse** | Gegevens die je wilt onderzoeken | Zie hoofdstuk 5, onderdeel 6. |
+
+Zo werkt het:
+
+1. Klik op de knop bij wat je wilt inlezen. Met **Download een voorbeeldbestand** krijg je een Excel-bestand met de juiste kolommen.
+2. Kies je bestand. Heeft het meer tabbladen, kies dan het juiste tabblad.
+3. Controleer bij **Welke kolom is wat?** of elke kolom goed is herkend en pas het zo nodig aan.
+4. Lees de **Controle**. Daar staat hoeveel regels bruikbaar zijn, en per regel wat niet herkend is. Wat niet herkend wordt, blijft leeg of wordt overgeslagen; er wordt niets geraden.
+5. Klik op **… inlezen**. Pas dan wordt er iets opgeslagen.
+
+Goed om te weten:
+- Het bestand wordt in je eigen browser gelezen. Alleen de gegevens die je hebt gekozen, gaan naar de onderzoeksomgeving.
+- Bij **antwoorden** worden alleen de kolommen bewaard die je aan een vraag koppelt. Een kolom met namen of e-mailadressen wordt niet bewaard. Haal zulke kolommen liever al uit het bestand.
+- Lees hetzelfde bestand met antwoorden niet twee keer in: de antwoorden tellen dan dubbel.
+- Datums mogen als 26-11-2026, 2026-11-26 of 26 november 2026. Getallen mogen met een komma (7,4) of een punt (7.4).
+- Een oud Excel-bestand (.xls) eerst in Excel opslaan als .xlsx.
 
 ## 7. Stukken
 
@@ -182,35 +229,130 @@ Op het tabblad **Stukken** staan standaard **Notities**, **Bevindingen** en een 
 - Alles wordt **automatisch opgeslagen** terwijl je typt. Rechtsboven zie je "Opgeslagen om …".
 - Met de knoppen maak je kopjes, vette tekst en opsommingen. Met **Voorbeeld** zie je hoe het eruitziet.
 - Werk je tegelijk in twee tabbladen of op twee apparaten, dan waarschuwt de app voordat er iets wordt overschreven.
-- Met **Downloaden** krijg je het stuk als tekstbestand, dat je in Word kunt plakken.
+- Met **Downloaden** krijg je het stuk als tekstbestand. Alle stukken als Word-bestanden download je bij **Afronden**.
 
-## 8. Acties
+## 8. Rapport: tussenrapport en eindrapport
 
-Op het tabblad **Acties** staat je actielijst, met per actie een status (*Te doen*, *Bezig*, *Klaar*) en een datum. Acties waarvan de datum voorbij is, worden rood gemarkeerd.
+Op het tabblad **Rapport** maak je een adviesrapport, opgebouwd als een kleine scriptie.
 
-## 9. Afronden: exporteren en archiveren
+- **Tussenrapport**: halverwege het onderzoek. Hoofdstukken: stand van zaken, onderzoeksvraag, voorlopige resultaten, ontwikkeling tussen de meetmomenten, vervolg en planning, aandachtspunten.
+- **Eindrapport**: na afloop. Hoofdstukken: samenvatting, aanleiding en onderzoeksvraag, aanpak en verantwoording, resultaten, ontwikkeling tussen de meetmomenten, cijfers en overige bronnen, conclusies, aanbevelingen, en als bijlagen de vragenlijst en (als je dat aanzet) de open antwoorden.
+
+### Feiten en eigen tekst blijven gescheiden
+
+Het rapport verzint niets. Elk hoofdstuk heeft drie delen:
+
+1. **Feiten uit het onderzoek** (blauwe streep). Tabellen en korte, neutrale zinnen die rechtstreeks uit je gegevens komen: respons, scores per thema, antwoorden per vraag, de vergelijking tussen meetmomenten met de toets, je eigen cijfers en de actielijst. Dit gebeurt met vaste regels: dezelfde gegevens geven altijd dezelfde tekst. Er zit geen AI achter.
+2. **Hulpvragen** (grijs). Vragen die je helpen bij het schrijven, bijvoorbeeld "Elke conclusie moet terug te vinden zijn in een uitkomst uit het hoofdstuk Resultaten". Ze komen niet in het rapport.
+3. **Jouw tekst** (oranje streep). Wat de cijfers betekenen, je conclusies en je aanbevelingen schrijf je zelf. Alles wordt automatisch opgeslagen.
+
+Hoofdstukken als Samenvatting, Conclusies en Aanbevelingen hebben geen automatische feiten (Aanbevelingen toont alleen je actielijst): daar staat alleen wat jij schrijft.
+
+### Zo werk je
+
+1. Klik op **Tussenrapport maken** of **Eindrapport maken** en vul de titel, opdrachtgever en je eigen naam in.
+2. De cijfers worden opgehaald en vastgelegd op de **peildatum** (vandaag). Komen er daarna nog antwoorden binnen, dan verandert het rapport niet vanzelf. Met **Cijfers bijwerken** haal je de actuele stand op; je eigen tekst blijft daarbij altijd staan.
+3. Schrijf per hoofdstuk je tekst. Links zie je welke hoofdstukken nog leeg zijn.
+4. Pas aan wat je wilt:
+   - de titel van een hoofdstuk (klik erop);
+   - de volgorde (pijltjes);
+   - een hoofdstuk weglaten (vinkje **Dit hoofdstuk opnemen in het rapport**);
+   - de automatische feiten van een hoofdstuk weglaten;
+   - bij Resultaten: alleen de thema's, zonder de losse vragen (**Beknopt**);
+   - **+ Eigen hoofdstuk toevoegen**, bijvoorbeeld een voorwoord;
+   - bij **Voorblad en uitgangspunten**: op welke vragenlijst het hoofdstuk Resultaten is gebaseerd.
+5. Bekijk het resultaat met **Voorbeeld**. Hoofdstukken zonder eigen tekst zie je daar als grijze regel.
+6. Maak het rapport af met:
+   - **Download als Word**: een .docx met koppen en tabellen, om in Word verder op te maken;
+   - **Afdrukken of pdf**: kies bij het afdrukken "Opslaan als pdf";
+   - **Kopieer als tekst**.
+
+Uitkomsten van minder dan 5 respondenten komen nooit in een rapport. De bijlage met open antwoorden staat standaard uit, omdat open antwoorden herkenbaar kunnen zijn. Lees ze door voordat je die bijlage aanzet.
+
+## 9. Acties
+
+Op het tabblad **Acties** staat je actielijst, met per actie een status (*Te doen*, *Bezig*, *Klaar*) en een datum. Acties waarvan de datum voorbij is, worden rood gemarkeerd. Acties met een datum kun je bij **Afronden** in je agenda (Outlook) zetten.
+
+## 10. Delen: uitnodigen en laten meekijken
+
+### Uitnodigen om een vragenlijst in te vullen
+
+Bovenaan het tabblad **Delen** staat elke vragenlijst met zijn link.
+
+- **Uitnodiging** en **Herinnering**: een kant-en-klare tekst die je zelf kunt aanpassen. `{link}` wordt de link naar de vragenlijst, `{titel}` de titel en `{bedrijf}` de bedrijfsnaam. Je tekst wordt bewaard voor de volgende keer.
+  - **Open in e-mailprogramma** zet de tekst als nieuw bericht klaar in Outlook (of je eigen e-mailprogramma). Zet de ontvangers in het veld **BCC**, zodat ze elkaars adres niet zien.
+  - **Kopieer tekst** als je de uitnodiging liever via intranet of Teams verstuurt.
+- **QR-code**: download als afbeelding (png) voor een presentatie of als svg voor drukwerk, bijvoorbeeld een poster in de kantine.
+
+De onderzoeksomgeving verstuurt zelf geen e-mail en bewaart geen e-mailadressen. Omdat de vragenlijst anoniem is, weet niemand wie hem al heeft ingevuld; daarom krijgt iedereen de herinnering.
+
+### Laten meekijken met een deellink
+
+Wil je de opdrachtgever, de directie of de ondernemingsraad de resultaten laten zien? Maak dan een **deellink**.
+
+1. Klik op **+ Deellink maken**.
+2. Vul in voor wie de link is en vink aan wat diegene mag zien:
+   - **Resultaten** (het dashboard), met of zonder de **open antwoorden**;
+   - losse **rapporten** en **stukken**.
+3. Kies tot wanneer de link werkt (standaard 30 dagen).
+4. Je krijgt **de link** en **een toegangscode** te zien. Stuur ze apart van elkaar, bijvoorbeeld de link per e-mail (**Open e-mail met de link**) en de code per sms of telefoon.
+   - **Noteer de toegangscode meteen.** Hij wordt niet leesbaar bewaard en is later niet meer op te vragen. Kwijt? Klik op **Nieuwe code**.
+
+Wat de meelezer ziet en kan:
+- Alleen lezen: niets wijzigen, niets downloaden behalve afdrukken.
+- Alleen wat jij hebt aangevinkt. Uitkomsten van minder dan 5 respondenten blijven altijd verborgen.
+- Na 5 verkeerde toegangscodes moet diegene 15 minuten wachten.
+
+Je kunt een link op elk moment **Intrekken** (en later weer laten werken), een **Nieuwe code** maken of de link **Verwijderen**. Dat werkt direct, ook voor iemand die op dat moment meekijkt. Bij de link zie je wanneer hij het laatst is bekeken (alleen de datum; van meelezers wordt verder niets bewaard).
+
+## 11. Afronden: exporteren en archiveren
 
 Ga naar het tabblad **Afronden**.
 
-1. **Exporteren.** Download wat je wilt bewaren:
-   - **Alle antwoorden (CSV)**: één regel per antwoord, handig voor een draaitabel in Excel.
-   - **Antwoorden per vragenlijst (CSV)**: één regel per respondent.
-   - **Eigen invoer (CSV)**.
-   - **Stukken (tekstbestand)**: inclusief de actielijst.
-   - **Alles samen (JSON)**: een volledige kopie voor je archief.
+1. **Exporteren.** Download wat je wilt bewaren of verder wilt gebruiken (zie ook hoofdstuk 12):
+   - **Excel-werkboek (.xlsx)**: alles in één bestand met tabbladen: antwoorden per vragenlijst, scores per thema, een codeboek met alle vragen, eigen invoer, acties en meetmomenten.
+   - **Stukken als Word-bestanden (.zip)**: elk stuk als los Word-bestand.
+   - **SPSS-pakket (.zip)**: voor wie zelf verder wil rekenen in SPSS (of het gratis PSPP).
+   - **Meetmomenten en acties in je agenda (.ics)**.
+   - Losse bestanden: **Alle antwoorden (CSV)**, **Antwoorden per vragenlijst (CSV)**, **Eigen invoer (CSV)**, **Stukken (tekstbestand)** en **Alles samen (JSON)**, een volledige kopie voor je archief.
 
-   CSV-bestanden openen direct goed in de Nederlandse Excel.
-
-   Bewaar exportbestanden op een veilige plek. Ze bevatten alle losse antwoorden.
+   Bewaar exportbestanden op een veilige plek. Ze bevatten alle losse antwoorden, ook van kleine groepen.
 2. **Archiveren.** Klik op **Onderzoek archiveren**.
    - Daarna kun je alles nog inzien en exporteren, maar niets meer wijzigen.
    - Open vragenlijsten worden gesloten; de links werken niet meer.
+   - Deellinks blijven werken tot hun einddatum, zodat de opdrachtgever het eindrapport nog kan lezen. Trek ze in bij **Delen** als dat niet meer nodig is.
 3. **Nieuw onderzoek.** Klik op **Nieuw onderzoek starten** en begin leeg bij het volgende bedrijf.
 4. **Definitief verwijderen** (optioneel). Een gearchiveerd onderzoek kun je bij Afronden definitief verwijderen. Bewaar onderzoeksgegevens niet langer dan nodig (AVG).
 
-## 10. Privacy in het kort
+## 12. Samenwerken met Excel, Word, Outlook en SPSS
+
+De onderzoeksomgeving werkt met bestanden; er is geen directe koppeling met Microsoft 365 (dat zou een externe dienst zijn).
+
+| Programma | Erin (inlezen) | Eruit (exporteren) |
+|---|---|---|
+| **Excel** | Cijfers, antwoorden, vragen en eigen datasets (.xlsx of .csv), zie hoofdstuk 6 | Excel-werkboek en CSV-bestanden bij Afronden |
+| **Word** | – | Rapport als .docx (tabblad Rapport), stukken als .docx (Afronden) |
+| **Outlook** | – | Uitnodiging en herinnering als nieuw e-mailbericht (Delen); meetmomenten en acties als agendabestand (Afronden) |
+| **SPSS** | – | SPSS-pakket (Afronden) |
+
+### Het SPSS-pakket gebruiken
+
+1. Download het pakket bij **Afronden** en pak het zip-bestand uit. Er zitten drie bestanden in: een gegevensbestand (.csv), een syntaxbestand (.sps) en een LEESMIJ.
+2. Open het .sps-bestand in SPSS en kies **Run › All**. De gegevens verschijnen met namen, labels en waardelabels.
+3. Bewaar ze als SPSS-bestand via **File › Save As**.
+
+Goed om te weten:
+- Alle vragenlijsten staan onder elkaar. De variabelen *vragenlijst* en *meetmoment* geven aan bij welke meting een rij hoort. Dezelfde vraag op verschillende meetmomenten staat in dezelfde kolom, zodat je metingen direct kunt vergelijken.
+- Bij schaalvragen is **99** "weet niet / n.v.t."; die waarde telt niet mee in gemiddelden.
+- *thema01*, *thema02* … zijn de scores per thema per respondent, berekend zoals op het tabblad Analyse.
+- Het pakket is getest met PSPP, de gratis variant van SPSS.
+
+## 13. Privacy in het kort
 
 - Van respondenten wordt **geen naam, e-mailadres, IP-adres of tijdstip** opgeslagen. Alleen de datum en de antwoorden worden bewaard.
 - Ingevulde vragenlijsten krijgen een willekeurig nummer, zodat de volgorde van invullen niet te herleiden is.
 - De database staat in de **EU** (Cloudflare D1 met jurisdictie "eu").
 - Cloudflare houdt voor deze app geen logboek bij.
+- Van **meelezers** met een deellink wordt niets bewaard, behalve de datum waarop de link het laatst is bekeken. Van de toegangscode wordt alleen een onleesbare versie (hash) bewaard.
+- **E-mailadressen** worden nergens bewaard. Uitnodigingen verstuur je vanuit je eigen e-mailprogramma.
+- Bestanden die je **inleest** worden in je eigen browser gelezen; alleen de gegevens die je kiest, worden opgeslagen.

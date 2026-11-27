@@ -11,6 +11,7 @@ Dit document is voor onderhoud: waar staat wat, hoe zet je een nieuwe versie onl
 | Wachtwoord | Geheim **BEHEER_WACHTWOORD** bij de Worker (Settings › Variables and Secrets) | Staat nergens in de code |
 | Tweede toegang | Geheim **BEHEER_WACHTWOORD_2** bij de Worker (optioneel) | Extra beheerwachtwoord voor ondersteuning; verwijder het geheim om die toegang in te trekken |
 | Sjablonen | In de database (tabel `sjablonen`) | De code bevat alleen de originelen van de meegeleverde sjablonen |
+| Rapporten, deellinks, eigen datasets | In de database (tabellen `rapporten`, `deellinks`, `datasets`) | Gaan mee bij **Alles samen (JSON)**; worden verwijderd met het onderzoek |
 | Code | GitHub-repository `onderzoeksomgeving` | |
 
 Je andere projecten (AF Partners-site, InterimRadar) staan los hiervan en worden niet geraakt.
@@ -53,6 +54,9 @@ Er wordt niets in rekening gebracht. Bij een daglimiet weigert Cloudflare verzoe
 | D1: gelezen rijen | 5 miljoen per dag | Ruim voldoende |
 | D1: opslag | 500 MB per database | Tekst; ruim voldoende voor vele onderzoeken |
 
+Grenzen die de app zelf stelt, zodat één verzoek altijd binnen de gratis rekentijd blijft: 300 regels per keer bij inlezen (de app verdeelt grotere bestanden zelf in delen), 100 vragen per vragenlijst, 20 rapporten en 20 deellinks per onderzoek, 10 eigen datasets per onderzoek van maximaal 2.000 rijen en 40 kolommen.
+
+
 ## Privacy en beveiliging (technisch)
 
 **Respondenten**
@@ -64,6 +68,20 @@ Er wordt niets in rekening gebracht. Bij een daglimiet weigert Cloudflare verzoe
 **Dashboard**
 - Er worden geen groepen of getallen getoond die op minder dan 5 respondenten berusten.
 - Waar nodig worden ook andere groepen of getallen verborgen, zodat niets uit het totaal terug te rekenen is.
+
+**Deellinks (meelezers)**
+- Een meelezer heeft de link (`/d/<code>`, niet te raden) én een toegangscode van 10 tekens nodig. Van de toegangscode staat alleen een hash met zout in de database.
+- Na 5 verkeerde codes per link volgt 15 minuten wachttijd (ondeelbaar geteld).
+- Een meelezer krijgt een eigen sessiecookie per link (`__Host-kijk-…`, HttpOnly, Secure, SameSite=Strict, 8 uur). Intrekken, een nieuwe code, verlopen of verwijderen beëindigt lopende sessies direct.
+- De server geeft een meelezer alleen wat is aangevinkt. Uitkomsten van een vragenlijst, vraag, thema of meetmoment met minder dan 5 respondenten worden aan de serverkant weggelaten, net als open antwoorden (tenzij aangevinkt) en links naar vragenlijsten.
+- Van meelezers wordt alleen de datum van het laatste bezoek per link bewaard.
+
+**Rapporten**
+- De feiten in een rapport worden in de browser met vaste regels uit de gegevens samengesteld (geen AI) en met een peildatum in de database vastgelegd. Uitkomsten van minder dan 5 respondenten worden niet opgenomen.
+
+**Inlezen uit Excel of CSV**
+- Het bestand wordt in de browser gelezen; de server krijgt alleen de gekozen gegevens en controleert die opnieuw met dezelfde regels als bij handmatige invoer of invullen. Elke reeks wordt ondeelbaar opgeslagen (alles of niets).
+- Ingelezen antwoorden krijgen, net als ingevulde vragenlijsten, een willekeurig id en alleen een datum; alleen antwoorden op bestaande vragen worden bewaard.
 
 **Beheerder**
 - **Wachtwoord:** wordt in constante tijd vergeleken.
