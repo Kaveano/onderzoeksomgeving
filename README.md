@@ -6,6 +6,8 @@ Webapp voor HR-onderzoek bij één bedrijf tegelijk, bijvoorbeeld naar medewerke
 - in de Werkbank zelf analyses doen zoals in SPSS (eigen variabelen, selecties, t-toets, ANOVA, kruistabel, correlaties, betrouwbaarheid, factoranalyse, gepaard vergelijken, lineaire en logistische regressie), met bewaarde analyses voor het rapport;
 - eigen bevindingen vastleggen, ook door gegevens uit Excel in te lezen;
 - je stukken schrijven en een tussen- of eindrapport maken (feiten uit de gegevens, eigen tekst gescheiden);
+- een bibliotheek met bronnen (een gecontroleerde startcollectie en je eigen bronnen): zoeken, APA-verwijzingen, "Plak een verwijzing" en RIS voor Zotero, Mendeley en EndNote;
+- open antwoorden en interviews coderen en gecontroleerde citaten kiezen voor het rapport;
 - anderen alleen-lezen laten meekijken met een deellink en toegangscode;
 - exporteren naar Excel, Word, SPSS en je agenda, en het onderzoek na afloop archiveren.
 

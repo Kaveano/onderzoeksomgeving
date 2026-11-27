@@ -27,6 +27,8 @@ import * as inlezen from './routes/inlezen.js';
 // [P4] Werkbank (definities, analyses)
 import * as werkbank from './routes/werkbank.js';
 // [P5] Bibliotheek, bronnen bij een onderzoek en coderen
+import * as bibliotheek from './routes/bibliotheek.js';
+import * as codering from './routes/codering.js';
 // [P6] Rapporten v2
 
 const B = '/api/beheer';
@@ -139,6 +141,27 @@ const BEHEER_ROUTES = [
   ['PUT', `${B}/werkbank/analyses/:id`, werkbank.analyseWijzig],
   ['DELETE', `${B}/werkbank/analyses/:id`, werkbank.analyseVerwijder],
   // [P5] Bibliotheek, bronnen bij een onderzoek en coderen
+  // (vaste paden voor :id, zoals bij de sjablonen)
+  ['GET', `${B}/bibliotheek`, bibliotheek.lijst],
+  ['POST', `${B}/bibliotheek`, bibliotheek.nieuw],
+  ['POST', `${B}/bibliotheek/reeks`, bibliotheek.reeks],
+  ['POST', `${B}/bibliotheek/herstellen`, bibliotheek.herstellen],
+  ['GET', `${B}/bibliotheek/:id`, bibliotheek.detail],
+  ['PUT', `${B}/bibliotheek/:id`, bibliotheek.wijzig],
+  ['DELETE', `${B}/bibliotheek/:id`, bibliotheek.verwijder],
+  ['POST', `${B}/bibliotheek/:id/kopie`, bibliotheek.kopie],
+  ['PUT', `${B}/bibliotheek/:id/verbergen`, bibliotheek.verbergen],
+  ['GET', `${B}/onderzoeken/:id/bronnen`, bibliotheek.onderzoekBronnen],
+  ['PUT', `${B}/onderzoeken/:id/bronnen/:bron`, bibliotheek.koppel],
+  ['DELETE', `${B}/onderzoeken/:id/bronnen/:bron`, bibliotheek.ontkoppel],
+  ['GET', `${B}/onderzoeken/:id/codering`, codering.overzicht],
+  ['POST', `${B}/onderzoeken/:id/codes`, codering.codeNieuw],
+  ['PUT', `${B}/codes/:id`, codering.codeWijzig],
+  ['DELETE', `${B}/codes/:id`, codering.codeVerwijder],
+  ['PUT', `${B}/onderzoeken/:id/coderingen`, codering.coderingen],
+  ['POST', `${B}/onderzoeken/:id/citaten`, codering.citaatNieuw],
+  ['PUT', `${B}/citaten/:id`, codering.citaatWijzig],
+  ['DELETE', `${B}/citaten/:id`, codering.citaatVerwijder],
   // [P6] Rapporten v2
 ];
 

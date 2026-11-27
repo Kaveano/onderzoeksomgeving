@@ -22,6 +22,11 @@ Dit document is voor onderhoud: waar staat wat, hoe zet je een nieuwe versie onl
 | Belastingtest | `scripts/belasting.mjs` | Meet hoe groot een onderzoek kan worden op de gratis laag (zie "Belastingtest") |
 | Werkbank (rekenen) | `public/js/beheer/werkbank/` | Zuivere modules: `dataset.js` (variabelen, namen als in SPSS), `transformaties.js` (eigen variabelen, selecties), `privacy-selectie.js` (regels A–E bovenop `privacy.js`), `verdelingen.js`, `matrix.js` (QR, Cholesky, Jacobi met warme start), `procedures/` (de analyses; `procedures/index.js` is de lijst; `regressie.js` en `logistisch.js` voor voorspellen, `groepen.js` ook voor gepaard, `schalen.js` ook voor de factoranalyse), `uitvoer.js`, `uitvoer-tekst.js`, `uitvoer-export.js`, `rekenkern.js` (hoofdthread met pauzes en stoppen), `rapport.js` (`analysesVoorRapport` voor het rapport), `definities.js` (vorm van definities en specs; ook de server gebruikt die) |
 | Werkbank (scherm en server) | `public/js/beheer/schermen/werkbank*.js`, `werkbank/uitvoer-weergave.js`, `src/routes/werkbank.js` | De server bewaart alleen definities (`werkbank_definities`) en bewaarde analyses (`werkbank_analyses`) |
+| Bibliotheek | Tabellen `bronnen` en `bron_koppelingen`; `src/routes/bibliotheek.js`, `src/lib/bibliotheek.js` (controle, citeersleutels) | Eén bibliotheek voor alle onderzoeken. Elke wijziging verhoogt `instellingen.bibliotheek_versie`; de browser (`public/js/beheer/bibliotheek-data.js`) haalt de lijst alleen opnieuw op als die versie veranderd is |
+| APA, zoeken en bestanden van de bibliotheek | `public/js/beheer/bibliotheek-regels.js` (APA 7 met de Nederlandse afspraken in `OPMAAK`, "Plak een verwijzing", namen en citeersleutels), `bibliotheek-zoeken.js` (zoeken zonder index), `bibliotheek-bestanden.js` (RIS, Excel, Word) | Zuiver (geen DOM): de Worker, de schermen en de tests gebruiken dezelfde code |
+| Schermen van de bibliotheek | `schermen/bibliotheek.js`, `bron-bewerken.js`, `bronnen.js` (Rapport · Bronnen), `bronkiezer.js` (dialoog "Bron noemen"), `bibliotheek-ui.js` (Citeer, Koppel, Plak een verwijzing, exports) | CSS: `public/css/scherm-bibliotheek.css` |
+| Coderen van open antwoorden | Tabellen `codes`, `coderingen`, `citaten`; `src/routes/codering.js`; `public/js/beheer/codering-regels.js` (tellen en `coderingFeiten`, zuiver); scherm `schermen/coderen.js` (Analyse · Open antwoorden) | CSS: `public/css/scherm-coderen.css`. Coderingen en citaten verdwijnen met hun inzending of eigen invoer (`ON DELETE CASCADE`) |
+| Startcollectie | `scripts/startcollectie.mjs`, `data/startcollectie.json`, `data/startcollectie-sleutels.json`, migratie `0016_bibliotheek_start.sql` | Zie "De startcollectie van de bibliotheek" |
 
 Je andere projecten (AF Partners-site, InterimRadar) staan los hiervan en worden niet geraakt.
 
@@ -200,6 +205,18 @@ Het eerste verzoek in een vers proces kost 12 tot 30 ms, bij elke grootte vanaf 
 - **Raadpogingen:** maximaal 10 mislukte pogingen per afzender per 15 minuten. Voor dat tellen wordt een niet terug te rekenen code bewaard die na een dag wordt gewist. Voor alle afzenders samen geldt maximaal 200.
 - **Andere websites:** verzoeken vanaf een andere website worden geweigerd.
 
+**Bibliotheek**
+- Er is geen bibliotheekroute onder `/api/kijk`; alles staat achter de beheerlogin (PR-18). Een meelezer krijgt van een bron alleen de APA-velden als die in een gedeeld rapport genoemd wordt (dat bouwt P6).
+- `bronnen.notities` en `bron_koppelingen.notitie` gaan nooit in een rapport of RIS-bestand (RIS alleen met de optie *Eigen notities meenemen*); wel in de eigen Excel-export als die optie aan staat, en in de volledige JSON.
+- Links worden alleen bewaard als ze met `http://` of `https://` beginnen en alleen als link getoond via `h()` (met `rel="noopener noreferrer"`).
+- Een bron die in een rapport genoemd wordt (zoeken met `GLOB '*@<sleutel>[^a-z0-9]*'` in de rapporttekst), wordt alleen na bevestiging verwijderd.
+
+**Coderen**
+- Een codering hoort bij één antwoord (het willekeurige `inzendingen.id` plus de vraag) of bij één stuk eigen invoer van de soort interview of observatie. De server controleert dat de inzending bij een vragenlijst van dit onderzoek hoort, dat de vraag een open vraag van die vragenlijst is en dat er iets is ingevuld (bij eigen invoer: dat het een interview of observatie van dit onderzoek is). `PUT /onderzoeken/:id/coderingen` vervangt de codes van één stuk in één batch.
+- `GET /onderzoeken/:id/codering` geeft de JSON zoals de database hem opbouwt (geen werk per codering in de Worker), met de coderingen in delen van hooguit 10.000 (`?na=<id>`, het veld `volgende`); de schermen gebruiken deze route niet (zij lezen `export/data`).
+- `codering-regels.js coderingFeiten` (voor het rapport, P6) neemt alleen vragen met minstens 5 niet-lege antwoorden op; aantallen per code gaan door `verbergReeks` over [codes…, antwoorden zonder code]. Citaten alleen met `gecontroleerd = 1` én `in_rapport = 1` (de server weigert `in_rapport` zonder `gecontroleerd`; een nieuwe tekst zet beide terug op 0), en bij een vragenlijst alleen bij een vraag met minstens 5 antwoorden. Elk citaat uit een vragenlijst draagt `lijst_id` en `vraag_id`, zodat het rapport bij een meelezer zonder tussenstand de citaten uit lijsten die op de peildatum open waren kan weglaten (PR-13; de vraagtekst is daarvoor niet genoeg, want een gekopieerde vraag heeft dezelfde tekst).
+- Grenzen: 200 codes, 50.000 coderingen en 300 citaten per onderzoek; een citaat hooguit 1.000 tekens.
+
 **Overig**
 - Er geldt een strikte Content-Security-Policy, de app wordt niet door zoekmachines geïndexeerd en geeft geen *referrer* door.
 - Het logboek van Cloudflare (*observability*) staat uit.
@@ -232,7 +249,7 @@ Lokaal testen:
 npm test
 ```
 
-De servertests starten elk een eigen lokale testserver met een lege database, op een vaste poort: `api` 8799, `sjablonen` 8798, `delen` 8797, `rapport` 8796, `inlezen` 8795 en `fundament` 8790 (de uitbreidingen gebruiken 8788 tot en met 8794). `migratie` en `dashboard-rekenen` hebben geen poort nodig; ze werken rechtstreeks op een tijdelijke lokale database. Zorg dat die poorten vrij zijn.
+De servertests starten elk een eigen lokale testserver met een lege database, op een vaste poort: `api` 8799, `sjablonen` 8798, `delen` 8797, `rapport` 8796, `inlezen` 8795 en `fundament` 8790 (de uitbreidingen gebruiken 8788 tot en met 8794; de bibliotheek 8794 en het coderen 8789, met inspectiepoort 9794 en 9789). `migratie` en `dashboard-rekenen` hebben geen poort nodig; ze werken rechtstreeks op een tijdelijke lokale database. Zorg dat die poorten vrij zijn.
 
 Database-aanpassingen doorvoeren, als er nieuwe bestanden in `migrations/` staan. Doe dit altijd **vóór** het online zetten:
 
@@ -265,6 +282,33 @@ npx wrangler deploy
 Wrangler vraagt bij de eerste keer om in te loggen bij Cloudflare. Je kunt ook vooraf `CLOUDFLARE_API_TOKEN` instellen.
 
 Lokaal proberen kan met `npm run db:lokaal` en daarna `npm run dev`. Zet voor lokaal gebruik een bestand `.dev.vars` neer met de regel `BEHEER_WACHTWOORD=een-lokaal-testwachtwoord`. Dat bestand gaat niet mee naar GitHub.
+
+## De startcollectie van de bibliotheek
+
+<!-- [P5] Startcollectie -->
+
+De startcollectie zijn openbare bronnen die een onderzoeksteam heeft gecontroleerd. Ze komen met een migratie in de database (`migrations/0016_bibliotheek_start.sql`), niet in de code van de Worker. Bronnen uit de startcollectie zijn alleen-lezen: de gebruiker kan notities toevoegen, koppelen, verbergen en een eigen kopie maken, maar niet aanpassen of verwijderen (`PUT /bibliotheek/:id` accepteert bij een startbron alleen `notities`).
+
+**De migratie maken** (eenmalig per versie van de collectie):
+
+```bash
+node scripts/startcollectie.mjs data/startcollectie.json
+```
+
+Het script:
+- zet elk record om (`normaliseerStartbron`) en controleert het met dezelfde regels als de server (`controleerBron`). Bij een harde fout (geen titel, geen link en geen DOI, onbekende soort, geen bekend onderwerp) stopt het zonder iets te schrijven. **Los zo'n fout op door het onderzoeksteam te vragen; vul nooit zelf iets in.**
+- legt per bron een vaste `sleutel` en `citeersleutel` vast in `data/startcollectie-sleutels.json` (op DOI, anders op titel en jaar). Wijzig dat bestand niet met de hand: rapporten verwijzen naar de citeersleutels.
+- schrijft de migratie: per bron één `INSERT … WHERE NOT EXISTS`, die nooit iets overschrijft. Heeft de gebruiker zelf al een bron met dezelfde citeersleutel, dan krijgt de startbron die sleutel met `st` erachter (bijvoorbeeld `bakker2017st`). Elke opdracht blijft onder 18 KB.
+- herkent onderwerpen aan de sleutel, de naam, een sjabloon-id of een andere naam uit `ONDERWERP_ALIASSEN` in `bibliotheek-regels.js` (bijvoorbeeld de sleutels van het onderzoeksteam: `onderzoeksmethode`, `privacy-ethiek`, `tevredenheid-bevlogenheid`, `vertrek-verloop`, `diversiteit-inclusie`). `wet-regelgeving` is geen vast onderwerp en wordt een trefwoord.
+- leest bij een artikel zonder losse tijdschriftvelden het tijdschrift, de jaargang, het nummer en de pagina's (of het artikelnummer) uit `bron_details` als daar "Tijdschrift, 22(3), 273–285" staat; een toelichting daarachter wordt gemeld en niet overgenomen. Bij andere soorten wordt `bron_details` niet gebruikt (melding).
+- toont waarschuwingen: onbekende onderwerpen die als trefwoord zijn overgenomen, `http://` in plaats van `https://`, ingekorte velden, velden die niet bij de soort horen.
+- geeft met dezelfde invoer altijd precies dezelfde migratie (`--controle` controleert dat zonder iets te schrijven).
+
+Een proef op een tijdelijke map: `node scripts/startcollectie.mjs test/fixtures/startcollectie-voorbeeld.json --uit /tmp/proef` (drie verzonnen records; `test/bibliotheek-api.test.mjs` doet dit en voert de migratie uit op een verse database).
+
+**Een nieuwe versie van de collectie**: pas `data/startcollectie.json` aan en maak een **nieuwe** migratie met het volgende vrije nummer: `node scripts/startcollectie.mjs data/startcollectie.json --versie 2 --bestand 00NN_bibliotheek_start_v2.sql`. Voor bronnen die er al waren komt er dan ook een `UPDATE … WHERE sleutel = ? AND collectie = 'start'` bij (dat mag, want startbronnen zijn alleen-lezen); notities, koppelingen en verbergen blijven staan. Pas een migratie die al live is gegaan nooit meer aan.
+
+**Grenzen**: hooguit 1.000 bronnen in de bibliotheek. Een RIS-bestand gaat in delen van hooguit 25 bronnen (en 480 KB) naar `POST /bibliotheek/reeks`, zodat de controle op dubbele bronnen ruim binnen de rekentijd blijft (`planReeks` maakt de vergelijkingssleutels van de bibliotheek één keer; een test bewaakt de tijd); de lijst gaat in delen van hooguit 700.000 tekens (de database bouwt de JSON op, de Worker plakt hem alleen door).
 
 ## Later: eigen subdomein (onderzoek.afpartners.nl)
 

@@ -1,2 +1,207 @@
 /* Schermen Bibliotheek, Bron en Rapport · Bronnen: bronnen zoeken, toevoegen en koppelen.
-   Gebruikt de variabelen uit app.css. Voorvoegsel: bb-. Wordt gevuld in pakket P5. */
+   Gebruikt de variabelen uit app.css. Voorvoegsels: bb- (bibliotheek en bron), bk- (bronkiezer), bn- (Rapport · Bronnen). */
+
+/* ================= Bibliotheek ================= */
+
+.bb-kopknoppen { justify-content: flex-end; }
+.bb-melding { display: flex; gap: var(--ruimte-3); align-items: flex-start; justify-content: space-between; }
+.bb-melding p { margin: 0; max-width: 80ch; }
+.bb-melding-weg { flex: none; }
+
+.bb-zoekrij {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 220px);
+  gap: var(--ruimte-3);
+  align-items: end;
+}
+.bb-zoekrij .veld { margin-bottom: var(--ruimte-3); }
+.bb-zoekveld input { width: 100%; }
+
+.bb-indeling {
+  display: grid;
+  grid-template-columns: minmax(0, 260px) minmax(0, 1fr);
+  gap: var(--ruimte-4);
+  align-items: start;
+}
+.bb-filters { padding: var(--ruimte-4); margin: 0; }
+.bb-filters > summary { cursor: pointer; font-weight: 650; color: var(--primair); }
+.bb-filters[open] > summary { margin-bottom: var(--ruimte-3); }
+.bb-filtergroep { border: 0; margin: 0 0 var(--ruimte-4); padding: 0; min-width: 0; }
+.bb-filtergroep > legend { font-weight: 600; margin-bottom: var(--ruimte-1); padding: 0; }
+.bb-filterkeuze { font-size: 0.95rem; margin-bottom: 2px; }
+.bb-filters .veld { margin-bottom: var(--ruimte-3); }
+.bb-filters select, .bb-filters input[type='number'] { width: 100%; }
+.bb-jaren { display: grid; grid-template-columns: 1fr 1fr; gap: var(--ruimte-2); }
+.bb-jaarveld label { display: block; font-size: 0.875rem; color: var(--tekst-zacht); }
+
+.bb-teller { font-weight: 600; margin: 0 0 var(--ruimte-3); }
+.bb-lijst { list-style: none; margin: 0; padding: 0; }
+.bb-bron { display: flex; flex-direction: column; gap: var(--ruimte-2); }
+.bb-bron > * { margin: 0; }
+.bb-meta { display: flex; flex-wrap: wrap; gap: var(--ruimte-1) var(--ruimte-2); align-items: center; }
+.bb-titel { font-family: var(--lettertype-kop); font-weight: 400; font-size: 1.2rem; line-height: 1.25; overflow-wrap: anywhere; }
+.bb-titel a { color: var(--kop); text-decoration: none; }
+.bb-titel a:hover { color: var(--primair); text-decoration: underline; }
+.bb-auteurs { color: var(--tekst-zacht); overflow-wrap: anywhere; }
+.bb-samenvatting p { margin: 0; }
+.bb-samenvatting, .bb-kernpunten { overflow-wrap: anywhere; max-width: 80ch; }
+.bb-bron details > summary { cursor: pointer; color: var(--primair); font-weight: 600; width: fit-content; padding: 4px 0; }
+.bb-kernpunten ul { margin: var(--ruimte-1) 0 0; padding-left: 1.25rem; }
+.bb-chips { display: flex; flex-wrap: wrap; gap: var(--ruimte-1); }
+.bb-chip {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  background: var(--vlak-2);
+  color: var(--tekst-zacht);
+  border: 1px solid var(--rand);
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.bb-chip-betr { background: transparent; }
+.bb-chip-gebruikt { background: var(--primair-zacht); color: var(--primair); border-color: transparent; }
+.bb-acties { margin-top: var(--ruimte-1); }
+.bb-meer { justify-content: center; margin: var(--ruimte-4) 0; }
+.bb-meldingen { margin: 0; padding-left: 1.25rem; }
+.bb-exportknoppen { margin-top: var(--ruimte-2); }
+
+/* Zoektreffers: oker, ook in het donker goed leesbaar. */
+mark.bb-treffer {
+  background: color-mix(in srgb, var(--oker) 30%, transparent);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+/* ================= Citeer en de andere dialogen ================= */
+
+dialog.bb-dialoog { width: min(680px, calc(100vw - 24px)); }
+.bb-citeer-rij {
+  display: flex;
+  gap: var(--ruimte-3);
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: var(--ruimte-3) 0;
+  border-bottom: 1px solid var(--rand);
+}
+.bb-citeer-rij:last-child { border-bottom: 0; }
+.bb-citeer-tekst { min-width: 0; flex: 1 1 auto; }
+.bb-citeer-tekst p { margin: 0 0 var(--ruimte-1); }
+.bb-citeer-label { font-weight: 600; font-size: 0.9rem; color: var(--tekst-zacht); }
+.bb-citeer-vorm { overflow-wrap: anywhere; }
+.bb-citeer-rij > .knop { flex: none; }
+
+/* "Plak een verwijzing" */
+.bb-plak > summary { cursor: pointer; font-weight: 650; color: var(--primair); width: fit-content; }
+.bb-plak[open] > summary { margin-bottom: var(--ruimte-3); }
+.bb-plak textarea { width: 100%; }
+.bb-plak-uitkomst { margin-top: var(--ruimte-3); }
+.bb-plak-uitkomst .melding p { margin: 0 0 var(--ruimte-1); }
+
+/* ================= Eén bron ================= */
+
+.bb-detail {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 380px);
+  gap: var(--ruimte-4);
+  align-items: start;
+}
+.bb-zijkant { position: sticky; top: var(--ruimte-4); }
+.bb-apa-groot { font-size: 1.05rem; overflow-wrap: anywhere; }
+.bb-vormen { margin: 0 0 var(--ruimte-2); }
+.bb-vormen > div { display: flex; flex-wrap: wrap; gap: 0 var(--ruimte-2); margin-bottom: var(--ruimte-1); }
+.bb-vormen dt { font-weight: 600; color: var(--tekst-zacht); }
+.bb-vormen dd { margin: 0; overflow-wrap: anywhere; }
+.bb-gegevens { margin: 0; }
+.bb-gegevens > div { display: grid; grid-template-columns: minmax(0, 180px) minmax(0, 1fr); gap: var(--ruimte-2); padding: 6px 0; border-bottom: 1px solid var(--rand); }
+.bb-gegevens > div:last-child { border-bottom: 0; }
+.bb-gegevens dt { font-weight: 600; color: var(--tekst-zacht); }
+.bb-gegevens dd { margin: 0; overflow-wrap: anywhere; }
+.bb-tekst { white-space: pre-line; overflow-wrap: anywhere; max-width: 80ch; }
+.bb-gebruik { margin: 0 0 var(--ruimte-3); padding-left: 1.25rem; overflow-wrap: anywhere; }
+
+.bb-formulier input[type='text'], .bb-formulier input[type='url'], .bb-formulier textarea, .bb-formulier select { width: 100%; }
+.bb-onderwerpen { border: 0; padding: 0; margin: 0 0 var(--ruimte-4); display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); gap: 2px var(--ruimte-3); }
+.bb-onderwerpen > legend { font-weight: 600; margin-bottom: var(--ruimte-2); padding: 0; }
+.bb-personen-lijst { list-style: none; margin: 0 0 var(--ruimte-2); padding: 0; }
+.bb-persoon {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: var(--ruimte-2);
+  align-items: end;
+  padding: var(--ruimte-2) 0;
+  border-bottom: 1px solid var(--rand);
+}
+.bb-persoon-veld label { display: block; color: var(--tekst-zacht); }
+.bb-persoon-veld input { width: 100%; }
+.bb-persoon-knoppen { display: flex; gap: 2px; }
+.bb-opslaan { position: sticky; bottom: 0; background: var(--achtergrond); padding: var(--ruimte-3) 0; border-top: 1px solid var(--rand); }
+
+/* ================= Bronkiezer ================= */
+
+.bk-tabs { display: flex; gap: var(--ruimte-1); border-bottom: 1px solid var(--rand); margin-bottom: var(--ruimte-3); flex-wrap: wrap; }
+.bk-tab {
+  border: 0;
+  border-bottom: 3px solid transparent;
+  background: none;
+  color: var(--tekst-zacht);
+  font: inherit;
+  font-weight: 600;
+  padding: 8px 10px;
+  min-height: 44px;
+  cursor: pointer;
+}
+.bk-tab[aria-selected='true'] { color: var(--tekst); border-bottom-color: var(--oker); }
+.bk-paneel input[type='search'] { width: 100%; }
+.bk-lijst { max-height: 42vh; overflow-y: auto; border: 1px solid var(--rand); border-radius: var(--radius); background: var(--vlak-licht); }
+.bk-keuze { padding: var(--ruimte-2) var(--ruimte-3); border-bottom: 1px solid var(--rand); margin: 0; }
+.bk-keuze:last-child { border-bottom: 0; }
+.bk-titel { display: block; font-weight: 600; overflow-wrap: anywhere; }
+.bk-meta { display: block; overflow-wrap: anywhere; }
+.bk-keuzes { margin-top: var(--ruimte-3); }
+.bk-vorm { border: 0; padding: 0; margin: 0 0 var(--ruimte-3); }
+.bk-vorm > legend { font-weight: 600; padding: 0; margin-bottom: var(--ruimte-1); }
+.bk-voorbeeld { background: var(--vlak-2); padding: var(--ruimte-2) var(--ruimte-3); border-radius: var(--radius); overflow-wrap: anywhere; }
+.bk-kop { margin: 0 0 var(--ruimte-3); }
+.bk-dialoog input[type='text'], .bk-dialoog select { width: 100%; }
+
+/* ================= Rapport · Bronnen ================= */
+
+.bn-lijst { list-style: none; margin: 0; padding: 0; }
+.bn-bron { padding: var(--ruimte-3) 0; border-bottom: 1px solid var(--rand); }
+.bn-bron:last-child { border-bottom: 0; }
+.bn-bron > p { margin: 0 0 var(--ruimte-1); }
+.bn-apa { overflow-wrap: anywhere; }
+.bn-notitie { margin: var(--ruimte-2) 0; }
+.bn-notitie textarea { width: 100%; }
+.bn-voorstel { list-style: none; margin: 0 0 var(--ruimte-3); padding: 0; }
+.bn-voorstel > li {
+  display: flex;
+  gap: var(--ruimte-3);
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--ruimte-2) 0;
+  border-bottom: 1px solid var(--rand);
+}
+.bn-voorstel > li > div { min-width: 0; }
+.bn-voorstel p { margin: 0; }
+.bn-voorstel-titel { font-weight: 600; overflow-wrap: anywhere; }
+.bn-voorstel .knop { flex: none; }
+
+/* ================= Telefoon ================= */
+
+@media (max-width: 900px) {
+  .bb-indeling, .bb-detail { grid-template-columns: minmax(0, 1fr); }
+  .bb-zijkant { position: static; }
+}
+@media (max-width: 600px) {
+  .bb-zoekrij { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .bb-persoon { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .bb-persoon-veld:first-child { grid-column: 1 / -1; }
+  .bb-persoon-knoppen { grid-column: 1 / -1; justify-content: flex-end; }
+  .bb-gegevens > div { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .bb-citeer-rij { flex-direction: column; gap: var(--ruimte-2); }
+  .bn-voorstel > li { flex-direction: column; align-items: stretch; }
+  .bn-voorstel .knop { align-self: flex-start; }
+}
