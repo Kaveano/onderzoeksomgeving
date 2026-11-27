@@ -7,7 +7,8 @@ import { api } from '../api.js';
 import { h, vervang, leeg, laden, melding, meld, meldFout, bevestig, formulierDialoog, aantal, datum } from '../ui.js';
 
 // Terugval als de vaste lijsten (nog) niet beschikbaar zijn.
-const VRAAGTYPEN = { schaal: 'Schaal 1 tot 5', meerkeuze: 'Meerkeuze', janee: 'Ja / nee', open: 'Open tekst' };
+const VRAAGTYPEN = { schaal: 'Schaal 1 tot 5', meerkeuze: 'Meerkeuze', janee: 'Ja / nee', cijfer: 'Cijfer (0–10 of 1–10)', open: 'Open tekst' };
+const CIJFER_LABEL = { nps: 'Cijfer 0–10', rapport: 'Rapportcijfer 1–10' };
 const SCHAAL_NAMEN = {
   eens: 'Eens – oneens',
   tevreden: 'Tevreden – ontevreden',
@@ -82,12 +83,17 @@ function vraagKenmerken(v, inst) {
   if (v.type === 'schaal') {
     delen.push(`Schaal: ${schalen[v.schaal_soort] || schalen.eens}`);
     if (v.weet_niet) delen.push('met "weet niet"');
+  } else if (v.type === 'cijfer') {
+    delen.push(CIJFER_LABEL[v.schaal_soort] || CIJFER_LABEL.rapport);
+    if (v.weet_niet) delen.push('met "weet niet"');
   } else if (v.type === 'meerkeuze') {
     delen.push(v.meerdere_antwoorden ? 'Meerkeuze, meerdere antwoorden mogelijk' : 'Meerkeuze');
   } else {
     delen.push(typen[v.type] || v.type);
   }
   if (v.meetpunt) delen.push(`meetpunt: ${v.meetpunt}`);
+  const kenmerk = v.kenmerk && inst?.kenmerken?.[v.kenmerk];
+  if (kenmerk) delen.push(`Kenmerk: ${kenmerk.naam}`);
   return delen;
 }
 

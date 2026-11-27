@@ -362,6 +362,58 @@ html {
   color: var(--tekst);
 }
 
+/* Cijfer 0 tot 10 (11 knoppen) of 1 tot 10 (10 knoppen): op een groot scherm in één rij, met de tekst bij de
+   uitersten eronder; onder 520 px in twee rijen (6 en 5 knoppen, of 5 en 5), met de tekst onder elke rij. */
+.vl-cijfer {
+  grid-template-columns: minmax(0, 6fr) minmax(0, 5fr);
+  gap: var(--ruimte-1);
+}
+.vl-cijfer-10 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.vl-cijfer-rij {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--ruimte-1);
+  align-content: start;
+}
+.vl-cijfer-10 .vl-cijfer-rij,
+.vl-cijfer-11 .vl-cijfer-rij + .vl-cijfer-rij {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+.vl-cijfer .vl-optie-vlak {
+  justify-content: center;
+  min-height: 48px;
+  padding: var(--ruimte-1);
+  font-weight: 700;
+  font-size: 1.05rem;
+  font-variant-numeric: tabular-nums;
+}
+.vl-cijfer-eind {
+  grid-column: 1 / -1;
+  font-size: 0.875rem;
+  line-height: 1.3;
+  color: var(--tekst-zacht);
+}
+.vl-cijfer-hoog {
+  justify-self: end;
+  text-align: right;
+}
+@media (max-width: 519.98px) {
+  .vl-cijfer,
+  .vl-cijfer-10 {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--ruimte-2);
+  }
+  /* Tweede rij van 0–10: even brede knoppen als de eerste rij (6 kolommen), de tekst onder de vijf knoppen. */
+  .vl-cijfer-11 .vl-cijfer-rij + .vl-cijfer-rij {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+  .vl-cijfer-11 .vl-cijfer-rij + .vl-cijfer-rij .vl-cijfer-hoog {
+    grid-column: 1 / span 5;
+  }
+}
+
 /* Ja / nee: twee grote vlakken naast elkaar */
 .vl-janee {
   grid-template-columns: repeat(2, minmax(0, 1fr));

@@ -14,6 +14,8 @@
 // blijven vragen gekoppeld als je een thema of meetpunt een andere naam geeft.
 
 import { h, vervang, leeg, melding, bevestig, formulierDialoog, uniekeId, aantal } from './ui.js';
+import { KENMERKEN, KENMERKVRAGEN, KENMERK_THEMA, KENMERK_TOELICHTING } from './kenmerken.js';
+import { kenmerkDialoog } from './schermen/kenmerk-dialoog.js';
 
 export const MAX_THEMAS = 40;
 export const MAX_MEETPUNTEN = 30; // per thema
@@ -24,12 +26,17 @@ export const MAX_OPTIES = 30;
 const PLEK = '{bedrijf}';
 
 // Terugval als de vaste lijsten van de server (ctx.instellingen) ontbreken.
-const VRAAGTYPEN = { schaal: 'Schaal 1 tot 5', meerkeuze: 'Meerkeuze', janee: 'Ja / nee', open: 'Open tekst' };
+const VRAAGTYPEN = { schaal: 'Schaal 1 tot 5', meerkeuze: 'Meerkeuze', janee: 'Ja / nee', cijfer: 'Cijfer (0–10 of 1–10)', open: 'Open tekst' };
+const CIJFER_LABEL = { nps: 'Cijfer 0–10', rapport: 'Rapportcijfer 1–10' };
 const SCHALEN = {
   eens: ['Helemaal oneens', 'Oneens', 'Neutraal', 'Eens', 'Helemaal eens'],
   tevreden: ['Zeer ontevreden', 'Ontevreden', 'Neutraal', 'Tevreden', 'Zeer tevreden'],
   frequentie: ['Nooit', 'Zelden', 'Soms', 'Vaak', 'Altijd'],
   kwaliteit: ['Zeer slecht', 'Slecht', 'Voldoende', 'Goed', 'Zeer goed'],
+};
+const CIJFERSCHALEN = {
+  nps: { min: 0, max: 10, laag: 'Zeer onwaarschijnlijk', hoog: 'Zeer waarschijnlijk', naam: 'Aanbevelen (0 tot 10)' },
+  rapport: { min: 1, max: 10, laag: 'Zeer slecht', hoog: 'Uitstekend', naam: 'Rapportcijfer (1 tot 10)' },
 };
 const SCHAAL_NAMEN = {
   eens: 'Eens – oneens',
@@ -41,8 +48,12 @@ const TYPE_UITLEG = {
   schaal: 'Vijf antwoorden van laag naar hoog, bijvoorbeeld van "helemaal oneens" tot "helemaal eens".',
   meerkeuze: 'Respondenten kiezen uit antwoorden die jij opgeeft, bijvoorbeeld hun afdeling.',
   janee: 'Respondenten antwoorden met ja of nee.',
+  cijfer: 'Een cijfer, bijvoorbeeld "Hoe waarschijnlijk is het dat je … aanbeveelt?" (0 tot 10) of een rapportcijfer (1 tot 10). Telt niet mee in de themascores.',
   open: 'Respondenten schrijven zelf een antwoord.',
 };
+const KENMERK_HULP = 'Kies dit als de vraag gaat over wie de respondent is, zoals afdeling of leeftijd. Dan zie je bij HR-analytics wie er hebben meegedaan en kun je groepen vergelijken. Groepen met minder dan 5 respondenten worden nooit getoond.';
+/** Mag een vraag van dit type een achtergrondkenmerk hebben? */
+const magKenmerk = (type, meerdere) => (type === 'meerkeuze' && !meerdere) || type === 'janee';
 
 const sleutel = (s) => String(s ?? '').trim().toLowerCase();
 const tekstVan = (x) => (x === null || x === undefined ? '' : String(x));
@@ -129,6 +140,8 @@ export function maakSjabloonEditor({
   const vraagtypen = inst.vraagtypen || VRAAGTYPEN;
   const schalen = inst.schalen || SCHALEN;
   const schaalNamen = inst.schaal_namen || SCHAAL_NAMEN;
+  const cijferschalen = inst.cijferschalen || CIJFERSCHALEN;
+  const kenmerken = inst.kenmerken || KENMERKEN;
   const drempel = inst.drempel || 5;
   const niveau = Math.min(Math.max(Number(kopNiveau) || 2, 2), 5);
   const KOP = `h${niveau}`;
@@ -138,6 +151,13 @@ export function maakSjabloonEditor({
   const nieuwUid = () => `${p}-u${++uidTeller}`;
 
   // ---------- Het model ----------
+
+  /** schaal_soort zoals de server hem bewaart: een schaal 1 tot 5, een cijferschaal (0–10 of 1–10) of 'eens'. */
+  function schaalSoortVan(type, soort) {
+    if (type === 'schaal') return Object.hasOwn(schalen, soort) ? soort : 'eens';
+    if (type === 'cijfer') return Object.hasOwn(cijferschalen, soort) ? soort : 'rapport';
+    return 'eens';
+  }
 
   function leesInhoud(ruw) {
     const bron = ruw && typeof ruw === 'object' ? ruw : {};
@@ -183,11 +203,12 @@ export function maakSjabloonEditor({
         opties: type === 'meerkeuze'
           ? lijst(v.opties).map((o) => tekstVan(typeof o === 'string' ? o : o?.label).trim()).filter(Boolean)
           : [],
-        schaal_soort: type === 'schaal' && Object.hasOwn(schalen, v.schaal_soort) ? v.schaal_soort : 'eens',
+        schaal_soort: schaalSoortVan(type, v.schaal_soort),
         meerdere_antwoorden: meerdere,
         verplicht: !!v.verplicht,
-        weet_niet: type === 'schaal' && !!v.weet_niet,
+        weet_niet: (type === 'schaal' || type === 'cijfer') && !!v.weet_niet,
         uitsplitsen: !!v.uitsplitsen && ((type === 'meerkeuze' && !meerdere) || type === 'janee'),
+        kenmerk: typeof v.kenmerk === 'string' && Object.hasOwn(kenmerken, v.kenmerk) && magKenmerk(type, meerdere) ? v.kenmerk : '',
       });
     }
     for (const a of lijst(bron.acties)) {
@@ -223,11 +244,13 @@ export function maakSjabloonEditor({
         tekst: v.tekst,
         toelichting: v.toelichting,
         opties: v.type === 'meerkeuze' ? [...v.opties] : [],
-        schaal_soort: v.type === 'schaal' ? v.schaal_soort : 'eens',
+        schaal_soort: schaalSoortVan(v.type, v.schaal_soort),
         meerdere_antwoorden: v.type === 'meerkeuze' && v.meerdere_antwoorden,
         verplicht: v.verplicht,
-        weet_niet: v.type === 'schaal' && v.weet_niet,
+        weet_niet: (v.type === 'schaal' || v.type === 'cijfer') && v.weet_niet,
         uitsplitsen: v.uitsplitsen && ((v.type === 'meerkeuze' && !v.meerdere_antwoorden) || v.type === 'janee'),
+        // Alleen als het is ingevuld (zelfde vorm als de server, zodat een sjabloon zonder kenmerken gelijk blijft).
+        ...(v.kenmerk && magKenmerk(v.type, v.meerdere_antwoorden) ? { kenmerk: v.kenmerk } : {}),
       }))),
       acties: model.acties.map((a) => a.tekst.trim()).filter(Boolean),
     };
@@ -662,8 +685,10 @@ export function maakSjabloonEditor({
     if (v.uitsplitsen) tags.push(h('span', { class: 'label label-succes', title: 'Resultaten zijn per groep te bekijken' }, 'Uitsplitsing'));
     if (meetpunt) tags.push(h('span', { class: 'label' }, `Meetpunt: ${meetpunt.naam}`));
     if (v.type === 'schaal') tags.push(h('span', { class: 'label' }, `Schaal: ${schaalNamen[v.schaal_soort] || v.schaal_soort}`));
-    if (v.type === 'schaal' && v.weet_niet) tags.push(h('span', { class: 'label' }, '"Weet niet" mogelijk'));
+    if (v.type === 'cijfer') tags.push(h('span', { class: 'label' }, CIJFER_LABEL[v.schaal_soort] || CIJFER_LABEL.rapport));
+    if ((v.type === 'schaal' || v.type === 'cijfer') && v.weet_niet) tags.push(h('span', { class: 'label' }, '"Weet niet" mogelijk'));
     if (v.type === 'meerkeuze' && v.meerdere_antwoorden) tags.push(h('span', { class: 'label' }, 'Meerdere antwoorden mogelijk'));
+    if (v.kenmerk && kenmerken[v.kenmerk]) tags.push(h('span', { class: 'label label-primair', title: 'Achtergrondkenmerk' }, `Kenmerk: ${kenmerken[v.kenmerk].naam}`));
     return tags.length ? h('div', { class: 'sje-vraag-tags' }, tags) : null;
   }
 
@@ -712,6 +737,57 @@ export function maakSjabloonEditor({
     lichtOp(v.uid);
     if (r.nogEen && model.vragen.length < MAX_VRAGEN) nieuweVraag({ themaUid: v.themaUid, type: v.type });
     else zetFocus(`vraag-${v.uid}-wijzig`);
+  }
+
+  /** "Achtergrondvragen toevoegen": de standaardvragen komen in het thema Achtergrond van het sjabloon. */
+  async function achtergrondToevoegen() {
+    const r = await kenmerkDialoog({
+      aanwezig: model.vragen.map((v) => v.kenmerk).filter((k) => k && !kenmerken[k]?.meerdere),
+      ruimte: MAX_VRAGEN - model.vragen.length,
+      opslaan: async (keuzes) => {
+        const nieuw = keuzes.map(({ kenmerk, variant }) => {
+          const bron = KENMERKVRAGEN[kenmerk];
+          const opties = bron.varianten ? bron.varianten[variant || bron.standaard] : bron.opties;
+          return { kenmerk, bron, opties: (opties || []).map((o) => o.label) };
+        });
+        const dubbel = nieuw.filter((n) => model.vragen.some((v) => sleutel(v.tekst) === sleutel(n.bron.tekst)));
+        if (dubbel.length) throw new Error(`Deze vraag staat er al in: "${dubbel[0].bron.tekst}". Elke vraag mag één keer voorkomen.`);
+        let thema = model.themas.find((t) => sleutel(t.naam) === sleutel(KENMERK_THEMA));
+        if (!thema) {
+          thema = {
+            uid: nieuwUid(),
+            naam: KENMERK_THEMA,
+            omschrijving: 'Algemene vragen om de resultaten per groep te kunnen bekijken (alleen bij minimaal 5 respondenten per groep).',
+            meetpunten: [],
+          };
+          model.themas.push(thema);
+        }
+        for (const n of nieuw) {
+          model.vragen.push({
+            uid: nieuwUid(),
+            themaUid: thema.uid,
+            meetpuntUid: null,
+            type: n.bron.type,
+            tekst: n.bron.tekst,
+            toelichting: KENMERK_TOELICHTING,
+            opties: n.bron.type === 'meerkeuze' ? n.opties : [],
+            schaal_soort: 'eens',
+            meerdere_antwoorden: false,
+            verplicht: false,
+            weet_niet: false,
+            uitsplitsen: true,
+            kenmerk: n.kenmerk,
+          });
+        }
+        return { aantal: nieuw.length };
+      },
+    });
+    if (!r) return;
+    tekenThemas();
+    tekenVragen();
+    gewijzigd();
+    kondigAan(r.aantal === 1 ? 'Achtergrondvraag toegevoegd aan het thema Achtergrond.' : `${r.aantal} achtergrondvragen toegevoegd aan het thema Achtergrond.`);
+    zetFocus('kenmerken-toevoegen');
   }
 
   async function wijzigVraag(v) {
@@ -768,6 +844,14 @@ export function maakSjabloonEditor({
       disabled: vol,
       onclick: () => nieuweVraag(),
     }, '+ Vraag toevoegen') : null;
+    const kenmerkKnop = h('button', {
+      type: 'button',
+      class: 'knop',
+      'data-focus': 'kenmerken-toevoegen',
+      'aria-haspopup': 'dialog',
+      disabled: vol,
+      onclick: () => achtergrondToevoegen(),
+    }, 'Achtergrondvragen toevoegen');
 
     const uitleg = totaal
       ? `${aantal(totaal, 'vraag', 'vragen')} in ${aantal(metVragen.length, 'thema', "thema's")}. Respondenten zien de vragen in deze volgorde, per thema.`
@@ -820,7 +904,7 @@ export function maakSjabloonEditor({
         ));
       }
     }
-    vervang(vragenKaart, sectieKop(`${p}-kop-vragen`, 'Vragen', uitleg, knop), blokken);
+    vervang(vragenKaart, sectieKop(`${p}-kop-vragen`, 'Vragen', uitleg, h('div', { class: 'knoppen' }, kenmerkKnop, knop)), blokken);
   }
 
   // ---------- Vraagdialoog (eigen dialoog: de velden veranderen mee met het vraagtype) ----------
@@ -908,6 +992,36 @@ export function maakSjabloonEditor({
         h('div', { class: 'veld' },
           h('label', { class: 'keuze', for: weetNiet.id }, weetNiet, h('span', {}, 'Antwoord "weet niet / n.v.t." toestaan')),
           h('div', { class: 'veld-hulp', id: `${d0}wn-hulp` }, 'Voor respondenten die de vraag niet kunnen beantwoorden. Dit antwoord telt niet mee in het gemiddelde.')),
+      );
+
+      // Cijfer: 0 tot 10 (aanbevelen) of 1 tot 10 (rapportcijfer)
+      const cijferKeuze = h('select', { id: `${d0}cijfer`, 'aria-describedby': `${d0}cijfer-vb ${d0}cijfer-hulp` },
+        Object.entries(cijferschalen).map(([k, c]) => h('option', {
+          value: k,
+          selected: k === (vraag?.type === 'cijfer' ? vraag.schaal_soort : 'rapport'),
+        }, c.naam || k)));
+      const cijferVoorbeeld = h('div', { id: `${d0}cijfer-vb` });
+      function tekenCijfer() {
+        const c = cijferschalen[cijferKeuze.value];
+        if (!c) return;
+        const waarden = [];
+        for (let w = c.min; w <= c.max; w++) waarden.push(w);
+        vervang(cijferVoorbeeld,
+          h('ol', { class: `vl-cijfer-vb vl-cijfer-vb-${waarden.length}`, 'aria-label': `De cijfers van ${c.min} tot ${c.max}` },
+            waarden.map((w) => h('li', {}, String(w)))),
+          h('p', { class: 'vl-cijfer-vb-eind' }, h('span', {}, `${c.min} = ${c.laag}`), h('span', {}, `${c.max} = ${c.hoog}`)));
+      }
+      tekenCijfer();
+      cijferKeuze.addEventListener('change', tekenCijfer);
+      const weetNietCijfer = h('input', { type: 'checkbox', id: `${d0}cwn`, checked: vraag?.type === 'cijfer' && !!vraag.weet_niet });
+      const cijferBlok = h('div', { class: 'sje-typeblok' },
+        h('div', { class: 'veld' },
+          h('label', { for: cijferKeuze.id }, 'Soort cijfer'),
+          cijferKeuze,
+          cijferVoorbeeld,
+          h('div', { class: 'veld-hulp', id: `${d0}cijfer-hulp` }, 'Bij 0 tot 10 zie je op het dashboard ook de eNPS. Een cijfervraag telt nooit mee in de themascores.')),
+        h('div', { class: 'veld' },
+          h('label', { class: 'keuze', for: weetNietCijfer.id }, weetNietCijfer, h('span', {}, 'Antwoord "weet niet / n.v.t." toestaan'))),
       );
 
       // Meerkeuze: antwoordmogelijkheden
@@ -1008,6 +1122,22 @@ export function maakSjabloonEditor({
           `Bijvoorbeeld per afdeling of leeftijdsgroep. Groepen met minder dan ${drempel} respondenten worden nooit getoond, zodat niemand herkenbaar is.`),
       );
 
+      // Achtergrondkenmerk (alleen meerkeuze met één antwoord en ja/nee); elk kenmerk één keer, behalve "Ander kenmerk".
+      const elders = new Set(model.vragen.filter((x) => x !== vraag && x.kenmerk).map((x) => x.kenmerk));
+      const kenmerkKeuze = h('select', { id: `${d0}kenmerk`, 'aria-describedby': `${d0}kenmerk-hulp` },
+        h('option', { value: '' }, 'Geen (gewone vraag)'),
+        Object.entries(kenmerken).map(([k, km]) => {
+          const bezet = !km.meerdere && elders.has(k);
+          return h('option', { value: k, selected: k === (vraag?.kenmerk || ''), disabled: bezet }, bezet ? `${km.naam} (staat er al in)` : km.naam);
+        }));
+      kenmerkKeuze.addEventListener('change', () => {
+        if (kenmerkKeuze.value) uitsplitsen.checked = true;
+      });
+      const kenmerkBlok = h('div', { class: 'veld vl-kenmerk-blok' },
+        h('label', { for: kenmerkKeuze.id }, 'Achtergrondkenmerk'),
+        kenmerkKeuze,
+        h('div', { class: 'veld-hulp', id: `${d0}kenmerk-hulp` }, KENMERK_HULP));
+
       const verplicht = h('input', { type: 'checkbox', id: `${d0}verplicht`, checked: !!vraag?.verplicht, 'aria-describedby': `${d0}verplicht-hulp` });
       const verplichtBlok = h('div', { class: 'veld' },
         h('label', { class: 'keuze', for: verplicht.id }, verplicht, h('span', {}, 'Verplicht')),
@@ -1022,9 +1152,11 @@ export function maakSjabloonEditor({
       function werkTypeBij() {
         const t = gekozenType();
         schaalBlok.classList.toggle('verborgen', t !== 'schaal');
+        cijferBlok.classList.toggle('verborgen', t !== 'cijfer');
         meerkeuzeBlok.classList.toggle('verborgen', t !== 'meerkeuze');
         openBlok.classList.toggle('verborgen', t !== 'open');
         uitsplitsBlok.classList.toggle('verborgen', !uitsplitsMogelijk());
+        kenmerkBlok.classList.toggle('verborgen', !uitsplitsMogelijk());
       }
 
       const okKnop = h('button', { type: 'submit', class: 'knop knop-primair' }, bewerken ? 'Opslaan' : 'Toevoegen');
@@ -1074,11 +1206,12 @@ export function maakSjabloonEditor({
             tekst,
             toelichting: toelVeld.value.trim(),
             opties,
-            schaal_soort: type === 'schaal' ? schaalKeuze.value : 'eens',
+            schaal_soort: type === 'schaal' ? schaalKeuze.value : type === 'cijfer' ? cijferKeuze.value : 'eens',
             meerdere_antwoorden: meerdereAan,
             verplicht: verplicht.checked,
-            weet_niet: type === 'schaal' && weetNiet.checked,
+            weet_niet: (type === 'schaal' && weetNiet.checked) || (type === 'cijfer' && weetNietCijfer.checked),
             uitsplitsen: uitsplitsMogelijk() && uitsplitsen.checked,
+            kenmerk: uitsplitsMogelijk() ? kenmerkKeuze.value : '',
           },
         };
         d.close();
@@ -1118,8 +1251,10 @@ export function maakSjabloonEditor({
             toelVeld,
             h('div', { class: 'veld-hulp', id: `${d0}toel-hulp` }, 'Optioneel. Bijvoorbeeld uitleg van een begrip. Staat klein onder de vraag.')),
           schaalBlok,
+          cijferBlok,
           meerkeuzeBlok,
           openBlok,
+          kenmerkBlok,
           uitsplitsBlok,
           verplichtBlok,
           foutEl,
