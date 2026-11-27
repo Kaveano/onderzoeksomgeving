@@ -216,10 +216,15 @@ function uitsplitsing(vraag, lijstVragen, inzendingen, themaNamen) {
   const nietApart = indeling.samengevoegd || indeling.verborgen;
   if (nietApart) {
     const klein = groepen.filter((g) => nietApart.sleutels.includes(g.sleutel));
-    const namen = nietApart.labels;
-    // Een groep die groot genoeg is maar toch niet apart staat: anders is de kleine groep terug te rekenen.
-    const ookGroteGroep = klein.find((g) => g.inz.length >= DREMPEL) || null;
-    const kleineNamen = klein.filter((g) => g !== ookGroteGroep).map((g) => `"${g.label}"`).join(', ');
+    // Wat een lezer ziet, mag niet afhangen van hoe de respondenten over de niet-getoonde groepen verdeeld zijn
+    // (PR-08). Daarom:
+    // - de namen staan in de volgorde van de antwoordmogelijkheden (dus niet: eerst de kleine groepen);
+    // - "Niet ingevuld" wordt nooit genoemd: alleen genoemd als iemand de vraag oversloeg, verraadt het dat een
+    //   verborgen aantal 0 is. Een vaste zin zegt dat wie de vraag niet invulde, hier meetelt;
+    // - één vaste uitleg, die niet zegt welke groep klein is en welke alleen ter bescherming meegaat.
+    const namen = nietApart.labels.filter((_, i) => nietApart.sleutels[i] !== null);
+    const nietIngevuldApart = indeling.zichtbaar.some((z) => z.sleutel === null);
+    const metLeeg = (zin) => (nietIngevuldApart ? zin : `${zin} Ook wie deze vraag niet invulde, telt hier mee.`);
     if (indeling.samengevoegd) {
       const samen = klein.flatMap((g) => g.inz);
       uit.push({
@@ -228,18 +233,14 @@ function uitsplitsing(vraag, lijstVragen, inzendingen, themaNamen) {
         n: samen.length,
         inz: samen,
         samengevoegd: namen,
-        toelichting: ookGroteGroep
-          ? `"${ookGroteGroep.label}" is samengevoegd met ${kleineNamen}, omdat die groep anders uit het totaal terug te rekenen is.`
-          : `Groepen met minder dan ${DREMPEL} respondenten zijn samengevoegd.`,
+        toelichting: metLeeg(`Deze groepen zijn samengevoegd. Zo is geen groep van minder dan ${DREMPEL} respondenten te zien of terug te rekenen.`),
       });
     } else {
       verborgenGroep = {
         label: uit.length ? LABEL_OVERIG : 'Alle groepen',
         verborgen: true,
         samengevoegd: namen,
-        reden: ookGroteGroep
-          ? `Niet apart getoond: ${kleineNamen} heeft minder dan ${DREMPEL} respondenten en zou anders uit het totaal terug te rekenen zijn. Daarom is ook "${ookGroteGroep.label}" niet apart te zien.`
-          : `Minder dan ${DREMPEL} respondenten per groep; niet getoond om de anonimiteit te beschermen.`,
+        reden: metLeeg(`Deze groepen zijn niet apart getoond. Zo is geen groep van minder dan ${DREMPEL} respondenten te zien of terug te rekenen.`),
       };
     }
   }

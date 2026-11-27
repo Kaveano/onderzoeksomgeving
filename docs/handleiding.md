@@ -138,7 +138,8 @@ Het tabblad **Dashboard** toont:
 
 **Anonimiteit**
 - Groepen met minder dan **5 respondenten** worden niet getoond. Hetzelfde geldt voor elke score binnen een groep die op minder dan 5 personen berust; die zie je als "<5".
-- Kleine groepen worden samengevoegd, zodat ze niet uit het totaal terug te rekenen zijn. Bij **Overige groepen samen** staan alle antwoorden die niet apart te zien zijn, ook antwoorden die niemand gaf. Zo verraadt de lijst niet waar de paar respondenten zitten.
+- Kleine groepen worden samengevoegd, zodat ze niet uit het totaal terug te rekenen zijn. Bij **Overige groepen samen** staan alle antwoorden die niet apart te zien zijn, ook antwoorden die niemand gaf, in de volgorde van de vragenlijst. Wie de vraag niet invulde, telt ook mee in die groep, maar wordt niet apart genoemd. De uitleg erbij zegt niet welke groep klein is. Zo verraadt niets waar de paar respondenten zitten.
+- Bij een ja/nee-achtergrondvraag is het percentage ja boven de tabel van wie de vraag beantwoordde; de tabel zelf geeft percentages van alle respondenten. Dat staat er ook bij.
 - **Achtergrondvragen** (een vraag om op uit te splitsen, zoals afdeling, of een vraag over een kenmerk zoals geslacht) zijn extra beschermd. In de verdeling staat ook **Niet ingevuld**, en de percentages zijn van alle respondenten van de vragenlijst. Een aantal van 1 tot 4 zie je als **×**, net als de kleinste andere aantallen die nodig zijn om het niet terug te rekenen. Zie je ergens een ×, dan staat ook het totaal aantal antwoorden op die vraag er niet bij. Dat geldt voor jou, voor meelezers, in rapporten en bij de uitsplitsing.
 - Leg de uitkomsten van verschillende uitsplitsingen niet naast elkaar om kleinere groepen af te leiden.
 

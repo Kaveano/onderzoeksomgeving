@@ -267,8 +267,10 @@ test('criterium 3: hetzelfde bij uitsplitsen naar achtergrondvragen', async () =
   assert.deepEqual(g.filter((x) => !x.verborgen && x.label !== 'Overige groepen samen').map((x) => [x.label, x.n]), [['Zorg', 14], ['Kantoor', 9]]);
   const overig = g.find((x) => x.label === 'Overige groepen samen');
   assert.equal(overig.n, 7);
-  // Ook Techniek (0 respondenten) staat erbij, anders zie je dat de kleine groep bij Keuken zit.
-  assert.deepEqual(overig.samengevoegd, ['Keuken', 'Techniek', 'Niet ingevuld']);
+  // Ook Techniek (0 respondenten) staat erbij, anders zie je dat de kleine groep bij Keuken zit. "Niet ingevuld" wordt
+  // nooit genoemd (anders verraadt het ontbreken ervan dat een verborgen aantal 0 is); een vaste zin zegt dat ze meetellen.
+  assert.deepEqual(overig.samengevoegd, ['Keuken', 'Techniek']);
+  assert.equal(overig.toelichting, 'Deze groepen zijn samengevoegd. Zo is geen groep van minder dan 5 respondenten te zien of terug te rekenen. Ook wie deze vraag niet invulde, telt hier mee.');
 });
 
 test('criterium 3: hetzelfde bij meerdere meetmomenten (verloop, kopieën, kleine en open lijsten)', async () => {

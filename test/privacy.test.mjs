@@ -292,6 +292,58 @@ test('invariantie: aantallen herverdelen binnen de verborgen cellen verandert ni
   assert.ok(vergeleken > 600, `te weinig vergelijkingen: ${vergeleken}`);
 });
 
+// Hetzelfde voor wat het dashboard (beheerder en meelezer) over een uitsplitsvraag laat zien: de verdeling én de
+// uitsplitsing (groepen, aantallen, namen en uitleg). Hier mag ook "Niet ingevuld" tussen 0 en meer wisselen, zolang
+// dezelfde cellen verborgen zijn: de lezer ziet dan een × en mag niet kunnen afleiden of het 0 is.
+test('invariantie: ook de uitsplitsing op het dashboard verraadt niets over de verborgen aantallen (400 tabellen)', async () => {
+  const { dashboardUitRijen } = await import('../public/js/beheer/dashboard-rekenen.js');
+  const { kijkerDashboard } = await import('../src/routes/delen.js');
+  const mag = { dashboard: true, open_antwoorden: false, tussenstand: false, stukken: [], rapporten: [] };
+  const zicht = (aantallen, ni) => {
+    const opties = aantallen.map((_, i) => ({ id: `o${i + 1}`, label: `Optie ${i + 1}` }));
+    const q = { id: 1, vragenlijst_id: 1, thema_id: 1, meetpunt_id: null, type: 'meerkeuze', tekst: 'Op welke afdeling werk je?', toelichting: '', opties: JSON.stringify(opties),
+      schaal_soort: 'eens', meerdere_antwoorden: 0, verplicht: 0, weet_niet: 0, uitsplitsen: 1, bron_vraag_id: null, volgorde: 0, kenmerk: 'afdeling' };
+    const inz = [];
+    aantallen.forEach((n, i) => { for (let k = 0; k < n; k++) inz.push({ vragenlijst_id: 1, datum: '2026-10-01', a: { 1: `o${i + 1}` } }); });
+    for (let k = 0; k < ni; k++) inz.push({ vragenlijst_id: 1, datum: '2026-10-01', a: {} });
+    const rijen = { onderzoek: { id: 1, bedrijfsnaam: 'B', titel: 'T', status: 'actief' }, schalen: {}, themas: [{ id: 1, naam: 'Achtergrond' }], meetpunten: [], meetmomenten: [],
+      vragenlijsten: [{ id: 1, titel: 'L', status: 'gesloten', code: 'c', meetmoment_id: null, aantal_uitgenodigd: null }], vragen: [q], inzendingen: inz, eigen_invoer: [] };
+    const beheer = dashboardUitRijen(rijen, { vragenlijst: 1, uitsplitsen: 1 });
+    const kijker = kijkerDashboard(structuredClone(beheer), mag);
+    const deel = (d) => ({ vraag: d.selectie.vragen[0], uitsplitsing: d.selectie.uitsplitsing });
+    return JSON.stringify({ beheer: deel(beheer), kijker: deel(kijker) });
+  };
+  const r = lcg(808);
+  let vergeleken = 0;
+  let metLeeg = 0;
+  for (let t = 0; t < 400; t++) {
+    const k = 2 + r.geheel(5);
+    const aantallen = Array.from({ length: k }, () => aantal(r));
+    const ni = r.getal() < 0.5 ? aantal(r) : 0;
+    const cellen = [...aantallen, ni];
+    const verborgen = verbergReeks(cellen);
+    const pos = cellen.map((_, i) => i).filter((i) => verborgen[i]);
+    if (pos.length < 2) continue;
+    const basis = zicht(aantallen, ni);
+    const totaal = som(pos.map((i) => cellen[i]));
+    for (let poging = 0; poging < 4; poging++) {
+      const nieuw = [...cellen];
+      let rest = totaal;
+      pos.forEach((p, i) => {
+        const deel = i === pos.length - 1 ? rest : r.geheel(rest);
+        nieuw[p] = deel;
+        rest -= deel;
+      });
+      if (verbergReeks(nieuw).some((v, i) => v !== verborgen[i])) continue;
+      vergeleken++;
+      if ((nieuw[k] > 0) !== (ni > 0)) metLeeg++;
+      assert.equal(zicht(nieuw.slice(0, k), nieuw[k]), basis, `lek bij ${JSON.stringify(cellen)} → ${JSON.stringify(nieuw)}`);
+    }
+  }
+  assert.ok(vergeleken > 300, `te weinig vergelijkingen: ${vergeleken}`);
+  assert.ok(metLeeg > 30, `te weinig gevallen waarin "Niet ingevuld" tussen 0 en meer wisselt: ${metLeeg}`);
+});
+
 // ---------- Losse controles ----------
 
 test('veiligAandeel en weggevallenVeilig', () => {
