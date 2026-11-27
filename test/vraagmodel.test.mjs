@@ -28,7 +28,7 @@ import { bouwModel, vragenVan, waardenVan, cijferWaarde, groepeerVragen } from '
 import { leesAntwoord, verwerkVragen, verwerkAntwoorden } from '../public/js/beheer/inlees-regels.js';
 import { INGEBOUWD, controleerSjabloonInhoud, sjabloonUit } from '../src/lib/sjablonen-beheer.js';
 import { voegSjablonenSamen } from '../src/lib/sjabloon-toepassen.js';
-import { vraagVeldenUit, controleerKenmerk } from '../src/routes/vragenlijsten.js';
+import { vraagVeldenUit, controleerKenmerk, kenmerkVragen, vraagKenmerk } from '../src/routes/vragenlijsten.js';
 import { controleerAntwoord } from '../src/routes/publiek.js';
 import { bereikTekst } from '../public/js/beheer/schermen/analyse.js';
 
@@ -651,6 +651,82 @@ test('vraagVeldenUit: cijferschaal, weet niet en kenmerk worden gecontroleerd', 
   fout({ type: 'janee', kenmerk: 5 }, 400, /^Kies een geldig kenmerk\.$/);
   assert.equal(controleerKenmerk('', { type: 'schaal' }), '');
   assert.equal(controleerKenmerk(null, { type: 'schaal' }), '');
+});
+
+/**
+ * Een nepdatabase die de opdrachten telt (gratis laag, FT-02: een nieuwe route doet hooguit één batch en twee losse
+ * opdrachten). antwoord(sql, params, soort) geeft de rij (first), { meta } (run) of de rijen (in een batch).
+ */
+function telDb(antwoord) {
+  const teller = { los: 0, batch: 0, sql: [] };
+  const opdracht = (sql) => {
+    const o = { sql, params: [] };
+    o.bind = (...p) => { o.params = p; return o; };
+    o.first = async () => { teller.los++; teller.sql.push(sql); return antwoord(sql, o.params, 'first'); };
+    o.run = async () => { teller.los++; teller.sql.push(sql); return antwoord(sql, o.params, 'run'); };
+    o.all = async () => { teller.los++; teller.sql.push(sql); return { results: antwoord(sql, o.params, 'all') }; };
+    return o;
+  };
+  const DB = {
+    prepare: opdracht,
+    batch: async (lijst) => { teller.batch++; teller.sql.push(...lijst.map((x) => x.sql)); return lijst.map((x) => ({ results: antwoord(x.sql, x.params, 'batch') })); },
+  };
+  return { env: { DB }, teller };
+}
+const jsonVerzoek = (body) => new Request('http://lokaal/x', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+
+test('gratis laag (FT-02): PUT /vragen/:id/kenmerk en POST /vragenlijsten/:id/kenmerkvragen tellen hun opdrachten', async () => {
+  // Kenmerk zetten: één leesopdracht en één UPDATE, met de controle op een dubbel kenmerk in de UPDATE zelf.
+  let vrij = true;
+  const vraag = (status = 'actief') => telDb((sql, p, soort) => {
+    if (soort === 'first') return /FROM vragen q JOIN/.test(sql) ? { vragenlijst_id: 7, type: 'meerkeuze', meerdere_antwoorden: 0, onderzoek_status: status } : null;
+    if (soort === 'run') return { meta: { changes: /NOT EXISTS/.test(sql) && !vrij ? 0 : 1 } };
+    return [];
+  });
+  let db = vraag();
+  const goed = await vraagKenmerk({ request: jsonVerzoek({ kenmerk: 'afdeling' }), env: db.env, params: { id: '3' } });
+  assert.equal(goed.status, 200);
+  assert.deepEqual([db.teller.los, db.teller.batch], [2, 0]);
+  assert.match(db.teller.sql[1], /AND NOT EXISTS \(SELECT 1 FROM vragen WHERE vragenlijst_id = \? AND kenmerk = \? AND id <> \?\)/);
+  vrij = false;
+  db = vraag();
+  await assert.rejects(vraagKenmerk({ request: jsonVerzoek({ kenmerk: 'afdeling' }), env: db.env, params: { id: '3' } }),
+    (e) => e.status === 409 && e.message === 'Deze vragenlijst heeft al een vraag met het kenmerk Afdeling.');
+  assert.deepEqual([db.teller.los, db.teller.batch], [2, 0]);
+  // Weghalen en 'Ander kenmerk' (mag vaker): zonder controle op dubbel.
+  for (const kenmerk of ['', 'overig']) {
+    db = vraag();
+    assert.equal((await vraagKenmerk({ request: jsonVerzoek({ kenmerk }), env: db.env, params: { id: '3' } })).status, 200);
+    assert.ok(!/NOT EXISTS/.test(db.teller.sql[1]));
+  }
+  db = vraag('gearchiveerd');
+  await assert.rejects(vraagKenmerk({ request: jsonVerzoek({ kenmerk: 'afdeling' }), env: db.env, params: { id: '3' } }), (e) => e.status === 409);
+  assert.deepEqual([db.teller.los, db.teller.batch], [1, 0], 'gearchiveerd: niets geschreven');
+
+  // Achtergrondvragen toevoegen: één leesopdracht en één batch om te schrijven.
+  const lijst = (rij) => telDb((sql, p, soort) => {
+    if (soort === 'first') return rij;
+    if (soort === 'batch') return /INSERT INTO themas/.test(sql) ? [{ id: 44 }] : [];
+    return null;
+  });
+  const basis = { id: 1, status: 'actief', bedrijfsnaam: 'Voorbeeld B.V.', n: 12, laatste: 12, kenmerken: 'afdeling,diensttijd', thema_id: null, thema_laatste: 3 };
+  db = lijst(basis);
+  const r = await kenmerkVragen({ request: jsonVerzoek({ kenmerken: [{ kenmerk: 'leeftijd' }, { kenmerk: 'geslacht' }] }), env: db.env, params: { id: '7' } });
+  assert.equal(r.status, 201);
+  assert.deepEqual(await r.json(), { ok: true, aantal: 2, thema_id: 44 });
+  assert.deepEqual([db.teller.los, db.teller.batch], [1, 1]);
+  db = lijst({ ...basis, thema_id: 5 });
+  const r2 = await kenmerkVragen({ request: jsonVerzoek({ kenmerken: [{ kenmerk: 'leeftijd' }] }), env: db.env, params: { id: '7' } });
+  assert.deepEqual(await r2.json(), { ok: true, aantal: 1, thema_id: 5 }, 'bestaand thema Achtergrond');
+  assert.ok(!db.teller.sql.some((x) => /INSERT INTO themas/.test(x)));
+  db = lijst(basis);
+  await assert.rejects(kenmerkVragen({ request: jsonVerzoek({ kenmerken: [{ kenmerk: 'diensttijd' }, { kenmerk: 'afdeling' }] }), env: db.env, params: { id: '7' } }),
+    (e) => e.status === 409 && e.message === 'Deze vragenlijst heeft al vragen met de kenmerken Diensttijd en Afdeling.');
+  assert.deepEqual([db.teller.los, db.teller.batch], [1, 0]);
+  db = lijst({ ...basis, n: 99 });
+  await assert.rejects(kenmerkVragen({ request: jsonVerzoek({ kenmerken: [{ kenmerk: 'leeftijd' }, { kenmerk: 'geslacht' }] }), env: db.env, params: { id: '7' } }), (e) => e.status === 409);
+  db = lijst(null);
+  await assert.rejects(kenmerkVragen({ request: jsonVerzoek({ kenmerken: [{ kenmerk: 'leeftijd' }] }), env: db.env, params: { id: '7' } }), (e) => e.status === 404);
 });
 
 test('controleerAntwoord: 0 en 10 bij 0–10; 11, −1 en 5,5 niet; 0 niet bij 1–10; weet niet alleen als het mag', () => {

@@ -382,14 +382,27 @@ export async function vraagVerwijder({ env, params }) {
 
 const MAX_KENMERKVRAGEN = Object.keys(KENMERKVRAGEN).length;
 
+const FOUT_GEARCHIVEERD = 'Dit onderzoek is gearchiveerd en kan niet meer worden gewijzigd.';
+
 /**
  * Voegt standaard achtergrondvragen toe ("Achtergrondvragen toevoegen"). Body: { kenmerken: [{ kenmerk, variant? }] }.
  * De vragen komen in het thema Achtergrond (dat wordt zo nodig aangemaakt), met uitsplitsen aan en het kenmerk
- * erbij. Eén batch om te lezen en één om te schrijven.
+ * erbij. Gratis laag (FT-02): één leesopdracht (onderzoek, aantal vragen, aanwezige kenmerken en het thema samen) en
+ * één batch om te schrijven.
  */
 export async function kenmerkVragen({ request, env, params }) {
   const vragenlijstId = v.id(params.id);
-  const o = await bewerkbaarVia(env, 'vragenlijst', vragenlijstId);
+  const o = await een(env,
+    `SELECT o.id, o.status, o.bedrijfsnaam,
+       (SELECT COUNT(*) FROM vragen WHERE vragenlijst_id = vl.id) AS n,
+       (SELECT COALESCE(MAX(volgorde), 0) FROM vragen WHERE vragenlijst_id = vl.id) AS laatste,
+       (SELECT group_concat(DISTINCT kenmerk) FROM vragen WHERE vragenlijst_id = vl.id AND kenmerk <> '') AS kenmerken,
+       (SELECT id FROM themas WHERE onderzoek_id = o.id AND lower(trim(naam)) = lower(?) ORDER BY id LIMIT 1) AS thema_id,
+       (SELECT COALESCE(MAX(volgorde), 0) FROM themas WHERE onderzoek_id = o.id) AS thema_laatste
+     FROM vragenlijsten vl JOIN onderzoeken o ON o.id = vl.onderzoek_id WHERE vl.id = ?`,
+    KENMERK_THEMA, vragenlijstId);
+  if (!o) throw new Fout(404, 'Deze vragenlijst bestaat niet (meer).');
+  if (o.status === 'gearchiveerd') throw new Fout(409, FOUT_GEARCHIVEERD);
   const body = await leesJson(request, 10_000);
   const ruw = body && body.kenmerken;
   if (!Array.isArray(ruw) || !ruw.length) throw new Fout(400, 'Kies minstens één achtergrondvraag.');
@@ -409,23 +422,18 @@ export async function kenmerkVragen({ request, env, params }) {
     gekozen.push({ sleutel, bron, opties });
   }
 
-  const [themas, stand, aanwezig] = await env.DB.batch([
-    env.DB.prepare('SELECT id, naam, volgorde FROM themas WHERE onderzoek_id = ?').bind(o.id),
-    env.DB.prepare('SELECT COUNT(*) AS n, COALESCE(MAX(volgorde), 0) AS laatste FROM vragen WHERE vragenlijst_id = ?').bind(vragenlijstId),
-    env.DB.prepare("SELECT DISTINCT kenmerk FROM vragen WHERE vragenlijst_id = ? AND kenmerk <> ''").bind(vragenlijstId),
-  ]);
-  const al = new Set(aanwezig.results.map((r) => r.kenmerk));
+  const al = new Set(String(o.kenmerken || '').split(',').filter(Boolean));
   const dubbel = gekozen.filter((g) => al.has(g.sleutel)).map((g) => g.sleutel);
   if (dubbel.length) throw new Fout(409, kenmerkDubbel(dubbel));
-  const { n, laatste } = stand.results[0];
+  const { n, laatste } = o;
   if (n + gekozen.length > MAX_VRAGEN) {
     throw new Fout(409, `Een vragenlijst kan maximaal ${MAX_VRAGEN} vragen bevatten. Er staan er al ${n}; je kunt er nog ${Math.max(0, MAX_VRAGEN - n)} toevoegen.`);
   }
 
-  const thema = themas.results.find((t) => t.naam.trim().toLowerCase() === KENMERK_THEMA.toLowerCase()) || null;
+  const thema = o.thema_id ? { id: o.thema_id } : null;
   const opdrachten = [];
   if (!thema) {
-    const volgorde = themas.results.reduce((max, t) => Math.max(max, t.volgorde || 0), 0) + 1;
+    const volgorde = (o.thema_laatste || 0) + 1;
     opdrachten.push(env.DB.prepare('INSERT INTO themas (onderzoek_id, naam, omschrijving, volgorde) VALUES (?, ?, ?, ?) RETURNING id')
       .bind(o.id, KENMERK_THEMA, 'Algemene vragen om de resultaten per groep te kunnen bekijken (alleen bij minimaal 5 respondenten per groep).', volgorde));
   }
@@ -444,14 +452,27 @@ export async function kenmerkVragen({ request, env, params }) {
   return json({ ok: true, aantal: gekozen.length, thema_id: thema ? thema.id : res[0].results[0].id }, 201);
 }
 
-/** Zet het kenmerk van één vraag (of haalt het weg met ''). Mag ook als er al antwoorden zijn: het is een label. */
+/**
+ * Zet het kenmerk van één vraag (of haalt het weg met ''). Mag ook als er al antwoorden zijn. Let op: haal je het
+ * kenmerk weg bij een vraag zonder uitsplitsing, dan is de verdeling van die vraag niet meer beschermd (isBeschermd).
+ * Gratis laag (FT-02): één leesopdracht (vraag en onderzoek samen) en één schrijfopdracht; de controle op een dubbel
+ * kenmerk zit in de UPDATE zelf.
+ */
 export async function vraagKenmerk({ request, env, params }) {
   const id = v.id(params.id);
-  await bewerkbaarVia(env, 'vraag', id);
+  const q = await een(env,
+    `SELECT q.vragenlijst_id, q.type, q.meerdere_antwoorden, o.status AS onderzoek_status
+     FROM vragen q JOIN vragenlijsten vl ON vl.id = q.vragenlijst_id JOIN onderzoeken o ON o.id = vl.onderzoek_id WHERE q.id = ?`, id);
+  if (!q) throw new Fout(404, 'Deze vraag bestaat niet (meer).');
+  if (q.onderzoek_status === 'gearchiveerd') throw new Fout(409, FOUT_GEARCHIVEERD);
   const body = await leesJson(request, 2_000);
-  const q = await een(env, 'SELECT vragenlijst_id, type, meerdere_antwoorden FROM vragen WHERE id = ?', id);
   const kenmerk = controleerKenmerk(body.kenmerk ?? '', q);
-  await controleerKenmerkUniek(env, q.vragenlijst_id, kenmerk, id);
-  await env.DB.prepare('UPDATE vragen SET kenmerk = ? WHERE id = ?').bind(kenmerk, id).run();
+  const uniek = !!kenmerk && !KENMERKEN[kenmerk].meerdere;
+  const res = uniek
+    ? await env.DB.prepare(
+      'UPDATE vragen SET kenmerk = ? WHERE id = ? AND NOT EXISTS (SELECT 1 FROM vragen WHERE vragenlijst_id = ? AND kenmerk = ? AND id <> ?)',
+    ).bind(kenmerk, id, q.vragenlijst_id, kenmerk, id).run()
+    : await env.DB.prepare('UPDATE vragen SET kenmerk = ? WHERE id = ?').bind(kenmerk, id).run();
+  if (!res.meta?.changes) throw uniek ? new Fout(409, kenmerkDubbel([kenmerk])) : new Fout(404, 'Deze vraag bestaat niet (meer).');
   return json({ ok: true });
 }

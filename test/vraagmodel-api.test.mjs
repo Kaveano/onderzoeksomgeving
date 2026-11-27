@@ -318,18 +318,22 @@ test('criterium 5: kopie en als-sjabloon houden het kenmerk; toepassen herkent h
   assert.deepEqual(vragen.filter((v) => v.kenmerk).map((v) => v.kenmerk).sort(), ['afdeling', 'diensttijd', 'geslacht', 'leeftijd', 'leidinggevend', 'overig', 'overig']);
   assert.equal(vragen.find((v) => v.kenmerk === 'diensttijd').tekst, 'Hoe lang werk je al bij Ander B.V.?');
 
-  // Een eigen sjabloon van vóór de kenmerken: de achtergrondvraag krijgt zijn kenmerk bij het toepassen.
+  // Een eigen sjabloon van vóór de kenmerken: de achtergrondvraag krijgt zijn kenmerk bij het toepassen. Een vraag
+  // "Hoe lang …" alleen als de antwoorden duurklassen zijn (review P2, bevinding 6): 'Kort'/'Lang' niet, en dan krijgt
+  // de volgende vraag het kenmerk wel.
   const oud = await roep(`${B}/sjablonen`, { methode: 'POST', body: { naam: 'Oud sjabloon', inhoud: {
     themas: [{ naam: 'Achtergrond' }],
     vragen: [
       { thema: 'Achtergrond', type: 'meerkeuze', tekst: 'Op welke afdeling werk je?', opties: ['A', 'B'], uitsplitsen: true },
-      { thema: 'Achtergrond', type: 'meerkeuze', tekst: 'Hoe lang werk je al bij {bedrijf}?', opties: ['Kort', 'Lang'] },
+      { thema: 'Achtergrond', type: 'meerkeuze', tekst: 'Hoe lang heb je bij {bedrijf} gewerkt?', opties: ['Kort', 'Lang'] },
+      { thema: 'Achtergrond', type: 'meerkeuze', tekst: 'Hoe lang werk je bij voorkeur thuis?', opties: ['Korter dan 1 jaar', '1 jaar of langer'] },
+      { thema: 'Achtergrond', type: 'meerkeuze', tekst: 'Hoe lang werk je al bij {bedrijf}?', opties: ['Korter dan 1 jaar', '1 tot 5 jaar', '5 jaar of langer'] },
     ],
   } } });
   assert.equal(oud.status, 201, oud.tekst);
   const o2 = await roep(`${B}/onderzoeken`, { methode: 'POST', body: { bedrijfsnaam: 'Oud B.V.', titel: 'Oud', sjablonen: [oud.data.id] } });
   const vl2 = (await roep(`${B}/onderzoeken/${o2.data.id}/vragenlijsten`)).data.vragenlijsten[0];
-  assert.deepEqual((await roep(`${B}/vragenlijsten/${vl2.id}`)).data.vragen.map((v) => v.kenmerk), ['afdeling', 'diensttijd']);
+  assert.deepEqual((await roep(`${B}/vragenlijsten/${vl2.id}`)).data.vragen.map((v) => v.kenmerk), ['afdeling', '', '', 'diensttijd']);
 });
 
 test('criterium 6: medewerkerstevredenheid toepassen geeft de kenmerken, de eNPS-vraag en het rapportcijfer', async () => {
