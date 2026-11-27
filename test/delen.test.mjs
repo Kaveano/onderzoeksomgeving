@@ -221,12 +221,12 @@ test('geen terugrekenen: een kleine vragenlijst op hetzelfde meetmoment verbergt
   const themaVan = (d) => d.verloop.themas[0];
   let d = (await roep(`/api/kijk/${s.link.code}/dashboard?vragenlijst=${s.vl}`, { koekje: s.kijk })).data;
   assert.ok(themaVan(d).punten.every((p) => p.gemiddelde !== null), 'twee grote metingen: beide punten zichtbaar');
-  assert.equal(themaVan(d).punten[0].kleinste, undefined, 'hulpvelden gaan niet mee naar de kijker');
+  assert.equal(themaVan(d).punten[0].klein, undefined, 'hulpvelden gaan niet mee naar de kijker');
   // Nu een kleine vragenlijst (2 respondenten) op hetzelfde meetmoment als de hoofdlijst
   const klein = (await roep(`/api/beheer/vragenlijsten/${s.vl}/kopie`, { methode: 'POST', body: { titel: 'Kleine lijst', meetmoment_id: nul } })).data.id;
   await vullen(klein, 2, 1);
   const beheer = (await roep(`/api/beheer/onderzoeken/${s.onderzoek}/dashboard?vragenlijst=${s.vl}`)).data;
-  assert.equal(themaVan(beheer).punten[0].kleinste, 2);
+  assert.equal(themaVan(beheer).punten[0].klein, true);
   d = (await roep(`/api/kijk/${s.link.code}/dashboard?vragenlijst=${s.vl}`, { koekje: s.kijk })).data;
   const punt = themaVan(d).punten.find((p) => p.meetmoment_id === nul);
   assert.equal(punt.gemiddelde, null);
@@ -238,6 +238,20 @@ test('geen terugrekenen: een kleine vragenlijst op hetzelfde meetmoment verbergt
   const kd = (await roep(`/api/kijk/${s.link.code}/dashboard?vragenlijst=${klein}`, { koekje: s.kijk })).data;
   assert.equal(kd.selectie.verborgen, true);
   assert.equal(kd.selectie.reden, 'klein');
+});
+
+test('geen terugrekenen: een vraag van weinig mensen binnen een grote vragenlijst verbergt ook het punt in het verloop', async () => {
+  const detail = (await roep(`/api/beheer/onderzoeken/${s.onderzoek}`)).data;
+  const nul = detail.meetmomenten[0].id;
+  const lijsten = (await roep(`/api/beheer/onderzoeken/${s.onderzoek}/vragenlijsten`)).data.vragenlijsten;
+  const reken = lijsten.find((l) => l.titel === 'Rekenlijst');
+  await roep(`/api/beheer/vragenlijsten/${reken.id}`, { methode: 'PUT', body: { titel: 'Rekenlijst', meetmoment_id: nul, status: 'gesloten' } });
+  const beheer = (await roep(`/api/beheer/onderzoeken/${s.onderzoek}/dashboard?vragenlijst=${reken.id}`)).data;
+  const rekenthema = beheer.verloop.themas.find((t) => t.naam === 'Rekenthema');
+  assert.equal(rekenthema.punten.find((p) => p.meetmoment_id === nul).klein, true);
+  const d = (await roep(`/api/kijk/${s.link.code}/dashboard?vragenlijst=${reken.id}`, { koekje: s.kijk })).data;
+  const t = d.verloop.themas.find((x) => x.naam === 'Rekenthema');
+  assert.ok(!t || t.punten.every((p) => p.gemiddelde === null), 'het opgetelde punt zou de verborgen vraag verraden');
 });
 
 test('tussenstand van een open vragenlijst alleen als die is gedeeld', async () => {

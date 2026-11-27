@@ -14,7 +14,7 @@
 // Diezelfde blokken gaan naar het scherm, naar de printweergave en naar Word (maakDocx in bestanden.js).
 
 import * as S from './statistiek.js';
-import { bouwModel, waardenVan } from './analyse-model.js';
+import { bouwModel, waardenVan, vragenVan } from './analyse-model.js';
 
 export const RAPPORTSOORTEN = { tussen: 'Tussenrapport', eind: 'Eindrapport' };
 const ALFA = 0.05;
@@ -312,9 +312,9 @@ export function verzamelFeiten({ data, dashboards, peildatum }) {
     themas: (v.themas || []).map((t) => ({
       thema_id: t.thema_id,
       naam: t.naam,
-      // Een punt telt alle vragenlijsten van een meetmoment samen. Draagt daar een vragenlijst met minder dan
-      // `drempel` respondenten aan bij (kleinste), dan is die uit het totaal terug te rekenen: niet tonen.
-      punten: t.punten.map((p) => (eindig(p.gemiddelde) && p.n >= drempel && (p.kleinste === null || p.kleinste === undefined || p.kleinste >= drempel)
+      // Een punt telt alle vragenlijsten van een meetmoment samen. Draagt daar een vragenlijst of vraag met minder
+      // dan `drempel` respondenten aan bij (klein), dan is die uit het totaal terug te rekenen: niet tonen.
+      punten: t.punten.map((p) => (eindig(p.gemiddelde) && p.n >= drempel && !p.klein
         ? { meetmoment_id: p.meetmoment_id, naam: p.naam, gemiddelde: p.gemiddelde, n: p.n }
         : { meetmoment_id: p.meetmoment_id, naam: p.naam, gemiddelde: null, n: null })),
     })).filter((t) => t.punten.some((p) => p.gemiddelde !== null)),
@@ -333,8 +333,13 @@ export function verzamelFeiten({ data, dashboards, peildatum }) {
         const w = waardenVan(l, `t:${t.id}`);
         if (!w) continue;
         const geldig = w.filter((x) => x !== null);
-        // Ook hier: een kleine vragenlijst op hetzelfde meetmoment zou uit de uitkomst terug te rekenen zijn.
+        // Ook hier: een kleine vragenlijst of een vraag die door heel weinig mensen is gescoord, zou uit de
+        // uitkomst terug te rekenen zijn. Dan dit meetmoment niet toetsen.
         if (geldig.length > 0 && geldig.length < drempel) kleineLijst = true;
+        for (const q of vragenVan(l, `t:${t.id}`)) {
+          const c = l.inz.filter((a) => Number.isInteger(a[q.id]) && a[q.id] >= 1 && a[q.id] <= 5).length;
+          if (c > 0 && c < drempel) kleineLijst = true;
+        }
         scores.push(...geldig);
       }
       if (scores.length >= drempel && !kleineLijst) perMoment.push({ naam: mm.naam, scores });

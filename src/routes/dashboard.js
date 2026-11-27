@@ -108,7 +108,16 @@ function aggregeer(vragen, inzendingen) {
       }
     }
   });
-  return { perVraag, themas: groepen.thema, meetpunten: groepen.meetpunt };
+  // Thema's en meetpunten met een schaalvraag die door minder dan DREMPEL personen is gescoord. Een gemiddelde
+  // daarvan (ook opgeteld met andere vragenlijsten) zou zo'n kleine vraag voor een kijker terug te rekenen maken.
+  const kleineThemas = new Set();
+  const kleineMeetpunten = new Set();
+  for (const s of perVraag) {
+    if (s.q.type !== 'schaal' || !(s.n > 0 && s.n < DREMPEL)) continue;
+    kleineThemas.add(s.q.thema_id);
+    if (s.q.meetpunt_id) kleineMeetpunten.add(s.q.meetpunt_id);
+  }
+  return { perVraag, themas: groepen.thema, meetpunten: groepen.meetpunt, kleineThemas, kleineMeetpunten };
 }
 
 /** Statistiek voor één vraag, uit de geaggregeerde tellingen. */
@@ -435,7 +444,7 @@ export async function berekenDashboard(env, onderzoek, keuze = {}) {
           const mmId = info?.meetmoment_id;
           if (!mmId) continue;
           const a = vraagAgg.get(ander.id);
-          const p = perMm.get(mmId) || { som: 0, n: 0, ja: 0, janee: 0, kleinste: null, open: false };
+          const p = perMm.get(mmId) || { som: 0, n: 0, ja: 0, janee: 0, klein: false, open: false };
           p.som += a.som;
           p.n += a.n;
           p.ja += a.ja;
@@ -444,7 +453,7 @@ export async function berekenDashboard(env, onderzoek, keuze = {}) {
           // bijdrage is (anders is die terug te rekenen) en of er een vragenlijst bij is die nog openstaat.
           const bijdrage = s.q.type === 'schaal' ? a.n : a.ja + a.nee;
           if (bijdrage > 0) {
-            p.kleinste = p.kleinste === null ? bijdrage : Math.min(p.kleinste, bijdrage);
+            if (bijdrage < DREMPEL) p.klein = true;
             if (info.status === 'open') p.open = true;
           }
           perMm.set(mmId, p);
@@ -453,8 +462,8 @@ export async function berekenDashboard(env, onderzoek, keuze = {}) {
           r.verloop = meetmomenten.filter((mm) => perMm.has(mm.id)).map((mm) => {
             const p = perMm.get(mm.id);
             return s.q.type === 'schaal'
-              ? { meetmoment_id: mm.id, naam: mm.naam, gemiddelde: deel(p.som, p.n), n: p.n, kleinste: p.kleinste, open: p.open }
-              : { meetmoment_id: mm.id, naam: mm.naam, percentage_ja: pct(p.ja, p.janee), n: p.janee, kleinste: p.kleinste, open: p.open };
+              ? { meetmoment_id: mm.id, naam: mm.naam, gemiddelde: deel(p.som, p.n), n: p.n, klein: p.klein, open: p.open }
+              : { meetmoment_id: mm.id, naam: mm.naam, percentage_ja: pct(p.ja, p.janee), n: p.janee, klein: p.klein, open: p.open };
           });
         }
       }
@@ -515,14 +524,16 @@ export async function berekenDashboard(env, onderzoek, keuze = {}) {
     mm,
     aggs: lijsten.filter((l) => l.meetmoment_id === mm.id).map((l) => ({ agg: aggPerLijst.get(l.id), open: l.status === 'open' })),
   }));
-  // kleinste: het kleinste aantal respondenten van één vragenlijst die aan dit punt bijdraagt;
-  // open: of een bijdragende vragenlijst nog openstaat. Beide zijn nodig om het punt voor kijkers veilig te tonen.
+  // klein: een bijdragende vragenlijst heeft hier minder dan DREMPEL respondenten, of een vraag die door minder
+  // dan DREMPEL personen is gescoord (dan is die uit het opgetelde punt terug te rekenen);
+  // open: een bijdragende vragenlijst staat nog open. Beide zijn nodig om het punt voor kijkers veilig te tonen.
   const pool = (aggs, soort, sleutel) => {
     let som = 0;
     let aantal = 0;
     let respondenten = 0;
-    let kleinste = null;
+    let klein = false;
     let open = false;
+    const kleineSleutels = soort === 'themas' ? 'kleineThemas' : 'kleineMeetpunten';
     for (const { agg: a, open: lijstOpen } of aggs) {
       const g = a[soort].get(sleutel);
       if (g) {
@@ -530,12 +541,12 @@ export async function berekenDashboard(env, onderzoek, keuze = {}) {
         aantal += g.aantal;
         respondenten += g.respondenten;
         if (g.respondenten > 0) {
-          kleinste = kleinste === null ? g.respondenten : Math.min(kleinste, g.respondenten);
+          if (g.respondenten < DREMPEL || a[kleineSleutels].has(sleutel)) klein = true;
           if (lijstOpen) open = true;
         }
       }
     }
-    return { gemiddelde: deel(som, aantal), n: respondenten, kleinste, open };
+    return { gemiddelde: deel(som, aantal), n: respondenten, klein, open };
   };
   const verloopThemas = [];
   for (const t of themas) {

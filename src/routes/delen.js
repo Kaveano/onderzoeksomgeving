@@ -346,7 +346,7 @@ export function kijkerDashboard(d, mag) {
   for (const r of d.respons) delete r.code;
 
   // Een punt in het verloop alleen tonen als elke bijdragende vragenlijst groot genoeg en (zonder tussenstand) gesloten is.
-  const puntVeilig = (p) => p.n !== null && p.n >= DREMPEL && (p.kleinste === null || p.kleinste === undefined || p.kleinste >= DREMPEL) && (mag.tussenstand || !p.open);
+  const puntVeilig = (p) => p.n !== null && p.n >= DREMPEL && !p.klein && (mag.tussenstand || !p.open);
   const schoonPunt = (p, velden) => {
     const veilig = puntVeilig(p);
     const uit = { meetmoment_id: p.meetmoment_id, naam: p.naam };
