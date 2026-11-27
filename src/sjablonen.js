@@ -8,7 +8,7 @@ export const INTRO_ANONIEM =
   'Van het invullen bewaren we alleen de datum, niet het tijdstip. ' +
   'Resultaten per groep (bijvoorbeeld per afdeling) worden alleen getoond als minstens 5 personen uit die groep hebben gereageerd. ' +
   'Antwoorden op open vragen worden letterlijk gelezen; noem daarin daarom geen namen. ' +
-  'Deelname is vrijwillig en je kunt vragen overslaan die je niet wilt beantwoorden.';
+  'Deelname is vrijwillig. Vragen met een sterretje (*) zijn verplicht; de andere kun je overslaan als je ze niet wilt beantwoorden.';
 
 const BEDANKT =
   'Hartelijk dank voor het invullen! Je antwoorden zijn anoniem opgeslagen. Je kunt dit venster nu sluiten.';

@@ -43,6 +43,35 @@ const ACHTERGROND_VRAGEN = [
 
 const ACHTERGROND_ACTIE = 'Afdelingen in de achtergrondvraag aanpassen aan de organisatie';
 
+// Nieuwe medewerkers: de diensttijd in maanden, want vrijwel iedereen is korter dan een jaar in dienst.
+const ACHTERGROND_ONBOARDING = [
+  ACHTERGROND_VRAGEN[0],
+  {
+    thema: 'Achtergrond',
+    type: 'meerkeuze',
+    tekst: 'Hoe lang werk je bij {bedrijf}?',
+    opties: ['Korter dan 3 maanden', '3 tot 6 maanden', '6 tot 12 maanden', 'Een jaar of langer'],
+    uitsplitsen: true,
+  },
+];
+
+// Vertrekkers: terugblikkend gevraagd en zonder uitsplitsing, want per afdeling of diensttijd
+// zijn er bijna altijd minder dan 5 vertrekkers.
+const ACHTERGROND_VERTREK = [
+  {
+    thema: 'Achtergrond',
+    type: 'meerkeuze',
+    tekst: 'Op welke afdeling werkte je?',
+    opties: ['Afdeling A', 'Afdeling B', 'Afdeling C'],
+  },
+  {
+    thema: 'Achtergrond',
+    type: 'meerkeuze',
+    tekst: 'Hoe lang heb je bij {bedrijf} gewerkt?',
+    opties: ['Korter dan 1 jaar', '1 tot 5 jaar', '5 tot 10 jaar', '10 jaar of langer'],
+  },
+];
+
 const CIJFERS = 'Cijfers uit de HR-administratie (zelf invoeren bij Eigen invoer).';
 
 export const EXTRA_SJABLONEN = [
@@ -516,12 +545,11 @@ export const EXTRA_SJABLONEN = [
         { thema: 'Verwachtingen en totaaloordeel', type: 'janee', tekst: 'Zou je {bedrijf} aanbevelen als werkgever aan vrienden of kennissen?' },
         { thema: 'Verwachtingen en totaaloordeel', type: 'open', tekst: 'Wat heeft je het meest geholpen bij je start bij {bedrijf}?' },
         { thema: 'Verwachtingen en totaaloordeel', type: 'open', tekst: 'Wat heb je gemist of had beter gekund tijdens je inwerkperiode?' },
-        ...ACHTERGROND_VRAGEN,
+        ...ACHTERGROND_ONBOARDING,
       ],
       acties: [
         ACHTERGROND_ACTIE,
         'Bepalen wie de vragenlijst krijgt (bijvoorbeeld iedereen die korter dan een jaar in dienst is)',
-        'Achtergrondvraag over diensttijd aanpassen aan nieuwe medewerkers (bijvoorbeeld korter dan 3 maanden, 3 tot 6 maanden, 6 tot 12 maanden)',
         'Inwerkprogramma en checklist voor nieuwe medewerkers opvragen',
         'Cijfers over instroom en vertrek binnen het eerste jaar opvragen en invoeren bij Eigen invoer',
         'Uitnodiging en link versturen naar nieuwe medewerkers',
@@ -664,7 +692,7 @@ export const EXTRA_SJABLONEN = [
         { thema: 'Organisatie en afscheid', type: 'janee', tekst: 'Zou je in de toekomst opnieuw bij {bedrijf} willen werken?' },
         { thema: 'Organisatie en afscheid', type: 'open', tekst: 'Wat heb je het meest gewaardeerd aan het werken bij {bedrijf}?' },
         { thema: 'Organisatie en afscheid', type: 'open', tekst: 'Welk advies wil je {bedrijf} meegeven?' },
-        ...ACHTERGROND_VRAGEN,
+        ...ACHTERGROND_VERTREK,
       ],
       acties: [
         ACHTERGROND_ACTIE,
@@ -757,17 +785,23 @@ export const EXTRA_SJABLONEN = [
         {
           thema: 'Veiligheid en ongewenst gedrag',
           type: 'meerkeuze',
-          meerdere_antwoorden: true,
           tekst: 'Heb je in de afgelopen 12 maanden zelf ongewenst gedrag meegemaakt op of rond je werk?',
           toelichting: 'We vragen niet wat er precies is gebeurd of wie erbij betrokken was. Wil je erover praten of iets melden? Neem dan contact op met de vertrouwenspersoon.',
+          opties: ['Ja', 'Nee', 'Dat zeg ik liever niet'],
+        },
+        {
+          thema: 'Veiligheid en ongewenst gedrag',
+          type: 'meerkeuze',
+          meerdere_antwoorden: true,
+          tekst: 'Als je ongewenst gedrag hebt meegemaakt: wat voor gedrag was dat?',
+          toelichting: 'Sla deze vraag over als je geen ongewenst gedrag hebt meegemaakt. Je kunt meer dan één antwoord kiezen.',
           opties: [
-            'Nee, dat heb ik niet meegemaakt',
-            'Ja, pesten of buitensluiten',
-            'Ja, discriminatie',
-            'Ja, seksuele intimidatie of ongewenste aandacht',
-            'Ja, intimidatie of bedreiging',
-            'Ja, agressie of geweld',
-            'Ja, ander ongewenst gedrag',
+            'Pesten of buitensluiten',
+            'Discriminatie',
+            'Seksuele intimidatie of ongewenste aandacht',
+            'Intimidatie of bedreiging',
+            'Agressie of geweld',
+            'Ander ongewenst gedrag',
             'Dat zeg ik liever niet',
           ],
         },
