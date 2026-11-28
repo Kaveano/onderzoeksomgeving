@@ -237,3 +237,120 @@ test('P3: een indeling als getal (zoals leeftijd) per groep volgt de kruistabelr
   // Met het gemiddelde en de spreiding van Kantoor (3 waarden) zou de verborgen cel 2 volgen: geen enkele groep blijft over.
   assert.equal(u.geweigerd, true, 'Kantoor heeft een kleine cel, Productie gaat ter aanvulling mee');
 });
+
+// ---------- Codes: de telling bij Open antwoorden en de 0/1-codevariabele verbergen hetzelfde (P7, J1, J4, J7) ----------
+
+import { coderingFeiten, verbergCodes } from '../public/js/beheer/codering-regels.js';
+import { codeVariabelen, CODE_VERBORGEN } from '../public/js/beheer/werkbank/dataset.js';
+import { spssVariabeleNamen } from '../public/js/beheer/export-bestanden.js';
+import { gereserveerdeNamen, naamFout } from '../public/js/beheer/werkbank/definities.js';
+
+/** Een open vraag (id 5) met n antwoorden; per code de nummers van de antwoorden (0-gebaseerd) die hem kregen. */
+function scenarioCodes(n, perCode, { kopie = false } = {}) {
+  const a = [];
+  for (let i = 0; i < n; i++) a.push({ 1: i % 2 ? 'oa' : 'ob', 5: `Antwoord ${i}` });
+  const codes = Object.keys(perCode).map((naam, k) => ({ id: 70 + k, naam, volgorde: k + 1 }));
+  const coderingen = [];
+  codes.forEach((c) => perCode[c.naam].forEach((i) => coderingen.push({ id: coderingen.length + 1, code_id: c.id, inzending_id: (i + 1) * 31, vraag_id: 5, invoer_id: null })));
+  const vragen = [{ ...AFDELING, opties: JSON.stringify([{ id: 'oa', label: 'Kantoor' }, { id: 'ob', label: 'Productie' }]) }, { id: 5, type: 'open', tekst: 'Wat kan beter?' }];
+  const data = exportLijst(vragen, a, { extra: { codes, coderingen } });
+  return { data, codes };
+}
+const reeks = (van, tot) => Array.from({ length: tot - van }, (_, i) => van + i);
+const telVan = (data) => coderingFeiten(data).vragen[0];
+
+test('J1: werkdruk 3, sfeer 31, zonder code 60 (94 antwoorden): werkdruk is nergens terug te rekenen', async () => {
+  const { data } = scenarioCodes(94, { werkdruk: reeks(0, 3), sfeer: reeks(3, 34) });
+  const t = telVan(data);
+  assert.equal(t.n_antwoorden, 94);
+  assert.deepEqual(t.codes.map((c) => [c.naam, c.aantal]), [['werkdruk', null], ['sfeer', 31]]);
+  assert.equal(t.geen_code, null, '“zonder code” gaat ter aanvulling mee');
+  // Vroeger: geen_code 60 hier en in de werkbank "Code gegeven 31 | Geen code 63" → 94 − 60 − 31 = 3.
+  const run = werkbank(data);
+  const sfeer = await run('frequenties', { variabelen: ['c:71@5'] });
+  assert.ok(!sfeer.geweigerd);
+  assert.deepEqual(['Code gegeven', 'Geen code'].map((l) => rijVan(sfeer, 'freq-', l)[1].w), [31, 63]);
+  // De verborgen code zelf is in de werkbank niet te gebruiken: niet in een analyse, selectie of eigen variabele.
+  const kern = maakRekenkern();
+  const ov = kern.laad({ data, datasets: [], definities: [], bron: { soort: 'lijst', id: 1 } });
+  const werkdruk = ov.variabelen.find((v) => v.id === 'c:70@5');
+  assert.equal(werkdruk.analyseerbaar, false);
+  assert.equal(werkdruk.reden_niet, CODE_VERBORGEN);
+  assert.equal((await run('frequenties', { variabelen: ['c:70@5'] })).geweigerd, true);
+  assert.equal((await run('kruistabel', { rij: 'v:1', kolom: 'c:70@5' })).geweigerd, true);
+  const met = werkbank(data, [
+    { id: 31, soort: 'filter', naam: 'met_werkdruk', definitie: { voorwaarden: [{ variabele: 'c:70@5', is: [1] }] } },
+    { id: 32, soort: 'bereken', naam: 'aantal_codes', definitie: { functie: 'som', variabelen: ['c:70@5', 'c:71@5'] } },
+  ]);
+  assert.equal((await met('frequenties', { variabelen: ['c:71@5'] }, { filter: 31 })).geweigerd, true, 'selectie op een verborgen code');
+  assert.equal((await met('frequenties', { variabelen: ['w:32'] })).geweigerd, true, 'eigen variabele uit een verborgen code');
+});
+
+test('P7: werkdruk 7, pesten 3, zonder code 10: de telling en de werkbank verbergen hetzelfde', async () => {
+  const { data } = scenarioCodes(20, { werkdruk: reeks(0, 7), pesten: reeks(7, 10) });
+  const t = telVan(data);
+  assert.deepEqual(t.codes.map((c) => [c.naam, c.aantal]), [['werkdruk', 7], ['pesten', null]]);
+  assert.equal(t.geen_code, null);
+  const fr = await werkbank(data)('frequenties', { variabelen: ['c:70@5'] });
+  // Vroeger: werkbank 13 "Geen code" en de telling 10 "antwoorden zonder code" → 13 − 10 = 3 = pesten.
+  assert.deepEqual(['Code gegeven', 'Geen code'].map((l) => rijVan(fr, 'freq-', l)[1].w), [7, 13]);
+  assert.equal((await werkbank(data)('frequenties', { variabelen: ['c:71@5'] })).geweigerd, true);
+  // Andersom: een code die bijna iedereen kreeg (17 van 20): 3 zonder die code. Telling en werkbank verbergen hem.
+  const { data: veel } = scenarioCodes(20, { overleg: reeks(0, 17) });
+  assert.equal(telVan(veel).codes[0].aantal, null);
+  assert.equal((await werkbank(veel)('frequenties', { variabelen: ['c:70@5'] })).geweigerd, true);
+  // verbergCodes los: nooit precies één verborgen aantal, en samen minstens 5.
+  assert.deepEqual(verbergCodes([20, 6], 4, 30), { codes: [false, true], zonder: true });
+  assert.deepEqual(verbergCodes([6, 7], 9, 22), { codes: [false, false], zonder: false });
+});
+
+test('P7: codes die vaak genoeg (en niet bijna altijd) gegeven zijn, staan in de telling en in de werkbank', async () => {
+  const { data } = scenarioCodes(30, { werkdruk: reeks(0, 10), sfeer: reeks(10, 18) });
+  const t = telVan(data);
+  assert.deepEqual(t.codes.map((c) => c.aantal), [10, 8]);
+  assert.equal(t.geen_code, 12);
+  const run = werkbank(data);
+  for (const [id, aantal] of [['c:70@5', 10], ['c:71@5', 8]]) {
+    const u = await run('frequenties', { variabelen: [id] });
+    assert.equal(rijVan(u, 'freq-', 'Code gegeven')[1].w, aantal, id);
+  }
+  const kt = await run('kruistabel', { rij: 'v:1', kolom: 'c:70@5' }, { opties: { procenten: 'geen' } });
+  assert.ok(!kt.geweigerd, meldingenVan(kt).join(' '));
+});
+
+test('J4: codes bij een open vraag die in de kopie van soort veranderde, worden werkbankvariabelen met dezelfde stam', async () => {
+  // Lijst 1: schaalvraag 130. Lijst 2: kopie met dezelfde stam (bron_vraag_id 130), maar nu een open vraag (158).
+  const data = exportLijst([{ id: 130, tekst: 'Hoe gaat het?' }], Array.from({ length: 6 }, () => ({ 130: 4 })));
+  data.vragenlijsten.push({ id: 2, titel: 'Vervolg', meetmoment_id: 30, status: 'gesloten' });
+  data.vragen.push({ ...data.vragen[0], id: 158, vragenlijst_id: 2, type: 'open', bron_vraag_id: 130, tekst: 'Hoe gaat het?' });
+  for (let i = 0; i < 12; i++) data.inzendingen.push({ id: 9000 + i, vragenlijst_id: 2, datum: '2026-10-02', antwoorden: { 158: `Tekst ${i}` } });
+  data.codes = [{ id: 4, naam: 'werkdruk', volgorde: 1 }];
+  data.coderingen = Array.from({ length: 6 }, (_, i) => ({ id: i + 1, code_id: 4, inzending_id: 9000 + i, vraag_id: 158, invoer_id: null }));
+  const stam = coderingFeiten(data).vragen[0].stam;
+  assert.equal(stam, 158, 'de kopie heeft een eigen stam (zoals bouwModel)');
+  const kern = maakRekenkern();
+  const ov = kern.laad({ data, datasets: [], definities: [], bron: { soort: 'lijst', id: 2 } });
+  const code = ov.variabelen.find((v) => v.id === `c:4@${stam}`);
+  assert.ok(code, 'c:4@158 staat in de variabelenlijst');
+  assert.equal(code.analyseerbaar, true);
+  const u = await kern.voerUit({ versie: 1, bron: { soort: 'lijst', id: 2 }, filter: null, procedure: 'frequenties', variabelen: { variabelen: [code.id] }, opties: {} }, { nu: '2026-11-27' });
+  assert.equal(rijVan(u, 'freq-', 'Code gegeven')[1].w, 6);
+});
+
+test('J7: een eigen variabele krijgt nooit de naam van een codevariabele, en andersom', async () => {
+  const { data } = scenarioCodes(30, { werkdruk: reeks(0, 10) });
+  const namen = spssVariabeleNamen(data);
+  const codeNamen = codeVariabelen(data, { namen, gebruikt: new Set(namen.gebruikt) }).map((c) => c.naam);
+  const vraag = namen.vraag.get(5);
+  assert.deepEqual(codeNamen, [`${vraag}_werkdruk`]);
+  // Zoals de server (src/routes/werkbank.js gereserveerd): de namen van de codevariabelen zijn gereserveerd.
+  const gereserveerd = gereserveerdeNamen([...namen.gebruikt, ...codeNamen], Object.keys(KENMERKEN));
+  assert.match(naamFout(`${vraag}_werkdruk`, { gereserveerd }), /gereserveerd/);
+  assert.equal(naamFout(`${vraag}_werkdruk_eigen`, { gereserveerd }), null);
+  // Andersom: bestaat de eigen variabele al (de code kwam later), dan krijgt de codevariabele een andere naam.
+  const kern = maakRekenkern();
+  const ov = kern.laad({ data, datasets: [], definities: [{ id: 41, dataset_id: null, soort: 'omscoren', naam: `${vraag}_werkdruk`, label: 'eigen', verwijderd_op: null, definitie: JSON.stringify({ variabele: 'v:1', laag: 1, hoog: 2 }) }], bron: { soort: 'lijst', id: 1 } });
+  const alleNamen = ov.variabelen.map((v) => v.naam.toLowerCase());
+  assert.equal(new Set(alleNamen).size, alleNamen.length, `alle namen verschillen: ${alleNamen.join(', ')}`);
+  assert.equal(ov.variabelen.find((v) => v.id === 'c:70@5').naam, `${vraag}_werkdruk_2`);
+});

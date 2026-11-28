@@ -4,13 +4,17 @@
 //
 // Privacy (PR-19):
 // - een vraag komt alleen in de feiten als hij minstens 5 (DREMPEL) niet-lege antwoorden heeft;
-// - aantallen per code van 1 tot 4 worden niet getoond (×), met aanvullend verbergen via verbergReeks over
-//   [codes…, antwoorden zonder code], zodat een klein aantal niet terug te rekenen is;
+// - een aantal per code (en "antwoorden zonder code") is een aandeel van de antwoorden op de vraag. Het wordt niet
+//   getoond (×) als het aantal óf de antwoorden zonder die code 1 tot 4 zijn, net als bij de 0/1-codevariabele in de
+//   werkbank. Is er iets verborgen, dan ook "antwoorden zonder code" en zo nodig de kleinste andere codes, tot er minstens
+//   twee aantallen verborgen zijn die samen minstens 5 tellen (verbergCodes). Een code die hier verborgen is, kan de
+//   werkbank niet gebruiken (werkbank/dataset.js): zo verbergen het overzicht en de werkbank hetzelfde (P7, J1);
 // - een citaat komt alleen in het rapport als het gecontroleerd én voor het rapport gekozen is; bij een vraag uit
 //   een vragenlijst ook alleen als die vraag minstens 5 antwoorden heeft. Het citaat is een aanpasbare kopie;
 // - per groep (afdeling …) alleen via de gemaskeerde kruistabellen van de werkbank (codes zijn daar 0/1-variabelen).
 
-import { DREMPEL, verbergReeks } from './privacy.js';
+import { DREMPEL } from './privacy.js';
+import { stamPerVraag } from './analyse-model.js';
 
 export const MAX_CODES = 200;
 export const MAX_CODERINGEN = 50_000;
@@ -70,15 +74,39 @@ export function telling(items, perItem, codes, { d = DREMPEL, metNul = false } =
     if (!heeft) zonder++;
   }
   const lijst = codeboek(codes).filter((c) => metNul || tel.get(c.id) > 0);
-  const aantallen = [...lijst.map((c) => tel.get(c.id) || 0), zonder];
-  const verborgen = verbergReeks(aantallen, d);
+  const aantallen = lijst.map((c) => tel.get(c.id) || 0);
+  const weg = verbergCodes(aantallen, zonder, n, d);
   return {
     n,
-    codes: lijst.map((c, i) => ({ code_id: c.id, naam: c.naam, aantal: verborgen[i] ? null : aantallen[i], verborgen: verborgen[i] })),
-    geen_code: verborgen[lijst.length] ? null : zonder,
-    geen_code_verborgen: verborgen[lijst.length],
-    iets_verborgen: verborgen.some(Boolean),
+    codes: lijst.map((c, i) => ({ code_id: c.id, naam: c.naam, aantal: weg.codes[i] ? null : aantallen[i], verborgen: weg.codes[i] })),
+    geen_code: weg.zonder ? null : zonder,
+    geen_code_verborgen: weg.zonder,
+    iets_verborgen: weg.zonder || weg.codes.some(Boolean),
   };
+}
+
+/**
+ * Welke aantallen van één vraag (of van alle interviews) verborgen worden (PR-19, P7, J1).
+ * aantallen: per code hoe vaak hij gegeven is; zonder: antwoorden zonder code; n: alle antwoorden.
+ * - Een code is een aandeel van n (zoals een 0/1-variabele): verborgen als het aantal óf n min het aantal 1 tot d − 1 is.
+ *   Hetzelfde voor "zonder code" (n min "zonder code" zijn de antwoorden met een code).
+ * - Is er iets verborgen, dan gaan de nullen mee, dan "zonder code" (zo blijven zo veel mogelijk codes zichtbaar en in de
+ *   werkbank te gebruiken), en daarna de kleinste zichtbare codes, tot er minstens twee aantallen verborgen zijn die samen
+ *   minstens d tellen. Anders is een verborgen aantal terug te rekenen uit n min de zichtbare aantallen.
+ * @returns {{ codes: boolean[], zonder: boolean }}
+ */
+export function verbergCodes(aantallen, zonder, n, d = DREMPEL) {
+  const klein = (x) => x > 0 && x < d;
+  const codes = aantallen.map((c) => klein(c) || klein(n - c));
+  let metZonder = klein(zonder) || klein(n - zonder);
+  if (!metZonder && !codes.some(Boolean)) return { codes, zonder: false };
+  aantallen.forEach((c, i) => { if (c === 0) codes[i] = true; });
+  metZonder = true;
+  const som = () => aantallen.reduce((t, c, i) => t + (codes[i] ? c : 0), 0) + zonder;
+  const aantal = () => codes.filter(Boolean).length + 1;
+  const rest = aantallen.map((_, i) => i).filter((i) => !codes[i]).sort((a, b) => aantallen[a] - aantallen[b] || a - b);
+  while ((som() < d || aantal() < 2) && rest.length) codes[rest.shift()] = true;
+  return { codes, zonder: metZonder };
 }
 
 /** De open vragen van een vragenlijst met hun niet-lege antwoorden: [{ vraag, lijst, items: [itemSleutel], teksten: Map<inzending_id, tekst> }]. */
@@ -132,6 +160,9 @@ export function coderingFeiten(data, { d = DREMPEL, lijstIds = null } = {}) {
   const vragen = [];
   const groteVragen = new Set(); // `${inzending_id}:${vraag_id}` mag een citaat geven
   const vraagVan = new Map(); // vraag_id → { tekst, lijst_id }
+  // De stam zoals in de werkbank (bouwModel): een kopie die van soort veranderde (bijvoorbeeld schaal → open), heeft een
+  // eigen stam. Zo bestaat c:<code>@<stam> ook echt in de werkbank (J4).
+  const stam = stamPerVraag(data);
   for (const { vraag, lijst, items, teksten } of openVragen(data, { lijstIds })) {
     if (items.length < d) continue;
     for (const inzId of teksten.keys()) groteVragen.add(`${inzId}:${vraag.id}`);
@@ -139,7 +170,7 @@ export function coderingFeiten(data, { d = DREMPEL, lijstIds = null } = {}) {
     if (!items.some((k) => perItem.get(k)?.size)) continue;
     const t = telling(items, perItem, codes, { d });
     vragen.push({
-      vraag_id: vraag.id, stam: vraag.bron_vraag_id || vraag.id, tekst: vraag.tekst, lijst_id: lijst.id, lijst_titel: lijst.titel,
+      vraag_id: vraag.id, stam: stam.get(vraag.id) ?? (vraag.bron_vraag_id || vraag.id), tekst: vraag.tekst, lijst_id: lijst.id, lijst_titel: lijst.titel,
       n_antwoorden: items.length, codes: t.codes, geen_code: t.geen_code,
     });
   }

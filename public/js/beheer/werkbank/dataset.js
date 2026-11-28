@@ -15,6 +15,7 @@ import { spssNaam } from '../bestanden.js';
 import { kolomSoort, isCodekolom, getalNotatie, alsGetal, verdachteKolommen } from '../inlees-regels.js';
 import { DREMPEL } from '../privacy.js';
 import { beschermIndeling } from './privacy-selectie.js';
+import { telling, codesPerItem, isAntwoord } from '../codering-regels.js';
 
 /** Reden per rij: 0 geldig, 1 geen antwoord, 2 weet niet, 3 niet gevraagd (andere vragenlijst), 4 eigen
  *  ontbrekende code of niet ingedeeld, 5 te weinig vragen beantwoord voor een score (B7). */
@@ -209,6 +210,50 @@ export const VRAAGSOORTEN = {
   },
 };
 
+// ---------- Codes bij open vragen ----------
+
+export const CODE_VERBORGEN = 'Deze code is bij Open antwoorden bij deze vraag verborgen: hij is minder dan 5 keer gegeven of bijna altijd, of hij is verborgen zodat een kleine code niet terug te rekenen is. Daarom kun je hem hier niet gebruiken. Voeg kleine codes samen of codeer meer antwoorden.';
+
+/**
+ * De codevariabelen (c:<code>@<stam>) met hun naam, in een vaste volgorde: per code (codeboek), per open stamvraag
+ * (volgorde van de export). Alleen paren (code, stam) die echt gegeven zijn; de stam komt uit bouwModel (J4).
+ * Gedeeld met de server (src/routes/werkbank.js), zodat een eigen variabele nooit de naam van een codevariabele
+ * krijgt (J7). gebruikt: de namen die al bezet zijn (wordt aangevuld). lijstIds: alleen deze vragenlijsten (null = alle).
+ * @returns {{ id, naam, code, stam }[]}
+ */
+export function codeVariabelen(data, { model = bouwModel(data), namen = spssVariabeleNamen(data), gebruikt = new Set(namen.gebruikt), lijstIds = null } = {}) {
+  const codes = data.codes || [];
+  const coderingen = data.coderingen || [];
+  if (!codes.length || !coderingen.length) return [];
+  const stamVan = new Map(model.lijsten.flatMap((l) => l.vragen.map((q) => [q.id, q.stam])));
+  const paren = new Set();
+  for (const c of coderingen) {
+    if (c.inzending_id === null || c.inzending_id === undefined) continue;
+    const stam = stamVan.get(c.vraag_id);
+    if (stam !== undefined) paren.add(`${c.code_id}@${stam}`);
+  }
+  // Open stamvragen in de volgorde van de export (zoals de vragen in de werkbank).
+  const stammen = [];
+  const gezien = new Set();
+  for (const l of model.lijsten) {
+    for (const q of l.vragen) {
+      if (q.type !== 'open' || gezien.has(q.stam)) continue;
+      if (lijstIds && !model.lijsten.some((x) => lijstIds.has(x.id) && x.vragen.some((y) => y.stam === q.stam))) continue;
+      gezien.add(q.stam);
+      stammen.push(q.stam);
+    }
+  }
+  const uit = [];
+  for (const code of codes) {
+    for (const stam of stammen) {
+      if (!paren.has(`${code.id}@${stam}`)) continue;
+      const vraagNaam = namen.vraag.get(stam) || `v${stam}`;
+      uit.push({ id: `c:${code.id}@${stam}`, naam: spssNaam(`${vraagNaam}_${code.naam}`, gebruikt), code, stam });
+    }
+  }
+  return uit;
+}
+
 // ---------- Opbouwen ----------
 
 /**
@@ -218,9 +263,9 @@ export const VRAAGSOORTEN = {
  * eigenschappen: { variabelen: { id: { meetniveau, label, ontbrekend, volgorde } } } (de definitie '~eigenschappen').
  * @returns {{ bron, sleutel, d, n, variabelen, perId: Map, lijsten, uitgesloten, meldingen, kwaliteit, rijLijst }}
  */
-export function bouwDataset({ data, dataset = null, bron, drempel = DREMPEL, eigenschappen = null }) {
+export function bouwDataset({ data, dataset = null, bron, drempel = DREMPEL, eigenschappen = null, eigenNamen = [] }) {
   const d = Math.max(DREMPEL, Number(drempel) || DREMPEL);
-  const ds = bron.soort === 'dataset' ? bouwUitBestand(dataset, bron, d, eigenschappen) : bouwUitVragenlijsten(data, bron, d, eigenschappen);
+  const ds = bron.soort === 'dataset' ? bouwUitBestand(dataset, bron, d, eigenschappen) : bouwUitVragenlijsten(data, bron, d, eigenNamen);
   ds.sleutel = bronSleutel(bron);
   ds.d = d;
   for (const v of ds.variabelen) ds.perId.set(v.id, v);
@@ -276,7 +321,7 @@ function lijstNaam(l, mmNaam) {
   return l.meetmoment_id && mmNaam.has(l.meetmoment_id) ? `${l.titel} (${mmNaam.get(l.meetmoment_id)})` : l.titel;
 }
 
-function bouwUitVragenlijsten(data, bron, d) {
+function bouwUitVragenlijsten(data, bron, d, eigenNamen = []) {
   const model = bouwModel(data);
   const namen = spssVariabeleNamen(data);
   const gebruikt = new Set(namen.gebruikt);
@@ -336,6 +381,9 @@ function bouwUitVragenlijsten(data, bron, d) {
     }
   }
   const lijstIds = new Set(lijsten.map((l) => l.id));
+  const codes = data.codes || [];
+  const perItem = codesPerItem(data.coderingen || []);
+  const gecodeerd = new Set((data.coderingen || []).filter((c) => c.inzending_id !== null && c.inzending_id !== undefined).map((c) => `${c.code_id}:${c.inzending_id}:${c.vraag_id}`));
   const variabelen = [];
   const systeem = [];
   const vragen = [];
@@ -467,43 +515,45 @@ function bouwUitVragenlijsten(data, bron, d) {
   });
 
   // Codes bij open vragen (pakket P5): 0/1 per (code, open vraag); leeg als de vraag niet beantwoord is.
+  // De stam komt uit bouwModel (J4): ook een open vraag die in een kopie van soort veranderde, krijgt zijn codes.
+  // Een code die in de telling bij Open antwoorden (codering-regels.js telling) bij deze vraag verborgen is, is hier
+  // niet te gebruiken: anders volgt het verborgen aantal uit "Geen code" min "antwoorden zonder code" (P7, J1).
   const codeVars = [];
-  const codes = data.codes || [];
-  const coderingen = data.coderingen || [];
-  if (codes.length && coderingen.length) {
-    const gecodeerd = new Set();
-    const paren = new Map(); // `${code}@${stam}` → { code, stam }
-    const stamVanVraag = new Map((data.vragen || []).map((q) => [q.id, q.bron_vraag_id || q.id]));
-    for (const c of coderingen) {
-      if (c.inzending_id === null || c.inzending_id === undefined) continue;
-      gecodeerd.add(`${c.code_id}:${c.inzending_id}:${c.vraag_id}`);
-      const stam = stamVanVraag.get(c.vraag_id);
-      if (stam !== undefined) paren.set(`${c.code_id}@${stam}`, { code: c.code_id, stam });
-    }
-    for (const code of codes) {
-      for (const s of stammen) {
-        if (s.eerste.type !== 'open' || !paren.has(`${code.id}@${s.stam}`)) continue;
-        if (![...s.perLijst.keys()].some((id) => lijstIds.has(id))) continue;
-        const vraagNaam = namen.vraag.get(s.stam) || `v${s.stam}`;
-        const v = nieuweVariabele(n, {
-          id: `c:${code.id}@${s.stam}`,
-          naam: spssNaam(`${vraagNaam}_${code.naam}`, gebruikt),
-          label: `Code “${code.naam}” bij vraag “${s.label || s.eerste.tekst}”`,
-          bron: 'code', groep: 'code', soort: 'categorie', meetniveau: 'nominaal', groepering: true, stam: s.stam,
-          labels: [{ code: 1, label: 'Code gegeven', bronwaarde: 1, bronwaarden: [1] }, { code: 0, label: 'Geen code', bronwaarde: 0, bronwaarden: [0] }],
-        });
-        for (let r = 0; r < n; r++) {
-          const q = s.perLijst.get(lijsten[rijLijst[r]].id);
-          if (!q) {
-            v.reden[r] = REDEN.NIET_GEVRAAGD;
-            continue;
-          }
-          const a = inzendingen[r].antwoorden[q.id];
-          if (typeof a === 'string' && a.trim()) zet(v, r, gecodeerd.has(`${code.id}:${inzendingen[r].id}:${q.id}`) ? 1 : 0);
-        }
-        codeVars.push(v);
+  // Namen van eigen variabelen van deze bron: een code die later is aangemaakt, krijgt dan een andere naam (J7).
+  for (const naam of eigenNamen) gebruikt.add(String(naam).toLowerCase());
+  const verborgenPer = new Map(); // `${stam}:${lijst}` → Set<code_id> die bij Open antwoorden verborgen zijn
+  const verborgenCodes = (stam, lijstId, q) => {
+    const sleutel = `${stam}:${lijstId}`;
+    if (!verborgenPer.has(sleutel)) {
+      const items = [];
+      for (let r = 0; r < n; r++) {
+        if (lijsten[rijLijst[r]].id !== lijstId) continue;
+        if (isAntwoord(inzendingen[r].antwoorden[q.id])) items.push(`i:${inzendingen[r].id}:${q.id}`);
       }
+      verborgenPer.set(sleutel, new Set(telling(items, perItem, codes).codes.filter((x) => x.verborgen).map((x) => x.code_id)));
     }
+    return verborgenPer.get(sleutel);
+  };
+  for (const c of codeVariabelen(data, { model, namen, gebruikt, lijstIds })) {
+    const s = gezien.get(c.stam);
+    const v = nieuweVariabele(n, {
+      id: c.id, naam: c.naam,
+      label: `Code “${c.code.naam}” bij vraag “${s.label || s.eerste.tekst}”`,
+      bron: 'code', groep: 'code', soort: 'categorie', meetniveau: 'nominaal', groepering: true, stam: c.stam,
+      labels: [{ code: 1, label: 'Code gegeven', bronwaarde: 1, bronwaarden: [1] }, { code: 0, label: 'Geen code', bronwaarde: 0, bronwaarden: [0] }],
+    });
+    const verborgenIn = [...s.perLijst].filter(([lijstId, q]) => lijstIds.has(lijstId) && verborgenCodes(c.stam, lijstId, q).has(c.code.id));
+    for (let r = 0; r < n; r++) {
+      const q = s.perLijst.get(lijsten[rijLijst[r]].id);
+      if (!q) {
+        v.reden[r] = REDEN.NIET_GEVRAAGD;
+        continue;
+      }
+      const a = inzendingen[r].antwoorden[q.id];
+      if (isAntwoord(a)) zet(v, r, gecodeerd.has(`${c.code.id}:${inzendingen[r].id}:${q.id}`) ? 1 : 0);
+    }
+    if (verborgenIn.length) Object.assign(v, { analyseerbaar: false, reden_niet: CODE_VERBORGEN });
+    codeVars.push(v);
   }
 
   variabelen.push(...kenmerkVars, ...systeem, ...themaVars, ...meetpuntVars, ...vragen, ...codeVars);

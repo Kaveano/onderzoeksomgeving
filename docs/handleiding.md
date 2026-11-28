@@ -383,7 +383,7 @@ In het tabblad **Analyse**, onderdeel **Open antwoorden**, geef je open antwoord
 
 **Interviews** (en observaties uit Eigen invoer): kies het interview; de codes gelden voor het hele stuk. Bij een interview in **Eigen invoer** brengt de knop **Coderen** je hier direct naartoe.
 
-**Codeboek**: hier voeg je codes toe, wijzig je de naam of omschrijving, **voeg je codes samen** (alle antwoorden en citaten gaan naar de andere code) of verwijder je een code. Je ziet ook hoe vaak elke code bij deze vraag voorkomt. Net als in het rapport staan aantallen van 1 tot 4 er niet: die zie je als **×**. Soms is ook een groter aantal verborgen, zodat een klein aantal niet terug te rekenen is. Heeft een vraag minder dan 5 antwoorden, dan zie je geen aantallen.
+**Codeboek**: hier voeg je codes toe, wijzig je de naam of omschrijving, **voeg je codes samen** (alle antwoorden en citaten gaan naar de andere code) of verwijder je een code. Je ziet ook hoe vaak elke code bij deze vraag voorkomt. Net als in het rapport staan aantallen van 1 tot 4 er niet: die zie je als **×**. Dat geldt ook voor een code die bijna iedereen kreeg (minder dan 5 antwoorden zonder die code). Is er iets verborgen, dan is ook *Antwoorden zonder code* verborgen, en soms nog een code, zodat een klein aantal niet terug te rekenen is. Heeft een vraag minder dan 5 antwoorden, dan zie je geen aantallen.
 
 **Citaten**
 - Klik bij een antwoord op **Citaat maken**. Het citaat is een kopie die je kunt inkorten of aanpassen. Bij een interview selecteer je eerst het stuk tekst dat je wilt citeren.
@@ -391,7 +391,7 @@ In het tabblad **Analyse**, onderdeel **Open antwoorden**, geef je open antwoord
 - Pas je de tekst later aan, dan moet je hem opnieuw controleren: het vinkje Gecontroleerd (en In rapport) gaat er dan af.
 - In het rapport komen alleen citaten die gecontroleerd zijn en waarbij In rapport aan staat, en alleen bij vragen met minstens 5 antwoorden.
 
-Codes zijn in de **Werkbank** ook te gebruiken, als variabele (wel of niet genoemd), bijvoorbeeld om te zien of werkdruk vaker genoemd wordt op de ene afdeling dan op de andere. Ook daar gelden de regels voor kleine aantallen.
+Codes zijn in de **Werkbank** ook te gebruiken, als variabele (wel of niet genoemd), bijvoorbeeld om te zien of werkdruk vaker genoemd wordt op de ene afdeling dan op de andere. Ook daar gelden de regels voor kleine aantallen. Een code die in het codeboek bij een vraag verborgen is (×), kun je in de werkbank niet gebruiken; anders zou het verborgen aantal uit de werkbank terug te rekenen zijn. Voeg kleine codes samen of codeer meer antwoorden. Een eigen variabele kan niet dezelfde naam krijgen als een code.
 
 ## 6. Eigen invoer
 

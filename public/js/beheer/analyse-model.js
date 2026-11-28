@@ -84,6 +84,12 @@ export function bouwModel(data) {
   };
 }
 
+/** De stam per vraag-id, zoals bouwModel die bepaalt (zonder de antwoorden te lezen). Ook voor codering-regels.js (J4). */
+export function stamPerVraag(data) {
+  const model = bouwModel({ ...data, inzendingen: [] });
+  return new Map(model.lijsten.flatMap((l) => l.vragen.map((q) => [q.id, q.stam])));
+}
+
 export function schaalWaarde(a) {
   return Number.isInteger(a) && a >= 1 && a <= 5 ? a : null;
 }

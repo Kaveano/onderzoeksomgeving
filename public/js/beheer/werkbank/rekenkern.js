@@ -12,7 +12,7 @@ import { DREMPEL, drempelVan, verbergReeks, VERBORGEN, VERBORGEN_UITLEG } from '
 import { bouwDataset, bronSleutel, metadata, REDEN, isAchtergrond } from './dataset.js';
 import { metLijstBuren, verbergMet } from './privacy-selectie.js';
 import {
-  pasDefinitiesToe, eigenschappenVan, maakSelectie, controleerSelectie, controleerNieuweIndeling, maakVariabele, voorwaardeTekst,
+  pasDefinitiesToe, eigenschappenVan, maakSelectie, controleerSelectie, controleerNieuweIndeling, maakVariabele, voorwaardeTekst, definitiesVoorBron,
 } from './transformaties.js';
 import { leesDefinities, controleerSpec, specRefs, DefinitieFout, controleerDefinitie } from './definities.js';
 import { PROCEDURES } from './procedures/index.js';
@@ -61,6 +61,8 @@ export function maakRekenkern() {
       bron,
       drempel: invoer.d,
       eigenschappen: eig?.definitie || null,
+      // Namen van de eigen variabelen van deze bron: een codevariabele krijgt nooit dezelfde naam (J7).
+      eigenNamen: definitiesVoorBron(invoer.definities, bron).filter((d) => d.soort !== 'eigenschappen' && d.soort !== 'filter').map((d) => d.naam),
     });
     ds.naamVanRef = naamVoorRef;
     pasDefinitiesToe(ds, invoer.definities, { eigenschappen: eig?.definitie || null });

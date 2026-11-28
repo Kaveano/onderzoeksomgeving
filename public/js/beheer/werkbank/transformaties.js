@@ -244,6 +244,9 @@ function hercoderen(ds, def, bron) {
   return v;
 }
 
+/** Melding bij een variabele die niet te analyseren is (met de reden, bijvoorbeeld een verborgen code). */
+const nietTeGebruiken = (v) => `“${v.label}” is niet te gebruiken. ${v.reden_niet || ''}`.trim();
+
 /**
  * Rekent één definitie (bereken, omscoren of hercoderen) uit, zonder hem aan ds toe te voegen.
  * @returns {{ v } | { tekst }} de variabele, of de reden waarom het niet kan.
@@ -252,6 +255,8 @@ export function maakVariabele(ds, def) {
   const refs = refsVan(def.soort, def.definitie);
   const ontbreekt = refs.find((r) => !ds.perId.has(r));
   if (ontbreekt) return { tekst: foutOntbreekt(naamVan(ds, ontbreekt)) };
+  const dicht = refs.map((r) => ds.perId.get(r)).find((x) => !x.analyseerbaar);
+  if (dicht) return { tekst: nietTeGebruiken(dicht) };
   let v = null;
   if (def.soort === 'bereken') {
     const items = def.definitie.variabelen.map((x) => (typeof x === 'string' ? { v: ds.perId.get(x), omscoren: false } : { v: ds.perId.get(x.id), omscoren: !!x.omscoren }));
@@ -364,6 +369,8 @@ export function voorwaardeMasker(ds, vw) {
   }
   const v = ds.perId.get(vw.variabele);
   if (!v) return { fout: foutOntbreekt(naamVan(ds, vw.variabele)) };
+  // Een variabele die niet te analyseren is (zoals een code die bij Open antwoorden verborgen is), kan ook geen selectie zijn.
+  if (!v.analyseerbaar) return { fout: nietTeGebruiken(v) };
   if (vw.is || vw.niet) {
     const gekozen = gelijkeWaarde(v.labels, vw.is || vw.niet);
     const codes = new Set(gekozen.map((l) => l.code));

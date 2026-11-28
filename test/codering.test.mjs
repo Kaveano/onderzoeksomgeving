@@ -51,7 +51,8 @@ test('alleen niet-lege antwoorden tellen mee', () => {
 
 test('criterium 7: aantallen van 1 tot 4 worden ×, met aanvullend verbergen', () => {
   const data = onderzoek();
-  // Werkdruk 1, Waardering 5, zonder code 12 − 6 = 6 → [1, 5, 6]: 1 verborgen, dan de kleinste zichtbare (5) erbij.
+  // Werkdruk 1, Waardering 5, zonder code 12 − 6 = 6: 1 verborgen, dan eerst "zonder code" erbij (samen 7, twee
+  // aantallen). Waardering blijft zichtbaar (5 met en 7 zonder), net als de 0/1-codevariabele in de werkbank (P7).
   codeer(data, 1000, 11, [7]);
   for (let i = 1; i <= 5; i++) codeer(data, 1000 + i, 11, [8]);
   const f = coderingFeiten(data);
@@ -60,9 +61,9 @@ test('criterium 7: aantallen van 1 tot 4 worden ×, met aanvullend verbergen', (
   assert.equal(v.lijst_titel, 'Nulmeting');
   assert.deepEqual(v.codes, [
     { code_id: 7, naam: 'Werkdruk', aantal: null, verborgen: true },
-    { code_id: 8, naam: 'Waardering', aantal: null, verborgen: true },
+    { code_id: 8, naam: 'Waardering', aantal: 5, verborgen: false },
   ]);
-  assert.equal(v.geen_code, 6);
+  assert.equal(v.geen_code, null);
 });
 
 test('verbergReeks: de kleinste zichtbare gaat erbij, Planning (0) staat er niet in', () => {
