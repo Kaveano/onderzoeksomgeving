@@ -112,18 +112,22 @@ export async function detail({ env, params }) {
   const vl = await een(env, 'SELECT * FROM vragenlijsten WHERE id = ?', id);
   if (!vl) throw new Fout(404, 'Deze vragenlijst bestaat niet (meer).');
   const o = await haalOnderzoek(env, vl.onderzoek_id);
-  const [vragen, telling] = await env.DB.batch([
+  const [vragen, telling, codeerwerk] = await env.DB.batch([
     env.DB.prepare(
       `SELECT q.* FROM vragen q JOIN themas t ON t.id = q.thema_id
        WHERE q.vragenlijst_id = ? ORDER BY t.volgorde, t.id, q.volgorde, q.id`,
     ).bind(id),
     env.DB.prepare('SELECT COUNT(*) AS n FROM inzendingen WHERE vragenlijst_id = ?').bind(id),
+    codeerwerkTelling(env, id),
   ]);
   return json({
     vragenlijst: vl,
     onderzoek: { id: o.id, bedrijfsnaam: o.bedrijfsnaam, titel: o.titel, status: o.status },
     vragen: vragen.results.map(vraagUitDb),
     aantal_inzendingen: telling.results[0].n,
+    // Wat er bij "Antwoorden wissen" via ON DELETE CASCADE (0015) meegaat: gegeven codes en citaten (R10).
+    aantal_coderingen: codeerwerk.results[0].coderingen,
+    aantal_citaten: codeerwerk.results[0].citaten,
   });
 }
 
@@ -186,15 +190,26 @@ export async function verwijder({ request, env, params }) {
  * vragenlijsten wordt vooraf geteld, in dezelfde batch: meta.changes van de DELETE telt ook de coderingen en
  * citaten die via ON DELETE CASCADE meegaan (migratie 0015), en dat is niet wat je wist (J5).
  */
+/** Het aantal gegeven codes en citaten bij de antwoorden van een vragenlijst (één opdracht, voor een batch). */
+function codeerwerkTelling(env, vragenlijstId) {
+  return env.DB.prepare(
+    `SELECT (SELECT COUNT(*) FROM coderingen WHERE inzending_id IN (SELECT id FROM inzendingen WHERE vragenlijst_id = ?1)) AS coderingen,
+            (SELECT COUNT(*) FROM citaten WHERE inzending_id IN (SELECT id FROM inzendingen WHERE vragenlijst_id = ?1)) AS citaten`,
+  ).bind(vragenlijstId);
+}
+
 export async function wisInzendingen({ env, params }) {
   const id = v.id(params.id);
   await bewerkbaarVia(env, 'vragenlijst', id);
+  // Eerst tellen (de coderingen en citaten gaan via ON DELETE CASCADE mee), dan wissen; één batch.
   const res = await env.DB.batch([
     env.DB.prepare('SELECT COUNT(*) AS n FROM inzendingen WHERE vragenlijst_id = ?').bind(id),
+    codeerwerkTelling(env, id),
     env.DB.prepare('DELETE FROM inzendingen WHERE vragenlijst_id = ?').bind(id),
     env.DB.prepare('DELETE FROM inzendteller WHERE vragenlijst_id = ?').bind(id),
   ]);
-  return json({ ok: true, verwijderd: res[0].results?.[0]?.n ?? 0 });
+  const werk = res[1].results?.[0] || {};
+  return json({ ok: true, verwijderd: res[0].results?.[0]?.n ?? 0, coderingen: werk.coderingen ?? 0, citaten: werk.citaten ?? 0 });
 }
 
 export async function nieuweCode({ env, params }) {

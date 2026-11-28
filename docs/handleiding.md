@@ -152,7 +152,7 @@ Een organisatie met een afkorting noem je de eerste keer voluit: *(Centraal Bure
 5. Bekijk het resultaat met **Voorbeeld** of **Bekijk als respondent**.
 6. Klik op **Vragenlijst openzetten**.
 7. Klik op **Link kopiëren** en stuur de link naar de medewerkers, bijvoorbeeld per e-mail of intranet. Een kant-en-klare uitnodiging, een herinnering en een QR-code vind je op het tabblad **Delen** (hoofdstuk 10).
-8. Heb je de vragenlijst zelf getest? Wis dan je testantwoorden met **Antwoorden wissen** voordat het echte onderzoek begint.
+8. Heb je de vragenlijst zelf getest? Wis dan je testantwoorden met **Antwoorden wissen** voordat het echte onderzoek begint. Ook de codes die je aan die antwoorden gaf en de citaten eruit worden dan gewist; het codeboek zelf blijft staan. Het venster zegt vooraf hoeveel het er zijn.
 
 **Tips**
 - Vul **Aantal uitgenodigden** in om het responspercentage te zien.

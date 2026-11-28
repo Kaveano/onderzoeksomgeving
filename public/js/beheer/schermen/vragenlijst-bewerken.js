@@ -252,12 +252,19 @@ export async function toon(container, ctx) {
   }
 
   async function wisAntwoorden() {
+    // Vlak voor het wissen opnieuw tellen: codes en citaten kunnen intussen op het scherm Coderen zijn gegeven (R10).
+    let telling = { inzendingen, coderingen: data.aantal_coderingen || 0, citaten: data.aantal_citaten || 0 };
+    try {
+      const vers = await api.get(`/vragenlijsten/${vlId}`);
+      telling = { inzendingen: vers.aantal_inzendingen || 0, coderingen: vers.aantal_coderingen || 0, citaten: vers.aantal_citaten || 0 };
+    } catch { /* dan de telling van het laden */ }
     const ok = await bevestig({
       titel: 'Alle antwoorden wissen?',
       tekst: [
-        h('p', {}, h('strong', {}, `Alle ${aantal(inzendingen, 'ingevulde vragenlijst', 'ingevulde vragenlijsten')} worden definitief gewist.`)),
+        h('p', {}, h('strong', {}, `Alle ${aantal(telling.inzendingen, 'ingevulde vragenlijst', 'ingevulde vragenlijsten')} worden definitief gewist.`)),
+        codeerwerkTekst(telling),
         'Gebruik dit alleen om testantwoorden weg te halen voordat het echte onderzoek begint. De vragen en de link blijven zoals ze zijn. Dit kun je niet ongedaan maken.',
-      ],
+      ].filter(Boolean),
       knop: 'Antwoorden wissen',
       gevaar: true,
       typTekst: 'WISSEN',
@@ -266,7 +273,8 @@ export async function toon(container, ctx) {
     try {
       const r = await api.del(`/vragenlijsten/${vlId}/inzendingen`);
       vergeetGegevens(onderzoekId);
-      meld(`${aantal(r.verwijderd ?? inzendingen, 'ingevulde vragenlijst', 'ingevulde vragenlijsten')} gewist.`, 'succes');
+      const werk = r.coderingen || r.citaten ? ` ${codeerwerkGewist(r)}` : '';
+      meld(`${aantal(r.verwijderd ?? telling.inzendingen, 'ingevulde vragenlijst', 'ingevulde vragenlijsten')} gewist.${werk}`, 'succes');
       await herlaad({ focus: ['link'] });
     } catch (e) {
       meldFout(e);
@@ -1416,4 +1424,20 @@ export async function toon(container, ctx) {
       aankondiging,
     ),
   );
+}
+
+/** Wat er bij "Antwoorden wissen" ook verdwijnt: de codes die je aan de antwoorden gaf en de citaten eruit (R10). */
+export function codeerwerkTekst({ coderingen = 0, citaten = 0 } = {}) {
+  if (!coderingen && !citaten) return null;
+  const delen = [
+    coderingen ? `${coderingen === 1 ? 'de code' : `de ${aantal(coderingen, 'code', 'codes')}`} die je aan deze antwoorden gaf` : null,
+    citaten ? `${citaten === 1 ? 'het citaat' : `de ${aantal(citaten, 'citaat', 'citaten')}`} eruit` : null,
+  ].filter(Boolean);
+  return `Ook ${delen.join(' en ')} ${coderingen + citaten === 1 ? 'wordt' : 'worden'} gewist. Het codeboek zelf blijft staan.`;
+}
+
+/** De melding na het wissen: hoeveel codes en citaten meegingen. */
+export function codeerwerkGewist({ coderingen = 0, citaten = 0 } = {}) {
+  const delen = [coderingen ? aantal(coderingen, 'gegeven code', 'gegeven codes') : null, citaten ? aantal(citaten, 'citaat', 'citaten') : null].filter(Boolean);
+  return delen.length ? `Ook ${delen.join(' en ')} ${coderingen + citaten === 1 ? 'is' : 'zijn'} gewist.` : '';
 }

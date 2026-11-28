@@ -1,6 +1,8 @@
-// Hercontrole J7 via een echte lokale testserver (poort 8786; inspector 9786): een eigen variabele die er al was
-// vóór een code met dezelfde naam, blijft te wijzigen. De server reserveert de codenamen zoals de werkbank ze maakt:
-// de namen van de eigen variabelen staan vast vóór de codes (die code heet dan …_2).
+// Hercontrole via een echte lokale testserver (poort 8786; inspector 9786).
+// - J7 (R5): een eigen variabele die er al was vóór een code met dezelfde naam, blijft te wijzigen. De server
+//   reserveert de codenamen zoals de werkbank ze maakt: de namen van de eigen variabelen staan vast vóór de codes
+//   (die code heet dan …_2).
+// - R10: "Antwoorden wissen" telt vooraf ook de gegeven codes en citaten die meegaan (ON DELETE CASCADE).
 // Uitvoeren: node --test test/herstel-server.test.mjs
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -35,6 +37,13 @@ function zaad() {
     (8100, 800, NULL, 'omscoren', 'v02_nieuwecode', 'Oud label', '{"variabele":"v:8003"}', '${NU}', '${NU}');`);
   r.push(`INSERT INTO codes (id, onderzoek_id, naam, volgorde, aangemaakt_op) VALUES (8010, 800, 'nieuwecode', 1, '${NU}');`);
   r.push(`INSERT INTO coderingen (onderzoek_id, code_id, inzending_id, vraag_id) VALUES ${[1, 2, 3, 4, 5, 6].map((i) => `(800, 8010, ${81000 + i}, 8002)`).join(', ')};`);
+  r.push(`INSERT INTO citaten (onderzoek_id, code_id, inzending_id, vraag_id, tekst, aangemaakt_op, bijgewerkt_op) VALUES
+    (800, 8010, 81001, 8002, 'Antwoord 1', '${NU}', '${NU}'), (800, NULL, 81002, 8002, 'Antwoord 2', '${NU}', '${NU}');`);
+  // Een tweede vragenlijst met een eigen codering: die blijft staan.
+  r.push(`INSERT INTO vragenlijsten (id, onderzoek_id, titel, code, status, aangemaakt_op) VALUES (8004, 800, 'Andere', 'zaadcode-herstel-0002', 'gesloten', '${NU}');`);
+  r.push('INSERT INTO vragen (id, vragenlijst_id, thema_id, type, tekst, volgorde) VALUES (8005, 8004, 8000, \'open\', \'Nog iets?\', 1);');
+  r.push(`INSERT INTO inzendingen (id, vragenlijst_id, datum, antwoorden) VALUES (82001, 8004, '2026-10-01', '{"8005":"Ander antwoord"}');`);
+  r.push('INSERT INTO coderingen (onderzoek_id, code_id, inzending_id, vraag_id) VALUES (800, 8010, 82001, 8005);');
   return r.join('\n');
 }
 
@@ -89,4 +98,25 @@ test('J7: een eigen variabele van vóór de code blijft te wijzigen; de naam van
   // Een vaste vraagnaam blijft gereserveerd; een vrije naam mag.
   assert.equal((await roep('/api/beheer/onderzoeken/800/werkbank/definities', { methode: 'POST', body: { soort: 'omscoren', naam: 'v01', label: '', definitie: { variabele: 'v:8003' } } })).status, 400);
   assert.equal((await roep('/api/beheer/onderzoeken/800/werkbank/definities', { methode: 'POST', body: { soort: 'omscoren', naam: 'v01_om', label: '', definitie: { variabele: 'v:8003' } } })).status, 201);
+});
+
+test('R10: Antwoorden wissen noemt vooraf de gegeven codes en citaten die meegaan, en telt ze bij het wissen', async () => {
+  const voor = await roep('/api/beheer/vragenlijsten/8001');
+  assert.equal(voor.status, 200);
+  assert.equal(voor.data.aantal_inzendingen, 8);
+  assert.equal(voor.data.aantal_coderingen, 6);
+  assert.equal(voor.data.aantal_citaten, 2);
+  const andere = await roep('/api/beheer/vragenlijsten/8004');
+  assert.deepEqual([andere.data.aantal_inzendingen, andere.data.aantal_coderingen, andere.data.aantal_citaten], [1, 1, 0]);
+  const wis = await roep('/api/beheer/vragenlijsten/8001/inzendingen', { methode: 'DELETE' });
+  assert.equal(wis.status, 200);
+  assert.deepEqual([wis.data.verwijderd, wis.data.coderingen, wis.data.citaten], [8, 6, 2]);
+  const na = await roep('/api/beheer/vragenlijsten/8001');
+  assert.deepEqual([na.data.aantal_inzendingen, na.data.aantal_coderingen, na.data.aantal_citaten], [0, 0, 0]);
+  // De codering bij de andere vragenlijst en het codeboek blijven staan.
+  const nogAnders = await roep('/api/beheer/vragenlijsten/8004');
+  assert.equal(nogAnders.data.aantal_coderingen, 1);
+  const codes = await roep('/api/beheer/onderzoeken/800/codering');
+  assert.equal(codes.status, 200, JSON.stringify(codes.data));
+  assert.ok(JSON.stringify(codes.data).includes('nieuwecode'), 'het codeboek blijft');
 });
