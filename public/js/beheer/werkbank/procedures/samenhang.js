@@ -86,7 +86,13 @@ export async function correlatie(ds, spec, ctx) {
     paren.forEach((x, i) => { x.pHolm = hp[i]; x.pRhoHolm = hr[i]; });
   }
   const zichtbaar = paren.filter((x) => !x.verborgen && !x.teWeinig && (eindig(x.r) || eindig(x.rho)));
-  if (!zichtbaar.length) return weiger(ds, spec, ctx, titel, 'privacy', 'Geen enkel paar heeft genoeg respondenten (minstens 10) om een correlatie te tonen.');
+  if (!zichtbaar.length) {
+    // Vielen paren weg om een privacyregel van een variabele (bijvoorbeeld 1 tot 4 keer "Dat zeg ik liever niet" bij
+    // leeftijd), noem dan die reden en niet het aantal paren.
+    const reden = uitgesloten.find(Boolean);
+    const doorRegel = paren.some((x) => uitgesloten[x.i] || uitgesloten[x.j]);
+    return weiger(ds, spec, ctx, titel, 'privacy', reden && doorRegel ? reden : 'Geen enkel paar heeft genoeg respondenten (minstens 10) om een correlatie te tonen.');
+  }
   const pVan = (x, soort) => (soort === 'r' ? (metHolm ? x.pHolm : x.p) : (metHolm ? x.pRhoHolm : x.pRho));
   for (const x of paren) rpMatrix[x.i][x.j] = x;
   const matrix = (soort) => {

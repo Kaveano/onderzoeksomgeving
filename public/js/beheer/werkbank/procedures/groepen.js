@@ -518,18 +518,18 @@ export async function gepaard(ds, spec, ctx) {
     const effect = effectGrootte(t.dz, 'd');
     u.duiding.significant = significant;
     u.duiding.effect = effect;
+    // Zoals de tabel (en SPSS, scipy.stats.ttest_rel(x, y)): de eerste vraag min de tweede, met het teken (G2).
     u.duiding.zinnen.push(UITLEG_GEPAARD,
       Math.abs(t.verschil) < 0.005 ? `Op “${a.label}” en “${b.label}” scoren dezelfde mensen gemiddeld ongeveer gelijk.`
-        : `Dezelfde mensen scoren gemiddeld ${g(Math.abs(t.verschil))} punt hoger op “${t.verschil > 0 ? a.label : b.label}” dan op “${t.verschil > 0 ? b.label : a.label}”.`,
+        : `Dezelfde mensen scoren gemiddeld ${g(Math.abs(t.verschil))} punt ${t.verschil > 0 ? 'hoger' : 'lager'} op “${a.label}” dan op “${b.label}”.`,
       significant ? ZIN_SIG_VERSCHIL : ZIN_GEEN_SIG_VERSCHIL);
     if (effect) u.duiding.zinnen.push(`Het verschil is ${effectWoord(effect)} (dz = ${g(t.dz)}).`);
     if (w && (w.p < ALFA) !== significant) u.duiding.zinnen.push(`De toets met rangnummers (Wilcoxon, p = ${pWaarde(w.p)}) komt op een andere conclusie uit. Wees daarom extra voorzichtig.`);
     u.duiding.zinnen.push(LET_OP_VERSCHIL);
     u.apa = apaZinnen((f) => {
-      const [h, l, Mh, Ml] = t.verschil >= 0 ? [a.label, b.label, A, B] : [b.label, a.label, B, A];
-      const werkwoord = significant ? 'hoger' : 'niet significant anders';
+      const werkwoord = !significant ? 'niet significant anders' : t.verschil > 0 ? 'hoger' : 'lager';
       const m = (X) => (X.vrij ? `*M* = ${f.g(X.gemiddelde)}; *SD* = ${f.g(X.sd)}` : `*M* = ${f.g(X.gemiddelde)}`);
-      return `Respondenten scoorden op “${h}” (${m(Mh)}) ${werkwoord} dan op “${l}” (${m(Ml)}), *t*(${f.df(t.df)}) = ${f.g(Math.abs(t.t))}; ${f.p(t.p)}; *d*z = ${f.g(Math.abs(t.dz))}.`;
+      return `Respondenten scoorden op “${a.label}” (${m(A)}) ${werkwoord} dan op “${b.label}” (${m(B)}), *t*(${f.df(t.df)}) = ${f.g(t.t)}; ${f.p(t.p)}; *d*z = ${f.g(t.dz)}.`;
     });
   }
   return sluitAf(u);
