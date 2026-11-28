@@ -1,2 +1,66 @@
 /* Figuren (SVG) op het scherm, in de printweergave en bij een meelezer: kleuren via klassen met de variabelen
-   uit app.css, nooit via een style-attribuut (CSP). Voorvoegsel: fig-. Wordt gevuld in pakket P3. */
+   uit app.css, nooit via een style-attribuut (CSP). Voorvoegsel: fig-. Gevuld in pakket P3 (public/js/beheer/figuren.js).
+   De figuur wordt op de breedte van zijn vak getekend (1:1), dus de letters blijven ook op een telefoon leesbaar. */
+
+.figuur {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  overflow: visible;
+  font-family: var(--lettertype);
+}
+
+/* Tekst */
+.fig-tekst { fill: var(--tekst); font-size: 13px; }
+.fig-klein { font-size: 11.5px; }
+.fig-zacht { fill: var(--tekst-zacht); }
+.fig-waarde { font-weight: 600; }
+.fig-kwadrant { fill: var(--tekst-zacht); font-style: italic; }
+.fig-verborgen-tekst { fill: var(--tekst-zacht); font-weight: 600; }
+
+/* Assen, raster en kader */
+.fig-raster { stroke: var(--raster); stroke-width: 1; fill: none; }
+.fig-as { stroke: var(--rand-sterk); stroke-width: 1; fill: none; }
+.fig-kruis { stroke: var(--rand-sterk); stroke-width: 1; stroke-dasharray: 4 4; fill: none; }
+.fig-kader { fill: none; stroke: var(--rand); stroke-width: 1; }
+
+/* Een verborgen waarde: leeg vakje met × (nooit een staaf van 0) */
+.fig-verborgen { fill: var(--vlak); stroke: var(--rand-sterk); stroke-width: 1; stroke-dasharray: 3 3; }
+
+/* Vlakken (staven, stukken van een gestapelde staaf, punten, legenda) */
+.fig-vlak.fig-reeks-1 { fill: var(--reeks-1); }
+.fig-vlak.fig-reeks-2 { fill: var(--reeks-2); }
+.fig-vlak.fig-reeks-3 { fill: var(--reeks-3); }
+.fig-vlak.fig-reeks-4 { fill: var(--reeks-4); }
+.fig-vlak.fig-reeks-5 { fill: var(--reeks-5); }
+.fig-vlak.fig-reeks-6 { fill: var(--reeks-6); }
+.fig-vlak.fig-gunstig { fill: var(--schaal-5); }
+.fig-vlak.fig-neutraal { fill: var(--schaal-3); }
+.fig-vlak.fig-ongunstig { fill: var(--schaal-1); }
+.fig-punt { stroke: var(--achtergrond); stroke-width: 1.5; }
+
+/* Lijnen */
+.fig-lijn { fill: none; stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+.fig-lijn-reeks-1 { stroke: var(--reeks-1); }
+.fig-lijn-reeks-2 { stroke: var(--reeks-2); }
+.fig-lijn-reeks-3 { stroke: var(--reeks-3); }
+.fig-lijn-reeks-4 { stroke: var(--reeks-4); }
+.fig-lijn-reeks-5 { stroke: var(--reeks-5); }
+.fig-lijn-reeks-6 { stroke: var(--reeks-6); }
+.fig-lijn-gunstig { stroke: var(--schaal-5); }
+.fig-lijn-neutraal { stroke: var(--schaal-3); }
+.fig-lijn-ongunstig { stroke: var(--schaal-1); }
+
+/* Getal in een stuk van een gestapelde staaf: wit op donker, donker op licht */
+.fig-op { fill: #fff; font-weight: 600; }
+.fig-op-neutraal, .fig-op-reeks-2, .fig-op-reeks-6 { fill: var(--tekst); }
+
+@media (prefers-color-scheme: dark) {
+  /* In donkere modus zijn de reekskleuren licht: dan donkere tekst, behalve op het (donkere) neutraal. */
+  .fig-op { fill: var(--tekst-omgekeerd); }
+  .fig-op-neutraal { fill: var(--tekst); }
+}
+
+@media print {
+  .figuur { break-inside: avoid; }
+}

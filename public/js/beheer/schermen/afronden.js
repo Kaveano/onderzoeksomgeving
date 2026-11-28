@@ -3,7 +3,7 @@
 import { api, downloadUrl } from '../api.js';
 import { h, vervang, laden, melding, meld, meldFout, bevestig, download, aantal, datum } from '../ui.js';
 import * as exp from '../export.js';
-import { haalGegevens, voortgangTekst } from '../gegevens.js';
+import { haalGegevens, voortgangTekst, vergeetGegevens } from '../gegevens.js';
 
 // Waarschuwing bij ruwe exports (BOUWPLAN B30, K S10): deze bestanden bevatten alle losse antwoorden.
 export const RUW_WAARSCHUWING = 'Dit bestand bevat alle losse antwoorden en is niet anoniem genoeg om te delen met de opdrachtgever.';
@@ -67,13 +67,16 @@ export async function toon(container, ctx) {
   container.append(laden());
   let vragenlijsten = [];
   let openActies = 0;
+  let personeel = [];
   try {
-    const [vl, ac] = await Promise.all([
+    const [vl, ac, hr] = await Promise.all([
       api.get(`/onderzoeken/${onderzoekId}/vragenlijsten`),
       api.get(`/onderzoeken/${onderzoekId}/acties`),
+      api.get(`/onderzoeken/${onderzoekId}/hr`),
     ]);
     vragenlijsten = vl.vragenlijsten;
     openActies = ac.acties.filter((a) => a.status !== 'klaar').length;
+    personeel = hr.personeelscijfers || [];
   } catch (e) {
     vervang(container, melding(e.message, 'gevaar'));
     return;
@@ -244,5 +247,47 @@ export async function toon(container, ctx) {
     ];
   }
 
-  vervang(container, exportKaart, tweedeKaart);
+  // ---------- [P3] Personeelsbestand: bewaartermijn en verwijderen ----------
+  // Van een personeelsbestand zijn alleen groepscijfers bewaard, maar ook die horen niet langer dan nodig te blijven
+  // (AVG). Verwijderen kan altijd, ook na archiveren.
+  const personeelKaart = personeel.length ? h('section', { class: 'kaart af-personeel', 'aria-labelledby': 'af-personeel-kop' },
+    h('h2', { id: 'af-personeel-kop' }, 'Personeelsbestand'),
+    h('p', {}, 'Verwijder het personeelsbestand als het rapport klaar is.'),
+    h('p', { class: 'klein zacht' }, 'Er zijn alleen groepscijfers bewaard (aantallen en totalen per groep), geen gegevens per medewerker. Rapporten waarin de cijfers al zijn vastgelegd, houden hun cijfers.'),
+    personeel.some((p) => p.verlopen)
+      ? melding(`De bewaartermijn van ${personeel.filter((p) => p.verlopen).length === 1 ? 'een personeelsbestand' : 'personeelsbestanden'} is verstreken. Verwijder het personeelsbestand als het rapport klaar is.`, 'waarschuwing')
+      : null,
+    h('ul', { class: 'lijst' }, personeel.map((p) => {
+      const knop = h('button', {
+        type: 'button',
+        class: 'knop knop-gevaar',
+        onclick: async () => {
+          const ok = await bevestig({
+            titel: 'Personeelsbestand verwijderen?',
+            tekst: `De groepscijfers van "${p.naam}" worden definitief verwijderd. Dit kan niet ongedaan worden gemaakt.`,
+            knop: 'Verwijderen',
+            gevaar: true,
+          });
+          if (!ok) return;
+          knop.disabled = true;
+          try {
+            await api.del(`/personeelscijfers/${p.id}`);
+            vergeetGegevens(onderzoekId);
+            meld('Het personeelsbestand is verwijderd.', 'succes');
+            ctx.navigeer(location.hash);
+          } catch (e) {
+            meldFout(e);
+            knop.disabled = false;
+          }
+        },
+      }, 'Verwijderen', h('span', { class: 'sr-only' }, `: ${p.naam}`));
+      return h('li', { class: 'lijst-item' },
+        h('div', { class: 'lijst-item-hoofd' },
+          h('div', { class: 'lijst-item-titel' }, p.naam),
+          h('div', { class: 'lijst-item-meta' }, `${p.periode_van} tot en met ${p.periode_tot} · bewaren tot ${datum(p.bewaren_tot)}`,
+            p.verlopen ? [' ', h('span', { class: 'label label-waarschuwing' }, 'bewaartermijn verstreken')] : null)),
+        h('div', { class: 'lijst-item-acties' }, knop));
+    }))) : null;
+
+  vervang(container, exportKaart, personeelKaart, tweedeKaart);
 }

@@ -64,7 +64,7 @@ function kolomKeuze(kop, rijen, gekozen, bijKeuze, { leeg = '— niet gebruiken 
  *   { inhoud: [elementen voor de koppeling], controleer(): { items, problemen, regel }, opslaan(items): Promise<aantal> }
  * Geeft het aantal ingelezen regels terug, of null bij annuleren.
  */
-function inleesDialoog({ titel, uitleg, stappen, voorbeeld, bouw, knopTekst = (n) => `${n} inlezen` }) {
+export function inleesDialoog({ titel, uitleg, stappen, voorbeeld, bouw, knopTekst = (n) => `${n} inlezen` }) {
   return new Promise((klaar) => {
     let resultaat = null;
     let huidig = null; // { controleer, opslaan }
@@ -525,7 +525,7 @@ export function datasetToevoegen(ctx) {
 
 // ---------- De kaart op het scherm Eigen invoer ----------
 
-/** Kaart met de vier mogelijkheden. naInlezen(soort) wordt aangeroepen als er iets is ingelezen. */
+/** Kaart met de vijf mogelijkheden. naInlezen(soort) wordt aangeroepen als er iets is ingelezen. */
 export function inleesKaart(ctx, { naInlezen = () => {} } = {}) {
   if (ctx.alleenLezen) return null;
   const basis = `#/onderzoek/${ctx.params.id}`;
@@ -558,6 +558,10 @@ export function inleesKaart(ctx, { naInlezen = () => {} } = {}) {
       keuze('Vragen voor een vragenlijst', 'Een lijst met vragen of stellingen die je al in Excel hebt staan.', 'Vragen inlezen', vragenInlezen,
         (n) => { meld(`${aantal(n, 'vraag is', 'vragen zijn')} ingelezen. Je vindt ze bij Vragenlijsten.`, 'succes'); naInlezen('vragen'); }),
       keuze('Eigen dataset voor Analyse', 'Een eigen bestand om verschillen en verbanden in te onderzoeken, zoals in SPSS.', 'Dataset toevoegen', datasetToevoegen,
-        () => { meld('De dataset is opgeslagen. Je vindt hem bij Analyse, onderdeel 6.', 'succes'); naInlezen('dataset'); ctx.navigeer(`${basis}/analyse`); })),
+        () => { meld('De dataset is opgeslagen. Je vindt hem bij Analyse, onderdeel 6.', 'succes'); naInlezen('dataset'); ctx.navigeer(`${basis}/analyse`); }),
+      // [P3] Personeelsbestand: de browser maakt er groepscijfers van; alleen die gaan naar de server.
+      keuze('Personeelsbestand voor HR-analytics', 'Voor verzuim, verloop en de opbouw van de organisatie bij Dashboard · Overzicht. Alleen groepscijfers worden bewaard, geen gegevens per medewerker.', 'Personeelsbestand toevoegen',
+        async (c) => (await import('./personeel-kaart.js')).personeelToevoegen(c),
+        () => { meld('Het personeelsbestand is verwerkt. Alleen de groepscijfers zijn bewaard.', 'succes'); naInlezen('personeel'); ctx.navigeer(`${basis}/dashboard`); })),
   );
 }
