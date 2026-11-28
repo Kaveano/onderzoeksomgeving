@@ -177,16 +177,17 @@ test('bevinding 3: Beschrijvende statistiek binnen "Alleen Kantoor" toont alleen
   assert.ok(rij.slice(3).every(verborgen), 'SD, SE, interval, mediaan, minimum, maximum, scheefheid en kurtosis zijn ×');
   assert.ok(meldingenVan(u).includes(P_SPREIDING_SELECTIE('Ik voel me gepest')));
   assert.doesNotMatch(u.apa?.rapport || JSON.stringify(u.apa), /SD/);
-  // Gepaard en betrouwbaarheid binnen dezelfde selectie tonen de SD ook niet.
+  // Gepaard en betrouwbaarheid binnen dezelfde selectie gebruiken de spreiding: uit de SD van de verschillen en r (of
+  // uit α) volgt die van de vraag. Die doen dan niet mee (herstelronde 3; eerst stond hier alleen de SD op ×).
   const data = scenarioS4();
   data.vragen.push({ ...data.vragen[1], id: 3, tekst: 'Ik kan mijn werk aan', volgorde: 3 });
   data.inzendingen.forEach((x, i) => { x.antwoorden[3] = 1 + ((i * 7) % 5); });
   const run2 = werkbank(data, [ALLEEN_KANTOOR]);
   const gp = await run2('gepaard', { x: ['v:2'], y: ['v:3'] }, { filter: 52 });
-  assert.ok(!gp.geweigerd, meldingenVan(gp).join(' | '));
-  assert.ok(verborgen(tabelVan(gp, 'gemiddelden').rijen[0][4]));
+  assert.equal(gp.geweigerd, true, meldingenVan(gp).join(' | '));
+  assert.ok(!JSON.stringify(gp.onderdelen).includes('1.31'), 'geen SD van de vraag');
   const ba = await run2('betrouwbaarheid', { items: ['v:2', 'v:3'] }, { filter: 52 });
-  if (!ba.geweigerd) assert.ok(verborgen(tabelVan(ba, 'items').rijen[0][2]));
+  assert.equal(ba.geweigerd, true);
   // Zonder selectie staat de verdeling op het dashboard: dan alles.
   const alles = await run('beschrijvend', { variabelen: ['v:2'] });
   assert.ok(!verborgen(rijVan(alles, 'beschrijvend', 'Ik voel me gepest')[3]));
@@ -212,7 +213,7 @@ test('regressie J2: "liever niet" per groep is niet terug te rekenen uit de groe
     // Vroeger: Kantoor N 52 en gemiddelde 1,654; 55 − 52 = 3 = de verborgen cel (Kantoor, liever niet).
     assert.ok(!JSON.stringify(u.onderdelen).includes('"w":52'), `${proc}: geen N 52`);
     assert.ok(u.geweigerd || !groepenIn(u).includes('Kantoor'), proc);
-    assert.ok(meldingenVan(u).includes(P_LIEVER_NIET_PER_GROEP('Ben je van plan binnen een jaar te vertrekken?')), `${proc}: ${meldingenVan(u).join(' | ')}`);
+    assert.ok(meldingenVan(u).includes(P_LIEVER_NIET_PER_GROEP('Ben je van plan binnen een jaar te vertrekken?', ['Kantoor'])), `${proc}: ${meldingenVan(u).join(' | ')}`);
   }
   // Binnen de selectie Kantoor: N 52 van 55 zou het ook verraden.
   const sel = await run('beschrijvend', { variabelen: ['v:6'] }, { filter: 61 });
@@ -228,7 +229,9 @@ test('regressie J2: "liever niet" per groep is niet terug te rekenen uit de groe
   assert.equal(indelingAlsGetalFout(v6, basis, 5, null), null, 'zonder selectie: de verdeling staat op het dashboard');
   // Zonder selectie mag het (de hele verdeling staat op het dashboard).
   assert.ok(!(await run('beschrijvend', { variabelen: ['v:6'] })).geweigerd);
-  // Niemand "liever niet": beide groepen gewoon zichtbaar.
-  const geen = werkbank(scenarioVertrek(0));
-  assert.deepEqual(groepenIn(await geen('pergroep', { afhankelijk: ['v:6'], groep: 'v:1' })), ['Kantoor', 'Productie']);
+  // Niemand "liever niet", of 6 in Kantoor en niemand in Productie: beide groepen gewoon zichtbaar (een 0 verraadt niets).
+  for (const aantal of [0, 6]) {
+    const geen = werkbank(scenarioVertrek(aantal));
+    assert.deepEqual(groepenIn(await geen('pergroep', { afhankelijk: ['v:6'], groep: 'v:1' })), ['Kantoor', 'Productie'], `${aantal} keer liever niet`);
+  }
 });

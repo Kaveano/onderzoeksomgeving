@@ -124,15 +124,16 @@ function verborgenBijWortel(ds, ctx, W, y) {
 
 /**
  * Splitst indeling x (met de groepen na samenvoegen) de verborgen groepen van zijn beschermde wortel bij y? Dan volgt
- * een verborgen groep uit deze kruistabel en die van de wortel. Geeft null of de melding.
+ * een verborgen groep uit deze kruistabel en die van de wortel. Geeft null of de melding. Ook voor de logistische
+ * regressie (wat: 'deze analyse'), die met één voorspeller met groepen dezelfde kruistabel is.
  */
-function wortelFout(ds, ctx, x, groepx, nx, y, basis) {
+export function wortelFout(ds, ctx, x, groepx, nx, y, basis, wat = 'deze kruistabel') {
   const W = beschermdeWortel(ds, x);
   if (!W || W.id === y.id || wortelVan(ds, y).id === W.id) return null;
   const H = verborgenBijWortel(ds, ctx, W, y);
   if (!H.some(Boolean)) return null;
   const weg = splitstVerborgen(groepVanRijen(ds, W), H, groepx, nx, basis);
-  return weg.some(Boolean) ? P_WORTEL_KRUIS(x.label, W.label, W.beschermd.groepen.filter((_, i) => H[i]).map((gr) => gr.label)) : null;
+  return weg.some(Boolean) ? P_WORTEL_KRUIS(x.label, W.label, W.beschermd.groepen.filter((_, i) => H[i]).map((gr) => gr.label), wat) : null;
 }
 
 /**

@@ -8,21 +8,21 @@
 // - regressie(ds, spec, ctx): de analyse zelf. Geen residuen of voorspelde waarden per persoon (regel G); het aantal
 //   residuen groter dan 3 SD is verborgen als het 1 tot 4 is.
 
-import { isGetal, isIndeling, getalWeergave } from '../dataset.js';
+import { REDEN, isGetal, isIndeling, getalWeergave } from '../dataset.js';
 import { tCdf, tKwantiel, fSf, momenten } from '../../statistiek.js';
 import { kleinsteKwadraten, inverseSpd, correlatieMatrix } from '../matrix.js';
 import { tweeWaardenRegel, weggevallenRegel } from '../privacy-selectie.js';
 import { tabel, cel, tekstCel, aantalCel, voeg, melding, sluitAf, methode } from '../uitvoer.js';
 import {
   P_TE_WEINIG, P_SAMENGEVOEGD, pWeggevallen, P_LOGIT_CEL, P_AFHANKELIJK, P_WEINIG_RESPONDENTEN_MODEL, P_VIF, LET_OP_VERBAND,
-  uitlegRegressie, g, apaZinnen,
+  uitlegRegressie, g, apaZinnen, P_VOORSPELLER_GROEPEN, P_LIEVER_NIET_PER_GROEP,
 } from '../uitvoer-tekst.js';
 import {
   geldigMasker, inSelectie, iedereen, tel, groepVanRijen, selectieControle, begin, weiger, overlapFout, ordinaalMelding, variabelenUit,
-  indelingAlsGetalFout, getalFout, ontbreektTekst, soortVoorspeller,
+  indelingAlsGetalFout, getalFout, ontbreektTekst, soortVoorspeller, spreidingSelectieFout, lieverNietPerGroep,
 } from './basis.js';
 import { voegKleineSamen, herindeel, randenMetBuren } from './kruistabel.js';
-import { vorm, groepKeuze } from './beschrijven.js';
+import { vorm, groepKeuze, groepMeldingen } from './beschrijven.js';
 import { LABEL_OVERIG } from '../../privacy.js';
 
 const ALFA = 0.05;
@@ -206,8 +206,15 @@ export function ontwerp(ds, ctx, { uitkomst = null, uitkomstGeldig = null, blokk
       const k = groepKeuze(ds, ctx, uitkomst, v);
       if (!k.fout) {
         const mee = new Set(k.keuze.mee);
-        const weg = groepen.map((_, i) => !mee.has(i));
-        if (weg.some(Boolean) && weg.some((w) => !w)) {
+        const weg = groepen.map((_, i) => !mee.has(i) && k.aantallen[i] > 0);
+        // Is geen groep apart te tonen, of maar één groep niet (die wordt dan in Gemiddelden per groep beschermd door
+        // wie hier niet meedoet, zoals "Niet ingevuld" of een groep buiten de indeling), dan doet de voorspeller niet
+        // mee: een B per groep zou die groep verraden, ook via een eigen indeling van afdeling (P1, P2).
+        if (weg.some(Boolean) && (weg.every((w, i) => w || !k.aantallen[i]) || weg.filter(Boolean).length === 1)) {
+          meldingen.push(...groepMeldingen(ctx, uitkomst, v, k), melding('privacy', P_VOORSPELLER_GROEPEN(v.label, uitkomst.label)));
+          continue;
+        }
+        if (weg.some(Boolean)) {
           const eerste = weg.indexOf(true);
           const naar = groepen.map((_, i) => (weg[i] ? eerste : i));
           const nieuwNr = [...new Set(naar)];
@@ -241,6 +248,24 @@ export function ontwerp(ds, ctx, { uitkomst = null, uitkomstGeldig = null, blokk
     else if (referentie !== 'eerste') aantallen.forEach((a, i) => { if (a > aantallen[ref]) ref = i; });
     Object.assign(x, { groep, groepen: gr, aantallen, referentie: ref });
     mee.push(x);
+  }
+  // J2: "Dat zeg ik liever niet" telt als getal niet mee, dus wie dat antwoordde valt hier weg. Bij een voorspeller met
+  // groepen volgt het aantal "liever niet" per groep dan uit de groepsgrootte (tabel Voorspellers met groepen) min die
+  // in de frequenties. Dat aantal moet per groep 0 of minstens d zijn, ook bij de uitkomst.
+  const getallen = [...(uitkomst && !uitkomstGeldig && isGetal(uitkomst) ? [uitkomst] : []), ...mee.filter((x) => x.soort === 'getal').map((x) => x.v)];
+  const indelingen = mee.filter((x) => x.soort === 'groep');
+  for (const z of getallen.filter((x) => x.origineel)) {
+    if (!indelingen.length) break;
+    const rest = geldigMasker(ds, getallen.filter((x) => x !== z));
+    const M = new Uint8Array(ds.n);
+    for (let r = 0; r < ds.n; r++) {
+      M[r] = rest[r] && (!uitkomstGeldig || uitkomstGeldig[r]) && (z.reden[r] === REDEN.GELDIG || z.reden[r] === REDEN.LIEVER_NIET)
+        && indelingen.every((x) => x.groep[r] >= 0) ? 1 : 0;
+    }
+    for (const x of indelingen) {
+      const weg = lieverNietPerGroep(z.reden, M, x.groep, x.groepen.length, ctx.d, ctx.selectie);
+      if (weg?.some(Boolean)) return { fout: P_LIEVER_NIET_PER_GROEP(z.label, x.groepen.filter((_, i) => weg[i]).map((gr) => gr.label), false), niveau: 'privacy' };
+    }
   }
   // De kolommen van de ontwerpmatrix: per getal één kolom, per indeling een kolom voor elke groep behalve de referentie.
   const kolommen = [];
@@ -358,6 +383,12 @@ export async function regressie(ds, spec, ctx) {
   // kruistabelregel per groep van elke voorspeller (B6): dan is een B een verschil in percentages.
   const alsGetal = indelingAlsGetalFout(y, o.basis, ctx.d, ctx.selectie?.F);
   if (alsGetal) return weiger(ds, spec, ctx, titel, 'privacy', alsGetal);
+  // P3 (optie 1) binnen een selectie: uit de kwadratensom (of B en β) volgt de SD van de score en van elke getal-
+  // voorspeller in de selectie. Van een vraag met vaste waarden met een verborgen cel daar mag dat niet.
+  for (const v of [y, ...o.voorspellers.filter((x) => x.soort === 'getal').map((x) => x.v)]) {
+    const spreiding = spreidingSelectieFout(v, o.geldig, ctx);
+    if (spreiding) return weiger(ds, spec, ctx, titel, 'privacy', spreiding);
+  }
   if (y.score && weggevallenRegel(y.reden, ctx.selectie ? ctx.selectie.F : iedereen(ds), null, 1, ctx.d)[0]) return weiger(ds, spec, ctx, titel, 'privacy', pWeggevallen(y));
   const yWaarden = verschillend(y, o.basis);
   if (yWaarden.length < 2) return weiger(ds, spec, ctx, titel, 'fout', `“${y.label}” heeft bij iedereen dezelfde waarde; dan is er niets te voorspellen.`);
@@ -380,7 +411,12 @@ export async function regressie(ds, spec, ctx) {
   }
   voeg(u, o.meldingen);
   const p = o.kolommen.length;
-  if (!p) return weiger(ds, spec, ctx, titel, 'privacy', o.meldingen.at(-1)?.tekst || 'Er blijft geen voorspeller over.');
+  if (!p) {
+    // Met de redenen erboven (bijvoorbeeld welke groepen bij de score verborgen blijven).
+    const uit = weiger(ds, spec, ctx, titel, 'privacy', o.meldingen.at(-1)?.tekst || 'Er blijft geen voorspeller over.');
+    uit.onderdelen.unshift(...o.meldingen.slice(0, -1));
+    return uit;
+  }
   if (p > MAX_KOLOMMEN) return weiger(ds, spec, ctx, titel, 'fout', `Dit model heeft ${p} kolommen; het kan er hooguit ${MAX_KOLOMMEN}. Deel voorspellers met veel groepen eerst in minder groepen in.`);
   const minN = Math.max(20, p + 10);
   if (o.n < minN) return weiger(ds, spec, ctx, titel, 'fout', `${P_TE_WEINIG(minN)} Alleen respondenten met een antwoord op alle gekozen variabelen tellen mee.`);

@@ -12,7 +12,7 @@ import {
 import {
   geldigMasker, inSelectie, iedereen, tel, groepVanRijen, kiesGroepen, selectieControle, selectieMelding, indelingAlsGetalFout,
   getalFout, begin, weiger, overlapFout, ordinaalMelding, waardenIn, variabelenUit, buurReden, verborgenDoorDashboard, isVastGetal,
-  isVastGetalOfIndeling, spreidingVrij, beschermdeWortel, splitstVerborgen,
+  isVastGetalOfIndeling, spreidingVrij, beschermdeWortel, splitstVerborgen, lieverNietPerGroep,
 } from './basis.js';
 import { wortelVan } from '../transformaties.js';
 
@@ -429,30 +429,30 @@ export function groepKeuze(ds, ctx, v, w, { momenten = false } = {}) {
   const sel = selectieControle(ctx, geldig);
   if (sel) return { fout: sel, niveau: 'privacy' };
   const uitgesloten = new Array(ng).fill(false);
-  const redenen = { selectie: [], tweeWaarden: [], weggevallen: [], dashboard: [], wortel: [], wortelGroepen: [], verdeling: [] };
+  const redenen = { selectie: [], tweeWaarden: [], lieverNiet: [], weggevallen: [], dashboard: [], wortel: [], wortelGroepen: [], verdeling: [] };
   const sluitUit = (i, reden) => { if (aantallen[i] > 0 && !uitgesloten[i]) { uitgesloten[i] = true; redenen[reden].push(i); } };
   groepBuren(ctx.selectie, basisAlles, groep, ng, ctx.d).forEach((x, i) => { if (x) { uitgesloten[i] = true; redenen.selectie.push(i); } });
   // B6: twee waarden; een indeling als getal (P3): elke rij van de kruistabel waarde × groep zonder verborgen cel.
-  // Ontbreekt "Dat zeg ik liever niet" als getal (v.origineel, J2), dan telt dat antwoord in die kruistabel als eigen
-  // waarde mee: anders volgt dat aantal per groep uit de groepsgrootte min n. Dat geldt voor een indeling (leeftijd)
-  // en voor een gewone vraag (Ja / Nee / Zeg ik liever niet).
+  // Ontbreekt "Dat zeg ik liever niet" als getal (v.origineel, J2), dan volgt het aantal "liever niet" per groep uit
+  // de groepsgrootte min n. Bij een indeling (leeftijd) telt dat antwoord in die kruistabel als eigen waarde mee; bij
+  // een gewone vraag (Ja / Nee / Zeg ik liever niet) moet het aantal per groep 0 of minstens d zijn.
   const o = v.origineel || null;
   let twee;
-  if (o) {
+  let lieverNiet = null;
+  const basisO = () => {
     const geldigO = geldigMasker(ds, [o]);
-    const basisO = new Uint8Array(ds.n);
-    for (let r = 0; r < ds.n; r++) basisO[r] = geldigO[r] && groep[r] >= 0 ? 1 : 0;
-    const inO = inSelectie(basisO, ctx.selectie);
-    if (v.groepering || twee2(v, basis)) twee = tweeWaardenRegel(o.waarden, inO, groep, ng, ctx.d, ctx.selectie, Infinity);
-    else {
-      // Meer dan twee getallen: alleen "liever niet" tegenover de rest (zoals een ja/nee-vraag).
-      const lieverNiet = Float64Array.from(v.reden, (x) => (x === REDEN.LIEVER_NIET ? 1 : 0));
-      twee = tweeWaardenRegel(lieverNiet, inO, groep, ng, ctx.d, ctx.selectie, 2);
-    }
+    const m = new Uint8Array(ds.n);
+    for (let r = 0; r < ds.n; r++) m[r] = geldigO[r] && groep[r] >= 0 ? 1 : 0;
+    return m;
+  };
+  if (o && v.groepering) {
+    twee = tweeWaardenRegel(o.waarden, inSelectie(basisO(), ctx.selectie), groep, ng, ctx.d, ctx.selectie, Infinity);
   } else {
     twee = tweeWaardenRegel(v.waarden, basis, groep, ng, ctx.d, ctx.selectie, v.groepering ? Infinity : 2);
+    if (o) lieverNiet = lieverNietPerGroep(v.reden, basisO(), groep, ng, ctx.d, ctx.selectie);
   }
   if (twee) twee.forEach((x, i) => { if (x) sluitUit(i, 'tweeWaarden'); });
+  if (lieverNiet) lieverNiet.forEach((x, i) => { if (x) sluitUit(i, 'lieverNiet'); });
   if (v.score) {
     const inGroep = new Uint8Array(ds.n);
     for (let r = 0; r < ds.n; r++) inGroep[r] = groep[r] >= 0 && (!ctx.selectie || ctx.selectie.F[r]) ? 1 : 0;
@@ -497,6 +497,27 @@ export function groepKeuze(ds, ctx, v, w, { momenten = false } = {}) {
 }
 
 /**
+ * De meldingen waarom groepen van indeling w bij variabele v niet meedoen (uit groepKeuze k); ook voor de regressie.
+ */
+export function groepMeldingen(ctx, v, w, k) {
+  const { basis, keuze, redenen } = k;
+  const naam = (i) => w.beschermd.groepen[i].label;
+  const meldingen = [];
+  const samengevoegd = w.beschermd.groepen.filter((gr) => gr.samengevoegd);
+  if (samengevoegd.length) meldingen.push(melding('privacy', P_SAMENGEVOEGD(samengevoegd[0].labels, samengevoegd[0].metLeeg)));
+  if (keuze.klein.length) meldingen.push(melding('privacy', P_GROEP_KLEIN(keuze.klein.map(naam))));
+  if (redenen.weggevallen.length) meldingen.push(melding('privacy', pWeggevallen(v, `“${v.label}” bij ${redenen.weggevallen.map((i) => `“${naam(i)}”`).join(', ')}`)));
+  if (redenen.tweeWaarden.length) meldingen.push(melding('privacy', v.groepering && !twee2(v, basis) ? P_INDELING_PER_GROEP(v.label) : P_TWEE_WAARDEN(v.label)));
+  if (redenen.lieverNiet.length) meldingen.push(melding('privacy', P_LIEVER_NIET_PER_GROEP(v.label, redenen.lieverNiet.map(naam))));
+  if (redenen.dashboard.length) meldingen.push(melding('privacy', P_DASHBOARD_VERBORGEN(redenen.dashboard.map(naam))));
+  if (redenen.wortel.length) meldingen.push(melding('privacy', P_WORTEL_VERBORGEN(redenen.wortel.map(naam), redenen.wortelGroepen.W.label, redenen.wortelGroepen.namen)));
+  if (redenen.verdeling.length) meldingen.push(melding('privacy', P_VERDELING_IN_GROEP(v.label, redenen.verdeling.map(naam))));
+  if (redenen.selectie.length) meldingen.push(melding('privacy', `Niet meegenomen, omdat ze ${buurReden(ctx)} maar een paar mensen verschillen: ${redenen.selectie.map((i) => `“${naam(i)}”`).join(', ')}.`));
+  if (keuze.ookNiet.length) meldingen.push(melding('privacy', P_OOK_NIET(keuze.ookNiet.map(naam))));
+  return meldingen;
+}
+
+/**
  * Groepen voor een getal-variabele v en indeling w (pergroep, t-toets, ANOVA): wie meedoet (groepKeuze), met de
  * meldingen waarom groepen niet meedoen.
  * @returns {{ basis, groep, ng, mee, meldingen, waarden: number[][] } | { fout, niveau }}
@@ -504,22 +525,9 @@ export function groepKeuze(ds, ctx, v, w, { momenten = false } = {}) {
 export function groepenVoor(ds, ctx, v, w, { momenten = false } = {}) {
   const k = groepKeuze(ds, ctx, v, w, { momenten });
   if (k.fout) return k;
-  const { groep, ng, basis, keuze, redenen } = k;
+  const { groep, ng, basis, keuze } = k;
   const naam = (i) => w.beschermd.groepen[i].label;
-  const meldingen = [];
-  const samengevoegd = w.beschermd.groepen.filter((gr) => gr.samengevoegd);
-  if (samengevoegd.length) meldingen.push(melding('privacy', P_SAMENGEVOEGD(samengevoegd[0].labels, samengevoegd[0].metLeeg)));
-  if (keuze.klein.length) meldingen.push(melding('privacy', P_GROEP_KLEIN(keuze.klein.map(naam))));
-  if (redenen.weggevallen.length) meldingen.push(melding('privacy', pWeggevallen(v, `“${v.label}” bij ${redenen.weggevallen.map((i) => `“${naam(i)}”`).join(', ')}`)));
-  if (redenen.tweeWaarden.length) {
-    const t = v.groepering && !twee2(v, basis) ? P_INDELING_PER_GROEP(v.label) : v.origineel && !v.groepering ? P_LIEVER_NIET_PER_GROEP(v.label) : P_TWEE_WAARDEN(v.label);
-    meldingen.push(melding('privacy', t));
-  }
-  if (redenen.dashboard.length) meldingen.push(melding('privacy', P_DASHBOARD_VERBORGEN(redenen.dashboard.map(naam))));
-  if (redenen.wortel.length) meldingen.push(melding('privacy', P_WORTEL_VERBORGEN(redenen.wortel.map(naam), redenen.wortelGroepen.W.label, redenen.wortelGroepen.namen)));
-  if (redenen.verdeling.length) meldingen.push(melding('privacy', P_VERDELING_IN_GROEP(v.label, redenen.verdeling.map(naam))));
-  if (redenen.selectie.length) meldingen.push(melding('privacy', `Niet meegenomen, omdat ze ${buurReden(ctx)} maar een paar mensen verschillen: ${redenen.selectie.map((i) => `“${naam(i)}”`).join(', ')}.`));
-  if (keuze.ookNiet.length) meldingen.push(melding('privacy', P_OOK_NIET(keuze.ookNiet.map(naam))));
+  const meldingen = groepMeldingen(ctx, v, w, k);
   const waarden = Array.from({ length: ng }, () => []);
   for (let r = 0; r < ds.n; r++) if (basis[r]) waarden[groep[r]].push(v.waarden[r]);
   // B6 en B7 ook voor het totaal van de getoonde groepen.

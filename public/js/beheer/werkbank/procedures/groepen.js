@@ -9,11 +9,11 @@ import { tweeWaardenRegel, weggevallenRegel } from '../privacy-selectie.js';
 import { tabel, cel, tekstCel, verborgenCel, voeg, melding, sluitAf, methode } from '../uitvoer.js';
 import {
   UITLEG_LEVENE, UITLEG_POSTHOC, ZIN_SIG_VERSCHIL, ZIN_GEEN_SIG_VERSCHIL, ZIN_SIG_GROEPEN, ZIN_GEEN_SIG_GROEPEN, LET_OP_VERSCHIL,
-  P_GEPAARD, pWeggevallen, UITLEG_GEPAARD, g, apaZinnen, effectWoord, pWaarde, P_SPREIDING_SELECTIE,
+  P_GEPAARD, pWeggevallen, UITLEG_GEPAARD, g, apaZinnen, effectWoord, pWaarde,
 } from '../uitvoer-tekst.js';
 import {
   getalFout, begin, weiger, overlapFout, ordinaalMelding, variabelenUit, geldigMasker, inSelectie, iedereen, selectieControle, indelingAlsGetalFout,
-  spreidingVrij,
+  spreidingSelectieFout,
 } from './basis.js';
 import { groepenVoor, beschrijving } from './beschrijven.js';
 
@@ -459,7 +459,9 @@ export async function gepaard(ds, spec, ctx) {
     const sel = selectieControle(ctx, geldig);
     if (sel) { voeg(u, melding('privacy', `${label}: ${sel}`)); teWeinig('niet getoond (selectie)'); continue; }
     const basis = inSelectie(geldig, ctx.selectie);
-    const privacy = indelingAlsGetalFout(a, basis, ctx.d, ctx.selectie?.F) || indelingAlsGetalFout(b, basis, ctx.d, ctx.selectie?.F)
+    // P3 (optie 1) binnen een selectie: uit de SD van de verschillen en r volgt de SD van elke vraag van het paar.
+    const privacy = spreidingSelectieFout(a, geldig, ctx) || spreidingSelectieFout(b, geldig, ctx)
+      || indelingAlsGetalFout(a, basis, ctx.d, ctx.selectie?.F) || indelingAlsGetalFout(b, basis, ctx.d, ctx.selectie?.F)
       || ((weg) => (weg ? pWeggevallen(weg, `${label}: “${weg.label}”`) : null))([a, b].find((v) => v.score && weggevallenRegel(v.reden, ctx.selectie ? ctx.selectie.F : iedereen(ds), null, 1, ctx.d)[0]))
       || ([a, b].some((v) => tweeWaardenRegel(v.waarden, basis, null, 1, ctx.d, ctx.selectie)?.[0]) ? `${label}: een van de vragen heeft maar twee waarden en een daarvan komt bij minder dan ${ctx.d} mensen voor.` : null);
     if (privacy) { voeg(u, melding('privacy', privacy)); teWeinig('niet getoond'); continue; }
@@ -470,15 +472,8 @@ export async function gepaard(ds, spec, ctx) {
     nMax = Math.max(nMax, x.length);
     const A = beschrijving(x);
     const B = beschrijving(y);
-    // P3 (optie 1): binnen een selectie van een vraag met vaste waarden en een verborgen cel daar alleen N en gemiddelde.
-    const vrijA = spreidingVrij(a, geldig, null, 1, ctx)[0];
-    const vrijB = spreidingVrij(b, geldig, null, 1, ctx)[0];
-    const sd = (X, vrij) => (vrij ? [cel(X.sd, 'gem'), cel(X.se, 'gem')] : [verborgenCel('gem'), verborgenCel('gem')]);
-    stat.push([tekstCel(label), tekstCel(a.label), cel(A.n, 'aantal'), cel(A.gemiddelde, 'gem'), ...sd(A, vrijA)]);
-    stat.push([tekstCel(''), tekstCel(b.label), cel(B.n, 'aantal'), cel(B.gemiddelde, 'gem'), ...sd(B, vrijB)]);
-    for (const [vr, vv] of [[vrijA, a], [vrijB, b]]) if (!vr) voeg(u, melding('privacy', P_SPREIDING_SELECTIE(vv.label)));
-    A.vrij = vrijA;
-    B.vrij = vrijB;
+    stat.push([tekstCel(label), tekstCel(a.label), cel(A.n, 'aantal'), cel(A.gemiddelde, 'gem'), cel(A.sd, 'gem'), cel(A.se, 'gem')]);
+    stat.push([tekstCel(''), tekstCel(b.label), cel(B.n, 'aantal'), cel(B.gemiddelde, 'gem'), cel(B.sd, 'gem'), cel(B.se, 'gem')]);
     const pr = pearson(x, y);
     samen.push([tekstCel(`${label}: ${a.label} en ${b.label}`), cel(x.length, 'aantal'), cel(pr?.r, 'r'), cel(pr?.p, 'p')]);
     const t = gepaardeT(x, y);
@@ -528,7 +523,7 @@ export async function gepaard(ds, spec, ctx) {
     u.duiding.zinnen.push(LET_OP_VERSCHIL);
     u.apa = apaZinnen((f) => {
       const werkwoord = !significant ? 'niet significant anders' : t.verschil > 0 ? 'hoger' : 'lager';
-      const m = (X) => (X.vrij ? `*M* = ${f.g(X.gemiddelde)}; *SD* = ${f.g(X.sd)}` : `*M* = ${f.g(X.gemiddelde)}`);
+      const m = (X) => `*M* = ${f.g(X.gemiddelde)}; *SD* = ${f.g(X.sd)}`;
       return `Respondenten scoorden op “${a.label}” (${m(A)}) ${werkwoord} dan op “${b.label}” (${m(B)}), *t*(${f.df(t.df)}) = ${f.g(t.t)}; ${f.p(t.p)}; *d*z = ${f.g(t.dz)}.`;
     });
   }

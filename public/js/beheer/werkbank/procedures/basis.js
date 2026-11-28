@@ -12,7 +12,7 @@ import { verdeelInGroepen, verbergReeks, onderdrukAlles, onderdrukKolom, maskeer
 import { selectieFout, telTabel, buurTabellen } from '../privacy-selectie.js';
 import { controleerWortels, P_FILTER_REST, pFilterBuur, wortelVan } from '../transformaties.js';
 import { maakUitvoer, geweigerd, melding } from '../uitvoer.js';
-import { P_INDELING_ALS_GETAL, P_ORDINAAL, P_OPEN, P_LIJST_BUUR, P_LIEVER_NIET_SELECTIE } from '../uitvoer-tekst.js';
+import { P_INDELING_ALS_GETAL, P_ORDINAAL, P_OPEN, P_LIJST_BUUR, P_LIEVER_NIET_SELECTIE, P_SPREIDING_ANALYSE_SELECTIE } from '../uitvoer-tekst.js';
 
 /** 1 = rij heeft op alle variabelen een geldige waarde. */
 export function geldigMasker(ds, variabelen) {
@@ -334,6 +334,35 @@ export function spreidingVrij(v, U, rijen, aantal, ctx) {
     k++;
   }
   return uit;
+}
+
+/**
+ * J2: "Dat zeg ik liever niet" telt als getal niet mee. Per groep volgt het aantal "liever niet" dan uit de grootte van
+ * de groep min N. Dat aantal moet per groep 0 of minstens d zijn, en ook het verschil met elke buur van de selectie
+ * (regel D). Een 0 is hier geen probleem: dan heeft niemand in die groep dat gezegd, en dat verraadt geen antwoord.
+ * reden: per rij de reden (REDEN); basis: de rijen met een geldige waarde of "liever niet" (los van de selectie);
+ * groep: per rij het groepsnummer (−1 = geen). Geeft per groep true = niet tonen, of null als niemand het zei.
+ */
+export function lieverNietPerGroep(reden, basis, groep, ng, d = DREMPEL, selectie = null) {
+  const rij = groep;
+  const kolom = Int32Array.from(reden, (x, r) => (basis[r] && x === REDEN.LIEVER_NIET ? 0 : -1));
+  const T = telTabel(basis, selectie?.F || null, rij, kolom, ng, 1);
+  const { verschillen } = buurTabellen(selectie, basis, rij, kolom, ng, 1, d);
+  if (!T.some((x) => x[0] > 0) && !verschillen.some((t) => t.some((x) => x[0] > 0))) return null;
+  const klein = (c) => c > 0 && c < d;
+  return T.map((x, i) => klein(x[0]) || verschillen.some((t) => klein(t[i][0])));
+}
+
+/**
+ * P3 (optie 1) binnen een selectie, voor analyses die de spreiding gebruiken (regressie, logistische regressie,
+ * gepaarde t-toets, correlatie, betrouwbaarheid, factoranalyse): heeft vraag v met vaste waarden in de selectie een
+ * verborgen cel (spreidingVrij), dan doet v niet mee. Uit B en β, de kwadratensom, r of α volgt anders de SD van v in
+ * de selectie, net als bij Beschrijvende statistiek. U: de rijen die meedoen, los van de selectie.
+ * Geeft null (in orde) of de melding.
+ */
+export function spreidingSelectieFout(v, U, ctx) {
+  if (!ctx.selectie || ctx.selectie.impliciet || !isVastGetal(v)) return null;
+  return spreidingVrij(v, U, null, 1, ctx)[0] ? null : P_SPREIDING_ANALYSE_SELECTIE(v.label);
 }
 
 /**

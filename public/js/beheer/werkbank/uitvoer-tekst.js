@@ -74,11 +74,25 @@ export const P_SPREIDING_SELECTIE = (label) => `“${label}”: binnen deze sele
 /** P1, P2: een eigen indeling die groepen van haar wortel (zoals afdeling) splitst die daar verborgen blijven. */
 export const P_WORTEL_VERBORGEN = (namen, wortel, verborgen) => `Niet meegenomen: ${opsomming(namen)}. ${namen.length === 1 ? 'Deze groep bevat' : 'Deze groepen bevatten'} een deel van ${opsomming(verborgen)} van “${wortel}”. Die staan hier niet apart (te klein, of verborgen zodat een kleine groep niet terug te rekenen is). Met deze indeling zouden ze toch terug te rekenen zijn. Zet ${opsomming(verborgen)} in dezelfde groep, of gebruik “${wortel}” zelf.`;
 /** P1, P2 in een kruistabel: dezelfde regel als P_WORTEL_VERBORGEN. */
-export const P_WORTEL_KRUIS = (indeling, wortel, verborgen) => `“${indeling}” deelt ${opsomming(verborgen)} van “${wortel}” anders in dan daar te zien is. In een kruistabel met “${wortel}” staan die niet apart. Met deze kruistabel zouden ze toch terug te rekenen zijn. Zet ${opsomming(verborgen)} in dezelfde groep, of gebruik “${wortel}” zelf.`;
+export const P_WORTEL_KRUIS = (indeling, wortel, verborgen, wat = 'deze kruistabel') => `“${indeling}” deelt ${opsomming(verborgen)} van “${wortel}” anders in dan daar te zien is. In een kruistabel met “${wortel}” staan die niet apart. Met ${wat} zouden ze toch terug te rekenen zijn. Zet ${opsomming(verborgen)} in dezelfde groep, of gebruik “${wortel}” zelf.`;
+/**
+ * P3 (optie 1) binnen een selectie: een analyse die de spreiding van een vraag met vaste waarden gebruikt (regressie,
+ * logistische regressie, gepaarde t-toets, correlatie, betrouwbaarheid, factoranalyse), terwijl daar een antwoord bij 1
+ * tot 4 mensen voorkomt. Uit B en β, de kwadratensom, r of α volgt dan de SD van die vraag in de selectie.
+ */
+export const P_SPREIDING_ANALYSE_SELECTIE = (label) => `“${label}”: binnen deze selectie kozen minder dan 5 mensen een van de antwoorden. Deze analyse gebruikt de spreiding van “${label}”, en daaruit zou terug te rekenen zijn hoeveel mensen elk antwoord kozen. Daarom doet “${label}” hier niet mee. Binnen deze selectie zie je van “${label}” alleen N en het gemiddelde (Beschrijvende statistiek). Kies een ruimere selectie, of gebruik een thema of schaalscore.`;
+/** Correlatie: paren die om een privacyregel van het paar zelf niet getoond worden (regel D, twee waarden). */
+export const P_PAAR_VERBORGEN = 'Bij een of meer paren komt een waarde bij minder dan 5 mensen voor, of verschilt de selectie daar maar een paar mensen van een andere groep. Die paren tonen we niet, anders zijn de antwoorden van die paar mensen terug te rekenen.';
+/** Lineaire regressie: een voorspeller met groepen waarvan bij de score geen groep apart te tonen is (P1, P2, B6). */
+export const P_VOORSPELLER_GROEPEN = (voorspeller, score) => `“${voorspeller}” doet niet mee: bij “${score}” is geen groep daarvan apart te tonen (zie de reden hierboven, en Gemiddelden per groep). Een B per groep zou dan een verborgen groep verraden.`;
+/** Logistische regressie: de groepen van de uitkomst zijn bij een getal-voorspeller niet apart te tonen (P1, P2, J2). */
+export const P_UITKOMST_GROEPEN = (uitkomst, voorspeller) => `Een logistische regressie vergelijkt de groepen van “${uitkomst}” op “${voorspeller}”. Bij “${voorspeller}” zijn die groepen niet allebei apart te tonen (zie de reden hierboven, en Gemiddelden per groep). Uit de uitkomst zou dan een verborgen gemiddelde terug te rekenen zijn. Laat “${voorspeller}” weg of kies een andere uitkomst.`;
 /** J2: binnen een selectie: het aantal "liever niet" volgt uit de grootte van de selectie min N. */
 export const P_LIEVER_NIET_SELECTIE = (label) => `“${label}”: “Dat zeg ik liever niet” telt als getal niet mee. In deze selectie volgt het aantal mensen met dat antwoord uit de grootte van de selectie min N, en dat aantal is te klein om te tonen. Daarom tonen we hier niets. Kies een ruimere selectie.`;
 /** J2: een gewone vraag met "Dat zeg ik liever niet" als getal: dat aantal per groep volgt uit de groepsgrootte min N. */
-export const P_LIEVER_NIET_PER_GROEP = (label) => `“${label}”: “Dat zeg ik liever niet” telt als getal niet mee. Groepen waarin een antwoord (ook “liever niet”) bij minder dan 5 mensen voorkomt, zijn niet getoond: anders volgt dat aantal uit de grootte van de groep min N.`;
+export const P_LIEVER_NIET_PER_GROEP = (label, namen = [], weggelaten = true) => (weggelaten
+  ? `“${label}”: “Dat zeg ik liever niet” telt als getal niet mee. ${namen.length ? `Niet meegenomen: ${opsomming(namen)}. Daar` : 'In een groep'} zeiden 1 tot 4 mensen “liever niet”; dat aantal volgt anders uit de grootte van de groep min N.`
+  : `“${label}”: “Dat zeg ik liever niet” telt als getal niet mee. Bij ${opsomming(namen)} zeiden 1 tot 4 mensen “liever niet”; dat aantal volgt anders uit de groepsgrootte in deze analyse. Daarom tonen we hier niets. Gebruik “${label}” als groep, of voeg groepen samen (Indelen in groepen).`);
 /** P3: een indeling (zoals leeftijd) als getal per groep: een gemiddelde per groep verraadt dan de verdeling in die groep. */
 export const P_INDELING_PER_GROEP = (label) => `“${label}” is een indeling met vaste waarden. Een gemiddelde per groep verraadt dan hoeveel mensen in die groep elke waarde hebben. Groepen waarin een waarde bij minder dan 5 mensen voorkomt (of bij niemand), zijn daarom niet getoond.`;
 export const P_GEEN_DATA = 'Ruwe gegevens per respondent zie je hier niet, om de anonimiteit te beschermen. Wil je ermee werken in SPSS of Excel, gebruik dan de export bij Afronden.';

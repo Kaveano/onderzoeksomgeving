@@ -6,8 +6,8 @@ import { pearson, spearman, effectGrootte } from '../../statistiek.js';
 import { tweeWaardenRegel, selectieFout, weggevallenRegel } from '../privacy-selectie.js';
 import { holm } from '../verdelingen.js';
 import { tabel, cel, tekstCel, verborgenCel, voeg, melding, sluitAf, methode } from '../uitvoer.js';
-import { ZIN_SIG_VERBAND, ZIN_GEEN_SIG_VERBAND, LET_OP_VERBAND, g, apaZinnen, effectWoord, pWeggevallen } from '../uitvoer-tekst.js';
-import { getalFout, begin, weiger, ordinaalMelding, variabelenUit, indelingAlsGetalFout, inSelectie, iedereen } from './basis.js';
+import { ZIN_SIG_VERBAND, ZIN_GEEN_SIG_VERBAND, LET_OP_VERBAND, g, apaZinnen, effectWoord, pWeggevallen, P_PAAR_VERBORGEN } from '../uitvoer-tekst.js';
+import { getalFout, begin, weiger, ordinaalMelding, variabelenUit, indelingAlsGetalFout, inSelectie, iedereen, spreidingSelectieFout } from './basis.js';
 
 const ALFA = 0.05;
 const MIN_PAAR = 10;
@@ -38,9 +38,14 @@ export async function correlatie(ds, spec, ctx) {
   }
   // Per variabele: mag hij als getal (B26) en is B7 in orde?
   const uitgesloten = vars.map((v) => {
-    const basis = inSelectie(alleGeldig || Uint8Array.from(v.reden, (x) => (x === REDEN.GELDIG ? 1 : 0)), ctx.selectie);
+    const geldig = alleGeldig || Uint8Array.from(v.reden, (x) => (x === REDEN.GELDIG ? 1 : 0));
+    const basis = inSelectie(geldig, ctx.selectie);
     const t = indelingAlsGetalFout(v, basis, ctx.d, F);
     if (t) return t;
+    // P3 (optie 1) binnen een selectie: met r en de gemiddelden per groep (bijvoorbeeld van een ja/nee-vraag) volgt de
+    // SD van een vraag met een verborgen cel in de selectie.
+    const spreiding = spreidingSelectieFout(v, geldig, ctx);
+    if (spreiding) return spreiding;
     if (v.score && weggevallenRegel(v.reden, F || iedereen(ds), null, 1, ctx.d)[0]) return pWeggevallen(v);
     return null;
   });
@@ -89,9 +94,10 @@ export async function correlatie(ds, spec, ctx) {
   if (!zichtbaar.length) {
     // Vielen paren weg om een privacyregel van een variabele (bijvoorbeeld 1 tot 4 keer "Dat zeg ik liever niet" bij
     // leeftijd), noem dan die reden en niet het aantal paren.
-    const reden = uitgesloten.find(Boolean);
-    const doorRegel = paren.some((x) => uitgesloten[x.i] || uitgesloten[x.j]);
-    return weiger(ds, spec, ctx, titel, 'privacy', reden && doorRegel ? reden : 'Geen enkel paar heeft genoeg respondenten (minstens 10) om een correlatie te tonen.');
+    // Elke reden één keer; vielen paren weg om een privacyregel van het paar zelf, dan zeggen we dat ook.
+    const redenen = [...new Set(uitgesloten.filter(Boolean))];
+    if (paren.some((x) => x.verborgen && !uitgesloten[x.i] && !uitgesloten[x.j])) redenen.push(P_PAAR_VERBORGEN);
+    return weiger(ds, spec, ctx, titel, 'privacy', redenen.length ? redenen.join(' ') : 'Geen enkel paar heeft genoeg respondenten (minstens 10) om een correlatie te tonen.');
   }
   const pVan = (x, soort) => (soort === 'r' ? (metHolm ? x.pHolm : x.p) : (metHolm ? x.pRhoHolm : x.pRho));
   for (const x of paren) rpMatrix[x.i][x.j] = x;

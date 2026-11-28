@@ -13,8 +13,10 @@ import { normaalTweezijdig } from '../verdelingen.js';
 import { maskeerKruistabel } from '../../privacy.js';
 import { groepBuren, telTabel, buurTabellen } from '../privacy-selectie.js';
 import { tabel, cel, tekstCel, verborgenCel, aantalCel, voeg, melding, sluitAf, methode } from '../uitvoer.js';
-import { P_TE_WEINIG, P_LOGIT_CEL, P_SCHEIDING, P_WEINIG_PER_VOORSPELLER, LET_OP_VERBAND, uitlegLogistisch, g, apaZinnen, pWaarde } from '../uitvoer-tekst.js';
-import { tel, groepVanRijen, begin, weiger, overlapFout, ordinaalMelding, variabelenUit, buurReden } from './basis.js';
+import { P_TE_WEINIG, P_LOGIT_CEL, P_SCHEIDING, P_WEINIG_PER_VOORSPELLER, LET_OP_VERBAND, uitlegLogistisch, g, apaZinnen, pWaarde, P_UITKOMST_GROEPEN } from '../uitvoer-tekst.js';
+import { tel, groepVanRijen, begin, weiger, overlapFout, ordinaalMelding, variabelenUit, buurReden, spreidingSelectieFout } from './basis.js';
+import { groepKeuze, groepMeldingen } from './beschrijven.js';
+import { wortelFout } from './kruistabel.js';
 import { ontwerp, kolommenUit, groepenTabel, pasAanZonderAfhankelijke } from './regressie.js';
 import { groepVanBronwaarde } from './groepen.js';
 
@@ -204,9 +206,37 @@ export async function logistisch(ds, spec, ctx) {
       return weiger(ds, spec, ctx, titel, 'privacy', `Bij “${x.v.label}” verschilt een combinatie met “${naamG}” ${buurReden(ctx)} maar een paar mensen. Dan zou de uitkomst iets over een kleine groep verraden. Kies een ruimere selectie of laat deze voorspeller weg.`);
     }
   }
+  // P1, P2: met één voorspeller met groepen is dit de kruistabel voorspeller × uitkomst. Een eigen indeling van een
+  // beschermde indeling (zoals "Productie of rest" van afdeling) mag de groepen die daar verborgen blijven dan niet
+  // uit elkaar halen, net als in de kruistabel (wortelFout); ook niet als de uitkomst zo'n eigen indeling is.
+  for (const x of o.voorspellers.filter((y) => y.soort === 'groep')) {
+    const fout = wortelFout(ds, ctx, x.v, x.groep, x.groepen.length, w, o.basis, 'deze analyse')
+      || wortelFout(ds, ctx, w, Int32Array.from(gw, (g0, r) => (o.basis[r] ? g0 : -1)), 2, x.v, o.basis, 'deze analyse');
+    if (fout) return weiger(ds, spec, ctx, titel, 'privacy', fout);
+  }
+  // De uitkomst vergelijkt zijn twee groepen op elk getal: uit B volgt het gemiddelde van dat getal per groep. Die
+  // groepen moeten dus bij dat getal allebei apart te tonen zijn, zoals bij Gemiddelden per groep (klein, dashboard,
+  // een eigen indeling van afdeling, "liever niet" per groep). Binnen een selectie ook de spreiding (P3, optie 1).
+  for (const x of o.voorspellers.filter((y) => y.soort === 'getal')) {
+    const spreiding = spreidingSelectieFout(x.v, o.geldig, ctx);
+    if (spreiding) return weiger(ds, spec, ctx, titel, 'privacy', spreiding);
+    const k = groepKeuze(ds, ctx, x.v, w);
+    if (k.fout) return weiger(ds, spec, ctx, titel, k.niveau, k.fout);
+    const mee = new Set(k.keuze.mee);
+    if (k.aantallen.some((n, i) => n > 0 && !mee.has(i))) {
+      const uit = weiger(ds, spec, ctx, titel, 'privacy', P_UITKOMST_GROEPEN(w.label, x.v.label));
+      uit.onderdelen.unshift(...groepMeldingen(ctx, x.v, w, k));
+      return uit;
+    }
+  }
   voeg(u, o.meldingen);
   const p = o.kolommen.length;
-  if (!p) return weiger(ds, spec, ctx, titel, 'privacy', o.meldingen.at(-1)?.tekst || 'Er blijft geen voorspeller over.');
+  if (!p) {
+    // Met de redenen erboven (bijvoorbeeld welke groepen bij de score verborgen blijven).
+    const uit = weiger(ds, spec, ctx, titel, 'privacy', o.meldingen.at(-1)?.tekst || 'Er blijft geen voorspeller over.');
+    uit.onderdelen.unshift(...o.meldingen.slice(0, -1));
+    return uit;
+  }
   if (p > MAX_KOLOMMEN) return weiger(ds, spec, ctx, titel, 'fout', `Dit model heeft ${p} kolommen; het kan er hooguit ${MAX_KOLOMMEN}. Deel voorspellers met veel groepen eerst in minder groepen in.`);
   const ys = o.rijen.map((r) => uitkomstIndex[r]);
   const res = pasAanZonderAfhankelijke(o, o.kolommen.map((_, j) => j), (X) => logit(X, ys));
