@@ -18,7 +18,7 @@
 }
 .hr-filter { display: flex; flex-wrap: wrap; gap: var(--ruimte-2) var(--ruimte-4); min-width: 0; flex: 1 1 28rem; }
 .hr-filter:empty { display: none; }
-.hr-veld { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 0 1 22rem; margin-bottom: var(--ruimte-2); }
+.hr-veld { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 15rem; max-width: 22rem; margin-bottom: var(--ruimte-2); }
 .hr-veld label { font-weight: 600; font-size: 0.9rem; }
 .hr-veld select { width: 100%; max-width: 100%; min-width: 0; }
 .hr-kaart .hr-veld { max-width: 32rem; }
@@ -190,7 +190,7 @@ dialog.hri-dialoog { width: min(760px, calc(100vw - 24px)); }
 
 @media (max-width: 640px) {
   .hr-balk { flex-direction: column; align-items: stretch; }
-  .hr-veld { flex: 1 1 100%; }
+  .hr-veld { flex: 1 1 100%; max-width: none; }
   /* Tegels onder elkaar, compact: getal en naam naast elkaar */
   .hr-tegels { grid-template-columns: minmax(0, 1fr); gap: var(--ruimte-2); }
   .hr-tegel { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: var(--ruimte-3); align-items: baseline; padding: var(--ruimte-2) var(--ruimte-3); }
