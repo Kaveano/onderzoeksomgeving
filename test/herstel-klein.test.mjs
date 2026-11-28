@@ -112,3 +112,61 @@ test('G6: een Engelse HR-bron zonder signaalwoord wordt niet stil Nederlands; zo
   const scherm = readFileSync(new URL('../public/js/beheer/schermen/bibliotheek.js', import.meta.url), 'utf8');
   assert.match(scherm, /taalOnbekend\.length \? melding\(taalOnbekendTekst\(taalOnbekend\), 'waarschuwing'\)/, 'de importdialoog noemt ze');
 });
+
+// ---------- P4-fix: het verloop van een kopie zonder kenmerk ----------
+
+import { dashboardUitRijen } from '../public/js/beheer/dashboard-rekenen.js';
+import { kijkerDashboard } from '../src/routes/delen.js';
+
+/** Lijst A (Nulmeting) met de ja/nee-vraag als kenmerk; kopie B (Vervolg) zonder kenmerk; eventueel kopie C op Nulmeting. */
+function rijenVerloop([jaA, neeA, leegA], [jaB, neeB, leegB], kopieC = null) {
+  const q = (id, lijst, bron, extra) => ({
+    id, vragenlijst_id: lijst, thema_id: 9, meetpunt_id: null, type: 'janee', tekst: 'Geef je leiding aan anderen?', toelichting: '', opties: '[]',
+    schaal_soort: 'eens', meerdere_antwoorden: 0, verplicht: 0, weet_niet: 0, uitsplitsen: 0, bron_vraag_id: bron, volgorde: 1, kenmerk: '', ...extra,
+  });
+  const inz = [];
+  const voeg = (lijst, vraag, ja, nee, leeg) => {
+    for (let k = 0; k < ja; k++) inz.push({ vragenlijst_id: lijst, datum: '2026-01-01', a: { [vraag]: 'ja' } });
+    for (let k = 0; k < nee; k++) inz.push({ vragenlijst_id: lijst, datum: '2026-01-01', a: { [vraag]: 'nee' } });
+    for (let k = 0; k < leeg; k++) inz.push({ vragenlijst_id: lijst, datum: '2026-01-01', a: {} });
+  };
+  voeg(1, 11, jaA, neeA, leegA);
+  voeg(2, 21, jaB, neeB, leegB);
+  const lijsten = [
+    { id: 1, titel: 'Nulmeting', status: 'gesloten', code: 'a', meetmoment_id: 1, aantal_uitgenodigd: null },
+    { id: 2, titel: 'Vervolg', status: 'gesloten', code: 'b', meetmoment_id: 2, aantal_uitgenodigd: null },
+  ];
+  const vragen = [q(11, 1, null, { kenmerk: 'leidinggevend' }), q(21, 2, 11)];
+  if (kopieC) {
+    lijsten.push({ id: 3, titel: 'Nulmeting kopie', status: 'gesloten', code: 'c', meetmoment_id: 1, aantal_uitgenodigd: null });
+    vragen.push(q(31, 3, 11));
+    voeg(3, 31, ...kopieC);
+  }
+  return {
+    onderzoek: { id: 1, bedrijfsnaam: 'X', titel: 'Y', status: 'actief' }, schalen: {}, themas: [{ id: 9, naam: 'Achtergrond' }], meetpunten: [],
+    meetmomenten: [{ id: 1, naam: 'Nulmeting', datum: '2025-01-01' }, { id: 2, naam: 'Vervolg', datum: '2026-01-01' }],
+    vragenlijsten: lijsten, vragen, inzendingen: inz, eigen_invoer: [],
+  };
+}
+const MAG = { dashboard: true, open_antwoorden: false, tussenstand: false, stukken: [], rapporten: [] };
+const verloopVan = (rijen, lijst, kijker = true) => {
+  const d = dashboardUitRijen(rijen, { vragenlijst: lijst, uitsplitsen: null });
+  return (kijker ? kijkerDashboard(structuredClone(d), MAG) : d).selectie.vragen[0].verloop;
+};
+
+test('P4-fix (V3): het punt van een kopie zonder kenmerk blijft zichtbaar; het verborgen punt van lijst A niet', () => {
+  // V3: A veilig (ja 6, nee 15), kopie B zonder kenmerk (ja 3, nee 17, leeg 2). B toont zelf Ja 3, Nee 17.
+  const v3 = rijenVerloop([6, 15, 0], [3, 17, 2]);
+  for (const kijker of [true, false]) {
+    const vervolg = verloopVan(v3, 2, kijker).find((p) => p.meetmoment_id === 2);
+    assert.equal(vervolg.n, 20, 'vroeger null');
+    assert.equal(vervolg.percentage_ja, 15);
+    assert.equal(verloopVan(v3, 2, kijker).find((p) => p.meetmoment_id === 1).n, 21);
+  }
+  // s1 blijft dicht: A met ja 3, nee 18, leeg 2 is verborgen, vanuit A en vanuit B.
+  const s1 = rijenVerloop([3, 18, 2], [10, 12, 0]);
+  for (const lijst of [1, 2]) assert.equal(verloopVan(s1, lijst).find((p) => p.meetmoment_id === 1).percentage_ja, null);
+  // V2: een kopie C zonder kenmerk op hetzelfde meetmoment als A: het samengestelde punt blijft verborgen.
+  const v2 = rijenVerloop([3, 18, 2], [10, 12, 0], [8, 9, 0]);
+  for (const lijst of [1, 2, 3]) assert.equal(verloopVan(v2, lijst).find((p) => p.meetmoment_id === 1).percentage_ja, null, `vanuit ${lijst}`);
+});
