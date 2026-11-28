@@ -715,16 +715,66 @@ test('criterium 4 ook voor een klein bestand: een namenkolom met een onbekende k
   const vals = structuredClone(klein.aggregaat);
   vals.dimensies.afdeling.groepen = Array.from({ length: 8 }, (_, i) => ({ label: namen[i], medewerkers: 1, in_periode: 1, klein: true, verzuim: null }));
   assert.throws(() => controleerPersoneelsaggregaat(vals), /eigen groep/);
-  assert.equal(P.lijktPersoonsKolom({ n: 8, groepen: 4, eenpersoons: 3 }), false);
-  assert.equal(P.lijktPersoonsKolom({ n: 8, groepen: 5, eenpersoons: 4 }), true);
-  assert.equal(P.lijktPersoonsKolom({ n: 40, groepen: 11, eenpersoons: 10 }), false);
-  assert.equal(P.lijktPersoonsKolom({ n: 3, groepen: 3, eenpersoons: 3 }), true);
+  // De regel krijgt de groepsgroottes van wie een waarde heeft (lege cellen tellen niet mee).
+  assert.equal(P.lijktPersoonsKolom([5, 1, 1, 1]), false);
+  assert.equal(P.lijktPersoonsKolom([4, 1, 1, 1, 1]), true);
+  // Eén groep van 30 (bijvoorbeeld "Geen") en tien namen: nu wel een namenkolom (was false toen n ook de lege cellen telde).
+  assert.equal(P.lijktPersoonsKolom([30, ...Array(10).fill(1)]), true);
+  assert.equal(P.lijktPersoonsKolom([1, 1, 1]), true);
   // Geslacht en leidinggeven: alleen de vaste namen.
   const g = P.verwerkPersoneel(['Geslacht'], [...Array(6).fill(['V']), ...Array(6).fill(['M'])], { rollen: { 0: 'geslacht' }, periode: PERIODE }).aggregaat;
   assert.ok(controleerPersoneelsaggregaat(g));
   const g2 = structuredClone(g);
   g2.dimensies.geslacht.groepen[0].label = 'Jan de Vries';
   assert.throws(() => controleerPersoneelsaggregaat(g2), /onbekende groep bij Geslacht/);
+});
+
+test('namenkolom: ook met twee rijen per naam, lege cellen of veel keer "Geen" ertussen wordt het geen indeling (gevallen A–D)', () => {
+  const namen = ['Jan de Vries', 'Petra Bakker', 'Ahmed el Amrani', 'Sanne Visser', 'Kees Smit', 'Lotte Mulder', 'Bram de Boer', 'Eva Dekker', 'Tim Bos',
+    'Noor Vos', 'Daan Peters', 'Fleur Hendriks', 'Ruben Dijkstra', 'Iris Jacobs', 'Lars Willems', 'Anouk Kok', 'Sem Brouwer', 'Julia Meijer', 'Luuk de Graaf'];
+  const kop = ['Collega', 'Verzuimdagen', 'In dienst sinds'];
+  const gevallen = {
+    'A: tien namen, elk op twee rijen': namen.slice(0, 10).flatMap((n, i) => [[n, String(i), '2020-01'], [n, '0', '2021-01']]),
+    'B: 19 namen en 21 lege cellen': [...namen.map((n, i) => [n, String(i), '2020-01']), ...Array.from({ length: 21 }, () => ['', '0', '2020-01'])],
+    'C: 19 namen en 21 keer "Geen"': [...namen.map((n, i) => [n, String(i), '2020-01']), ...Array.from({ length: 21 }, () => ['Geen', '0', '2020-01'])],
+    'D: 9 namen en 10 lege cellen': [...namen.slice(0, 9).map((n, i) => [n, String(i), '2020-01']), ...Array.from({ length: 10 }, () => ['', '0', '2020-01'])],
+    'E: namen op één, twee of drie rijen': namen.slice(0, 12).flatMap((n, i) => Array.from({ length: 1 + (i % 3) }, () => [n, '0', '2020-01'])),
+    'F: twaalf namen naast een groep van 40 "-"': [...namen.slice(0, 12).map((n) => [n, '0', '2020-01']), ...Array.from({ length: 40 }, () => ['-', '0', '2020-01'])],
+  };
+  for (const [titel, rijen] of Object.entries(gevallen)) {
+    const { aggregaat, meldingen } = P.verwerkPersoneel(kop, rijen, { rollen: { 0: 'afdeling', 1: 'verzuimdagen', 2: 'datum_in' }, periode: PERIODE });
+    const json = JSON.stringify(aggregaat);
+    for (const naam of namen) assert.ok(!json.includes(naam), `${titel}: "${naam}" in het aggregaat`);
+    assert.equal(aggregaat.dimensies.afdeling, undefined, titel);
+    assert.ok(meldingen.some((m) => m.includes('"Afdeling"') && m.includes('niet gebruikt')), `${titel}: ${meldingen.join(' | ')}`);
+    assert.ok(controleerPersoneelsaggregaat(aggregaat), titel);
+  }
+  // De server weigert dezelfde vormen als iemand ze toch instuurt (vervalst aggregaat; "Onbekend" telt niet mee).
+  const basis = (n) => P.verwerkPersoneel(['Afdeling', 'In dienst sinds'], Array.from({ length: n }, () => ['Zorg', '2020-01']),
+    { rollen: { 0: 'afdeling', 1: 'datum_in' }, periode: PERIODE }).aggregaat;
+  const groepVan = (label, aantal) => (aantal < 5
+    ? { label, medewerkers: aantal, in_periode: aantal, klein: true, verzuim: null }
+    : { ...structuredClone(basis(aantal).dimensies.afdeling.groepen[0]), label });
+  const vervalst = {
+    A: namen.slice(0, 10).map((n) => groepVan(n, 2)),
+    B: [...namen.map((n) => groepVan(n, 1)), groepVan(P.ONBEKEND, 21)],
+    C: [...namen.map((n) => groepVan(n, 1)), groepVan('Geen', 21)],
+    D: [...namen.slice(0, 9).map((n) => groepVan(n, 1)), groepVan(P.ONBEKEND, 10)],
+  };
+  for (const [titel, groepen] of Object.entries(vervalst)) {
+    const agg = basis(groepen.reduce((s, g) => s + g.in_periode, 0));
+    agg.dimensies.afdeling.groepen = groepen;
+    assert.throws(() => controleerPersoneelsaggregaat(agg), /eigen groep/, titel);
+  }
+  // Echte indelingen blijven: een kleine organisatie (5 + 3 × 1), een middelgrote met een paar kleine stafafdelingen
+  // en het voorbeeld [6, 4, 2] van criterium 3. Ook met lege cellen ertussen.
+  for (const groottes of [[5, 1, 1, 1], [40, 30, 20, 2, 1, 1, 1], [6, 4, 2], [10, 8, 6, 2, 2, 1], [20, 10, 1, 1, 1]]) {
+    assert.equal(P.lijktPersoonsKolom(groottes), false, JSON.stringify(groottes));
+    const rijen = [...groottes.flatMap((n, i) => Array.from({ length: n }, () => [`Afdeling ${String.fromCharCode(65 + i)}`, '2020-01'])), ['', '2020-01'], ['', '2020-01']];
+    const { aggregaat } = P.verwerkPersoneel(['Afdeling', 'In dienst sinds'], rijen, { rollen: { 0: 'afdeling', 1: 'datum_in' }, periode: PERIODE });
+    assert.equal(aggregaat.dimensies.afdeling.groepen.length, groottes.length + 1, JSON.stringify(groottes));
+    assert.ok(controleerPersoneelsaggregaat(aggregaat));
+  }
 });
 
 test('verzuim: ook de ziekmeldingen mogen niet vooral van één persoon zijn (alleen meldingen, en met dagen)', () => {

@@ -278,14 +278,15 @@ export function controleerPersoneelsaggregaat(a) {
     const som = (veld) => uitDim.groepen.reduce((s, g) => s + g[veld], 0);
     regel(som('in_periode') === totaal.in_periode && som('medewerkers') === totaal.medewerkers, `de groepen van ${DIMENSIES[dim]} tellen niet op tot de hele organisatie.`);
     // Groepsnamen zijn nooit namen of nummers van medewerkers (B4): geslacht en leidinggeven hebben vaste namen, en een
-    // andere indeling waarin bijna iedereen een eigen groep heeft, weigert de server (dezelfde regel als de browser).
+    // andere indeling waarin bijna elke groep één of twee medewerkers heeft, weigert de server (dezelfde regel als de
+    // browser, op wie een waarde heeft: "Onbekend" telt niet mee).
     if (!klassen) {
       const vast = dim === 'geslacht' ? ['Man', 'Vrouw', 'Anders'] : dim === 'leidinggevend' ? ['Ja', 'Nee'] : null;
       const echt = uitDim.groepen.filter((g) => g.label !== ONBEKEND);
       if (vast) regel(echt.every((g) => vast.includes(g.label)), `onbekende groep bij ${DIMENSIES[dim]}.`);
       else {
-        regel(!lijktPersoonsKolom({ n: totaal.in_periode, groepen: echt.length, eenpersoons: echt.filter((g) => g.in_periode === 1).length }),
-          `bij ${DIMENSIES[dim]} heeft bijna iedereen een eigen groep; dat lijken namen of nummers en die worden niet bewaard.`);
+        regel(!lijktPersoonsKolom(echt.map((g) => g.in_periode)),
+          `bij ${DIMENSIES[dim]} heeft bijna iedereen een eigen groep of een groep van twee; dat lijken namen of nummers en die worden niet bewaard.`);
       }
     }
     // Verzuim aanvullend verborgen: zijn er groepen zonder en groepen met verzuim, dan tellen die zonder samen minstens 10.

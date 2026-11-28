@@ -33,6 +33,8 @@ export const MIN_VERZUIM = 10;
 export const MAX_MAANDEN = 36;
 /** Zoveel groepen mag één indeling hooguit hebben (meer wijst op een kolom met namen of nummers). */
 export const MAX_GROEPEN = 100;
+/** Zoveel groepen van één of twee medewerkers wijzen, als ze de meeste groepen zijn, op namen of nummers (lijktPersoonsKolom). */
+export const MIN_SNIPPERS = 4;
 /** Naam van de groep medewerkers zonder waarde voor een indeling. */
 export const ONBEKEND = 'Onbekend';
 
@@ -651,13 +653,26 @@ function verzuimOk(personen, n, minN, d) {
 }
 
 /**
- * Lijkt een kolom met categorieën (afdeling, locatie …) meer op een kolom met namen of nummers: bijna iedereen een
- * eigen waarde? Dan zou elke groep één medewerker zijn en zou de naam als groepsnaam mee naar de server gaan.
- * n: het aantal medewerkers in de periode (ook die zonder waarde); groepen: het aantal verschillende waarden;
- * eenpersoons: het aantal waarden met precies één medewerker. De server (hr-validatie.js) gebruikt dezelfde regel.
+ * Lijkt een kolom met categorieën (afdeling, locatie …) meer op een kolom met namen of nummers? Dan zou bijna elke
+ * groep één of twee medewerkers zijn en zou de naam als groepsnaam mee naar de server gaan.
+ * groottes: per waarde het aantal medewerkers in de periode met die waarde. Lege cellen tellen niet mee (die worden
+ * "Onbekend"), dus de regel kijkt alleen naar wie een waarde heeft (n). Het lijkt een kolom met namen of nummers als:
+ * - er meer dan MAX_GROEPEN waarden zijn;
+ * - de waarden met één medewerker samen meer dan de helft van n hebben;
+ * - er bij n van minstens 6 meer waarden zijn dan de helft van n (gemiddeld minder dan twee medewerkers per waarde,
+ *   bijvoorbeeld elke naam op twee rijen);
+ * - minstens MIN_SNIPPERS waarden maar één of twee medewerkers hebben, en dat minstens twee derde van de waarden is
+ *   (namen naast een grote groep zoals "Geen" of "-").
+ * Een kleine organisatie met één afdeling van 5 en drie afdelingen van 1 houdt haar indeling. De server
+ * (hr-validatie.js) gebruikt dezelfde regel op de groepen van het aggregaat (zonder "Onbekend").
  */
-export function lijktPersoonsKolom({ n, groepen, eenpersoons }) {
-  return groepen > MAX_GROEPEN || (n >= 6 && groepen * 2 > n) || eenpersoons * 2 > n;
+export function lijktPersoonsKolom(groottes) {
+  const g = (Array.isArray(groottes) ? groottes : []).filter((x) => Number.isInteger(x) && x > 0);
+  const n = g.reduce((s, x) => s + x, 0);
+  const eenpersoons = g.filter((x) => x === 1).length;
+  const snippers = g.filter((x) => x <= 2).length;
+  return g.length > MAX_GROEPEN || eenpersoons * 2 > n || (n >= 6 && g.length * 2 > n)
+    || (snippers >= MIN_SNIPPERS && snippers * 3 >= g.length * 2);
 }
 
 /**
@@ -706,11 +721,11 @@ export function verwerkPersoneel(kop, rijen, {
       const perWaarde = new Map();
       for (const p of personen) if (p.dim[dim]) perWaarde.set(p.dim[dim], (perWaarde.get(p.dim[dim]) || 0) + 1);
       const labels = new Set(perWaarde.keys());
-      // Geslacht en leidinggeven hebben vaste waarden; bij de andere kolommen: niet als bijna iedereen een eigen waarde
-      // heeft (een kolom met namen of nummers), hoe klein het bestand ook is.
+      // Geslacht en leidinggeven hebben vaste waarden; bij de andere kolommen: niet als bijna elke waarde maar één of
+      // twee medewerkers heeft (een kolom met namen of nummers), ook met lege cellen of veel keer "Geen" ertussen.
       const vrij = dim !== 'geslacht' && dim !== 'leidinggevend';
-      if (vrij && lijktPersoonsKolom({ n: personen.length, groepen: labels.size, eenpersoons: [...perWaarde.values()].filter((x) => x === 1).length })) {
-        meldingen.push(`De kolom "${ROLLEN[rol].label}" heeft zoveel verschillende waarden dat het geen indeling in groepen lijkt (misschien staan er namen of nummers in); die wordt niet gebruikt.`);
+      if (vrij && lijktPersoonsKolom([...perWaarde.values()])) {
+        meldingen.push(`De kolom "${ROLLEN[rol].label}" lijkt geen indeling in groepen: bijna elke waarde komt maar één of twee keer voor (misschien staan er namen of nummers in). Die kolom wordt niet gebruikt.`);
         continue;
       }
       const vast = dim === 'geslacht' ? ['Man', 'Vrouw', 'Anders'] : dim === 'leidinggevend' ? ['Ja', 'Nee'] : null;
