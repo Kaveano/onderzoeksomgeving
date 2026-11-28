@@ -201,6 +201,32 @@ test('APA 7 §9.44: letter voor letter sorteren (DeBase en Dekker voor De Vries)
     .map((l) => `${l.bron.auteurs[0].achternaam} ${l.bron.auteurs[0].voorletters}`), ['Brown J.', 'Brown J. R.', 'Browning A. R.']);
 });
 
+test('besluit van het onderzoeksteam (P7, record 37): een buitenlandse naam die de auteur zelf klein schrijft, als object', () => {
+  // Y.-A. de Montjoye (Belg) schrijft "de" klein; het hoort bij de achternaam (APA 7: zoals de auteur het schrijft)
+  const montjoye = { achternaam: 'de Montjoye', tussenvoegsel: '', voorletters: 'Y.-A.' };
+  const record = (auteurs) => ({ titel: 'Estimating', auteurs, jaar: 2019, soort: 'wetenschappelijk artikel', taal: 'en', doi: '10.1038/s41467-019-10933-3', onderwerpen: ['privacy-ethiek'] });
+  let r = normaliseerStartbron(record(['Rocher, L.', 'Hendrickx, J. M.', montjoye]));
+  assert.deepEqual(r.fouten, []);
+  assert.deepEqual(r.bron.auteurs[2], montjoye);
+  assert.equal(apaVerwijzing(r.bron), 'Rocher, L., Hendrickx, J. M., & de Montjoye, Y.-A. (2019). Estimating. https://doi.org/10.1038/s41467-019-10933-3');
+  assert.equal(apaInTekst([{ bron: r.bron }]), '(Rocher et al., 2019)');
+  // Als tekst blijft het een Nederlands tussenvoegsel: aan een tekst zie je niet wie het is. Nederlandse namen veranderen niet.
+  r = normaliseerStartbron(record(['Rocher, L.', 'Hendrickx, J. M.', 'de Montjoye, Y.-A.']));
+  assert.deepEqual(r.bron.auteurs[2], { achternaam: 'Montjoye', tussenvoegsel: 'de', voorletters: 'Y.-A.' });
+  assert.equal(normaliseerStartbron(record(['de Vroome, E. M. M.'])).bron.auteurs[0].tussenvoegsel, 'de');
+  assert.deepEqual(normaliseerStartbron(record([{ achternaam: 'Vroome', tussenvoegsel: 'de', voorletters: 'E. M. M.' }])).bron.auteurs[0],
+    { achternaam: 'Vroome', tussenvoegsel: 'de', voorletters: 'E. M. M.' }, 'een Nederlandse naam als object kan ook');
+  // Letter voor letter op "deMontjoye" (APA 7 §9.44): na Dekker, voor Devos; een Nederlandse "Montjoye, P. de." onder de M
+  const boek = (a, titel) => ({ soort: 'boek', titel, jaar: 2019, auteurs: [a], citeersleutel: titel, details: { uitgever: 'U' } });
+  const lijst = sorteerLiteratuur([boek(A('Mol', 'A.'), 'a'), boek(A('Montjoye', 'P.', 'de'), 'b'), boek(A('De Vries', 'R.'), 'c'), boek(A('Devos', 'P.'), 'd'),
+    boek(montjoye, 'e'), boek(A('Dekker', 'F.'), 'f')]);
+  assert.deepEqual(lijst.map((l) => apaVerwijzing(l.bron).split(' (')[0]), ['Dekker, F.', 'de Montjoye, Y.-A.', 'Devos, P.', 'De Vries, R.', 'Mol, A.', 'Montjoye, P. de.']);
+  // Als eerste auteur: de citeersleutel en, volgens de regel voor de tekst (altijd een hoofdletter vooraan), "De Montjoye"
+  assert.equal(citeersleutelBasis(boek(montjoye, 'e')), 'demontjoye2019');
+  assert.equal(apaVerwijzing(boek(montjoye, 'e')), 'de Montjoye, Y.-A. (2019). *e*. U.');
+  assert.equal(apaInTekst([{ bron: boek(montjoye, 'e') }], { verhalend: true }), 'De Montjoye (2019)');
+});
+
 test('APA 7 §8.12: meerdere bronnen tussen haakjes in de volgorde van de literatuurlijst', () => {
   const boek = (auteurs, jaar, titel) => ({ soort: 'boek', titel, jaar, auteurs, citeersleutel: titel.toLowerCase(), details: { uitgever: 'U' } });
   const dierendonck = boek([A('Dierendonck', 'D.', 'van')], 2011, 'Dienend');

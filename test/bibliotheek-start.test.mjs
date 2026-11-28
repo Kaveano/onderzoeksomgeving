@@ -178,11 +178,22 @@ test('besluit 6: namen met een voorvoegsel in de literatuurlijst en in de tekst'
     { achternaam: 'Knippenberg', tussenvoegsel: 'van', voorletters: 'D.' }, { achternaam: 'De Dreu', tussenvoegsel: '', voorletters: 'C. K. W.' }]);
   assert.match(lijst('schaufeli-desart-dewitte-2020-bat'), /^Schaufeli, W\. B\., Desart, S\., & De Witte, H\. \(2020\)\. Burnout Assessment Tool/);
   assert.match(lijst('van-knippenberg-de-dreu-homan-2004-diversiteit-prestatie'), /^Knippenberg, D\. van, De Dreu, C\. K\. W\., & Homan, A\. C\. \(2004\)\. /);
+  // Besluit van het onderzoeksteam (record 37): Y.-A. de Montjoye (Belg) schrijft zijn voorvoegsel zelf klein; het hoort bij
+  // de achternaam (APA 7: zoals de auteur het schrijft). Het team levert hem als object; het is de enige auteur in die vorm,
+  // dus alle andere namen met een kleine letter vooraan (Nederlandse auteurs) blijven een tussenvoegsel.
+  assert.deepEqual(opSleutel('rocher-hendrickx-demontjoye-2019-heridentificatie').auteurs[2], { achternaam: 'de Montjoye', tussenvoegsel: '', voorletters: 'Y.-A.' });
+  assert.deepEqual(RECORDS.flatMap((r) => r.auteurs.filter((a) => typeof a !== 'string').map((a) => [r.sleutel, a])),
+    [['rocher-hendrickx-demontjoye-2019-heridentificatie', { achternaam: 'de Montjoye', tussenvoegsel: '', voorletters: 'Y.-A.' }]]);
+  for (const [i, r] of RECORDS.entries()) {
+    r.auteurs.forEach((a, j) => {
+      if (typeof a === 'string' && /^\p{Ll}/u.test(a)) assert.ok(omgezet.bronnen[i].bron.auteurs[j].tussenvoegsel, `${r.sleutel}: ${a}`);
+    });
+  }
   // 6b: een punt na een tussenvoegsel aan het eind van de auteurs
   const verwacht = {
     'barends-et-al-2017-evidence-based-management': ['Barends, E., Villanueva, J., Rousseau, D. M., Briner, R. B., Jepsen, D. M., Houghton, E., & Have, S. ten. (2017). ', '(Barends et al., 2017)'],
     'van-dierendonck-2011-dienend-leiderschap': ['Dierendonck, D. van. (2011). ', '(Van Dierendonck, 2011)'],
-    'rocher-hendrickx-demontjoye-2019-heridentificatie': ['Rocher, L., Hendrickx, J. M., & Montjoye, Y.-A. de. (2019). ', '(Rocher et al., 2019)'],
+    'rocher-hendrickx-demontjoye-2019-heridentificatie': ['Rocher, L., Hendrickx, J. M., & de Montjoye, Y.-A. (2019). ', '(Rocher et al., 2019)'],
     'hazelzet-2019-di-interventies': ['Hazelzet, E., Picco, E., Houkes, I., Bosma, H., & Rijk, A. de. (2019). ', '(Hazelzet et al., 2019)'],
     'vanderklink-2016-duurzame-inzetbaarheid': ['Klink, J. J. L. van der, Bültmann, U., Burdorf, A., Schaufeli, W. B., Zijlstra, F. R. H., Abma, F. I., Brouwer, S., & Wilt, G. J. van der. (2016). ', '(Van der Klink et al., 2016)'],
     'brouwers-2015-vitaliteitsscan': ['Brouwers, L. A. M., Engels, J. A., Heerkens, Y. F., & Beek, A. J. van der. (2015). ', '(Brouwers et al., 2015)'],
@@ -200,7 +211,7 @@ test('besluit 6: namen met een voorvoegsel in de literatuurlijst en in de tekst'
   assert.equal(tekst('van-dierendonck-2011-dienend-leiderschap', true), 'Van Dierendonck (2011)');
   assert.equal(tekst('vandenheuvel-bondarouk-2017-toekomst-hr-analytics', true), 'Van den Heuvel en Bondarouk (2017)');
   // Geen andere bron in de collectie heeft een voorvoegsel (dan stond hij hierboven)
-  const metVoorvoegsel = omgezet.bronnen.filter(({ bron }) => bron.auteurs.some((a) => a.tussenvoegsel || /^(?:De|Van|Ten|Ter|Von|Le|La|Du|D') /.test(a.achternaam)));
+  const metVoorvoegsel = omgezet.bronnen.filter(({ bron }) => bron.auteurs.some((a) => a.tussenvoegsel || /^(?:De|Van|Ten|Ter|Von|Le|La|Du|D') /i.test(a.achternaam)));
   assert.deepEqual(metVoorvoegsel.length, Object.keys(verwacht).length);
 });
 

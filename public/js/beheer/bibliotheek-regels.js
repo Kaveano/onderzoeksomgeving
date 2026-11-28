@@ -12,10 +12,16 @@
 //   de achternaam en sorteert de lijst onder D of V ("De Witte, H.", "Van Dyne, L.");
 // - zo lees je dat uit een naam (leesAuteur): een voorvoegsel met een hoofdletter vooraan de achternaam ("De Witte")
 //   hoort bij de achternaam; met een kleine letter ("de Vroome", "van der Meulen") is het een tussenvoegsel;
+// - een buitenlandse auteur die zijn voorvoegsel zelf met een kleine letter schrijft, houdt het als deel van de
+//   achternaam, zoals hij het schrijft (APA 7; besluit van het onderzoeksteam bij P7 voor Y.-A. de Montjoye, record 37).
+//   Aan een tekst zie je dat niet, dus zo'n naam komt als object: { achternaam: 'de Montjoye', tussenvoegsel: '',
+//   voorletters: 'Y.-A.' } → in de lijst "de Montjoye, Y.-A.", letter voor letter gesorteerd op "deMontjoye" (onder D).
+//   Een tekst "de Montjoye, Y.-A." blijft een Nederlands tussenvoegsel; Nederlandse namen veranderen dus niet;
 // - na de auteurs staat altijd een punt, ook na een tussenvoegsel aan het eind: "Vroome, E. M. M. de. (2025).",
 //   "Ancona, J. d'. (2022).";
 // - in de tekst begint de naam altijd met een hoofdletter ("De Vroome (2025)", "(Van der Meulen, 2022)"), behalve
-//   d', dat klein blijft en vast aan de naam staat ("d'Ancona (2022)").
+//   d', dat klein blijft en vast aan de naam staat ("d'Ancona (2022)"). Dat geldt nu ook voor een naam als
+//   de Montjoye ("De Montjoye (2019)"); in de startcollectie staat zo'n naam nooit vooraan (record 37: "Rocher et al.").
 //
 // Tekst met *sterretjes* is cursief (zoals overal in de rapporten: rapport-weergave.js inline() en maakDocx).
 
@@ -816,7 +822,9 @@ const isOrgWoord = (w) => {
  * Leest één auteur: "Bakker, A. B." · "Bakker, Arnold B." · "de Vries, J." · "Vries, J. de" · "Jan de Vries" ·
  * "van der Berg, K." · "Bakker A.B." → { achternaam, tussenvoegsel, voorletters }. Een voorvoegsel met een
  * hoofdletter vooraan de achternaam hoort bij de achternaam: "De Witte, H." en "Hans De Witte" →
- * { achternaam: 'De Witte', tussenvoegsel: '' } (besluit 6a, zie de kop van dit bestand). Een organisatie (geen komma
+ * { achternaam: 'De Witte', tussenvoegsel: '' } (besluit 6a, zie de kop van dit bestand). Met een kleine letter is
+ * het altijd een tussenvoegsel ("de Montjoye, Y.-A." → 'Montjoye' + 'de'): een buitenlandse naam die zo geschreven
+ * wordt, zie je aan de tekst niet; die komt als object (zie de kop en normaliseerStartbron). Een organisatie (geen komma
  * en een woord als Bureau of Ministerie, meer dan drie woorden die geen naam vormen, of één woord) →
  * { organisatie }. Lege tekst → null.
  */
@@ -1545,6 +1553,8 @@ export function normaliseerStartbron(record) {
   else bron.soort = soort;
 
   // Auteurs: teksten ("Bakker, A. B.") of objecten in onze vorm. Een organisatie als auteur gaat naar organisatie.
+  // Een object neemt de achternaam over zoals hij is: zo levert het onderzoeksteam een buitenlandse naam met een
+  // voorvoegsel in kleine letters die bij de achternaam hoort ({ achternaam: 'de Montjoye' }; zie de kop van dit bestand).
   bron.organisatie = tekst(r.organisatie);
   bron.afkorting = tekst(r.afkorting);
   const auteurs = Array.isArray(r.auteurs) ? r.auteurs : typeof r.auteurs === 'string' ? r.auteurs.split(';') : [];

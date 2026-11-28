@@ -1067,7 +1067,11 @@
   "auteurs": [
    "Rocher, L.",
    "Hendrickx, J. M.",
-   "de Montjoye, Y.-A."
+   {
+    "achternaam": "de Montjoye",
+    "tussenvoegsel": "",
+    "voorletters": "Y.-A."
+   }
   ],
   "organisatie": "",
   "jaar": 2019,
