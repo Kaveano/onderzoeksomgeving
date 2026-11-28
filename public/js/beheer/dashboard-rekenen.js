@@ -23,7 +23,7 @@
 //
 // Rekenwerk: elke inzending wordt één keer doorlopen (gratis laag: 10 ms rekentijd per verzoek).
 
-import { DREMPEL, LABEL_OVERIG, onderdrukAlles, onderdrukKolom, verdeelInGroepen, maskeerVerdeling, verbergReeks } from './privacy.js';
+import { DREMPEL, LABEL_OVERIG, VERBORGEN_UITLEG, onderdrukAlles, onderdrukKolom, verdeelInGroepen, maskeerVerdeling, verbergReeks } from './privacy.js';
 
 const WEET_NIET = 'weet_niet';
 
@@ -356,7 +356,8 @@ function uitsplitsing(vraag, lijstVragen, inzendingen, themaNamen, cijferschalen
     drempel: DREMPEL,
     cijfervragen: cijferVragen.map((q) => ({ vraag_id: q.id, tekst: q.tekst, schaal_soort: q.schaal_soort })),
     groepen: uit,
-    uitleg_cel: `Een streepje met "<${DREMPEL}" betekent: te weinig respondenten in deze groep beantwoordden dit, dus niet getoond.`,
+    // Eén teken voor een verborgen cel op het hele dashboard: × (BOUWPLAN PR-22), met de vaste uitleg.
+    uitleg_cel: VERBORGEN_UITLEG,
   };
 }
 

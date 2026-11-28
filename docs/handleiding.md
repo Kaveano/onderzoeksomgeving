@@ -181,7 +181,7 @@ Goed om te weten:
 - Op een telefoon staan de cijfers in twee rijen (0 tot 5 en 6 tot 10). Onder elke rij staat wat het uiterste betekent, bijvoorbeeld "0 = Zeer onwaarschijnlijk".
 - Je kunt "weet niet / n.v.t." toestaan, bijvoorbeeld bij een rapportcijfer voor iets waar niet iedereen mee te maken heeft. Dat antwoord telt niet mee in het gemiddelde of de eNPS.
 - Zijn er al antwoorden, dan kun je de soort (0–10 of 1–10) niet meer veranderen. Een 0 zou anders opeens ongeldig zijn.
-- Op het dashboard staat een cijfervraag bij zijn thema, met een staafje per cijfer. Bij de uitsplitsing krijgt elke cijfervraag een eigen kolom; een groep met minder dan 5 cijfers zie je daar als "<5".
+- Op het dashboard staat een cijfervraag bij zijn thema, met een staafje per cijfer. Bij de uitsplitsing krijgt elke cijfervraag een eigen kolom; een groep met minder dan 5 cijfers zie je daar als **×**.
 - In de standaardsjablonen **Medewerkerstevredenheid**, **Onboarding** en **Vertrekonderzoek** is de ja/nee-vraag "Zou je [organisatie] aanbevelen als werkgever aan vrienden of kennissen?" vervangen door de cijfervraag van 0 tot 10. Medewerkerstevredenheid heeft er ook een rapportcijfer bij. **Een eerdere meting met de ja/nee-vraag over aanbevelen is niet te vergelijken met de nieuwe vraag van 0 tot 10.** Heb je een nulmeting met de oude vraag, houd dan in de vervolgmeting de oude vraag aan (kopieer de vragenlijst) of zet beide vragen erin.
 
 ### Achtergrondvragen (kenmerken)
@@ -214,7 +214,7 @@ Het tabblad **Dashboard** toont:
 - de **uitsplitsing**, bijvoorbeeld per afdeling.
 
 **Anonimiteit**
-- Groepen met minder dan **5 respondenten** worden niet getoond. Hetzelfde geldt voor elke score binnen een groep die op minder dan 5 personen berust; die zie je als "<5".
+- Groepen met minder dan **5 respondenten** worden niet getoond. Hetzelfde geldt voor elke score binnen een groep die op minder dan 5 personen berust; die zie je als **×**. Soms staat er ook × bij een iets grotere score, zodat de kleine niet terug te rekenen is. Op de hele pagina betekent × hetzelfde: niet getoond, om de anonimiteit te beschermen. De uitleg staat onder de tabel.
 - Kleine groepen worden samengevoegd, zodat ze niet uit het totaal terug te rekenen zijn. Bij **Overige groepen samen** staan alle antwoorden die niet apart te zien zijn, ook antwoorden die niemand gaf, in de volgorde van de vragenlijst. Wie de vraag niet invulde, telt ook mee in die groep, maar wordt niet apart genoemd. De uitleg erbij zegt niet welke groep klein is. Zo verraadt niets waar de paar respondenten zitten.
 - Bij een ja/nee-achtergrondvraag is het percentage ja boven de tabel van wie de vraag beantwoordde; de tabel zelf geeft percentages van alle respondenten. Dat staat er ook bij.
 - **Achtergrondvragen** (een vraag om op uit te splitsen, zoals afdeling, of een vraag over een kenmerk zoals geslacht) zijn extra beschermd. In de verdeling staat ook **Niet ingevuld**, en de percentages zijn van alle respondenten van de vragenlijst. Een aantal van 1 tot 4 zie je als **×**, net als de kleinste andere aantallen die nodig zijn om het niet terug te rekenen. Zie je ergens een ×, dan staat ook het totaal aantal antwoorden op die vraag er niet bij. Dat geldt voor jou, voor meelezers, in rapporten en bij de uitsplitsing.

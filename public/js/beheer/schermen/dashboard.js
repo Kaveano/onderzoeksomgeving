@@ -117,6 +117,60 @@ function metTeken(d, dec = 1) {
   return `${d > 0 ? '+' : '−'}${getal(Math.abs(d), dec)}`;
 }
 
+// ---------- Uitsplitsing: zonder DOM (ook getest in node) ----------
+
+/** Kopje van een cijferkolom in de uitsplitsing. */
+function cijferKolomNaam(cv) {
+  return cv.schaal_soort === 'nps' ? `eNPS: ${kort(cv.tekst, 50)}` : `Cijfer: ${kort(cv.tekst, 50)}`;
+}
+
+/**
+ * Staat er in de uitsplitsing ergens × (een verborgen groep, of een verborgen cel van een thema, vraag of
+ * cijfervraag)? Dan komt VERBORGEN_UITLEG onder de tabel; zo niet, dan blijft die uitleg weg.
+ */
+export function uitsplitsingIetsVerborgen(u) {
+  return !!u && (u.groepen || []).some((g) => g.verborgen
+    || [...(g.themas || []), ...(g.vragen || []), ...(g.cijfers || [])].some((c) => c && c.verborgen));
+}
+
+/**
+ * De tekst voor "Neem op in stuk" bij de uitsplitsing. Een verborgen cel is × (BOUWPLAN PR-22: in één uitvoer
+ * overal hetzelfde teken), met VERBORGEN_UITLEG eronder; een verborgen groep staat er zonder getallen bij.
+ * @param s     data.selectie van het dashboard (met uitsplitsing)
+ * @param naam  naam van de vragenlijst (met meetmoment)
+ */
+export function uitsplitsingTekst(s, naam) {
+  const u = s.uitsplitsing;
+  const regels = [
+    `Uitsplitsing naar “${u.tekst}” – ${naam} (${nTekst(s.n)})`,
+    'Gemiddelde score per thema (1 = laagst, 5 = hoogst)',
+  ];
+  const kop = (t) => {
+    regels.push('', t);
+  };
+  kop(`Iedereen (${nTekst(s.n)})`);
+  for (const t of s.themas) regels.push(`- ${t.naam}: ${getal(t.gemiddelde, 1)}`);
+  for (const g of u.groepen) {
+    const groepNaam = g.samengevoegd && g.samengevoegd.length ? `${g.label}: ${g.samengevoegd.join(', ')}` : g.label;
+    if (g.verborgen) {
+      kop(`${groepNaam} – niet getoond`);
+      if (g.reden) regels.push(g.reden);
+      continue;
+    }
+    kop(`${groepNaam} (${nTekst(g.n)})`);
+    for (const t of g.themas) regels.push(`- ${t.naam}: ${t.verborgen ? VERBORGEN : getal(t.gemiddelde, 1)}`);
+    for (const cv of u.cijfervragen || []) {
+      const c = (g.cijfers || []).find((x) => x.vraag_id === cv.vraag_id);
+      const waarde = !c || c.verborgen ? VERBORGEN
+        : cv.schaal_soort === 'nps' ? `eNPS ${metTeken(c.enps, 0)}` : `gemiddeld ${getal(c.gemiddelde, 1)}`;
+      regels.push(`- ${cijferKolomNaam(cv)}: ${waarde}`);
+    }
+  }
+  regels.push('', `Groepen en scores met minder dan ${u.drempel} respondenten worden niet apart getoond, zodat niemand herkenbaar is.`);
+  if (uitsplitsingIetsVerborgen(u)) regels.push(VERBORGEN_UITLEG);
+  return regels.join('\n');
+}
+
 /** ▲ 0,4 (met uitleg voor schermlezers). Met dec = null: zonder vaste decimalen (4,25 / 12). */
 function verschilEl(d, dec = 1, achtervoegsel = '') {
   if (!heeft(d)) return null;
@@ -1419,39 +1473,7 @@ export async function toon(container, ctx) {
 
   // ---------- 9. Uitsplitsing ----------
 
-  function snippetUitsplitsing() {
-    const s = data.selectie;
-    const u = s.uitsplitsing;
-    const regels = [
-      `Uitsplitsing naar “${u.tekst}” – ${lijstNaam()} (${nTekst(s.n)})`,
-      'Gemiddelde score per thema (1 = laagst, 5 = hoogst)',
-    ];
-    const kop = (t) => {
-      regels.push('', t);
-    };
-    kop(`Iedereen (${nTekst(s.n)})`);
-    for (const t of s.themas) regels.push(`- ${t.naam}: ${getal(t.gemiddelde, 1)}`);
-    for (const g of u.groepen) {
-      const naam = g.samengevoegd && g.samengevoegd.length ? `${g.label}: ${g.samengevoegd.join(', ')}` : g.label;
-      if (g.verborgen) {
-        kop(`${naam} – niet getoond`);
-        if (g.reden) regels.push(g.reden);
-        continue;
-      }
-      kop(`${naam} (${nTekst(g.n)})`);
-      for (const t of g.themas) {
-        regels.push(`- ${t.naam}: ${t.verborgen ? `niet getoond (minder dan ${u.drempel} respondenten)` : getal(t.gemiddelde, 1)}`);
-      }
-      for (const cv of u.cijfervragen || []) {
-        const c = (g.cijfers || []).find((x) => x.vraag_id === cv.vraag_id);
-        const waarde = !c || c.verborgen ? `niet getoond (minder dan ${u.drempel} respondenten)`
-          : cv.schaal_soort === 'nps' ? `eNPS ${metTeken(c.enps, 0)}` : `gemiddeld ${getal(c.gemiddelde, 1)}`;
-        regels.push(`- ${cijferKolomNaam(cv)}: ${waarde}`);
-      }
-    }
-    regels.push('', `Groepen en scores met minder dan ${u.drempel} respondenten worden niet apart getoond, zodat niemand herkenbaar is.`);
-    return regels.join('\n');
-  }
+  const snippetUitsplitsing = () => uitsplitsingTekst(data.selectie, lijstNaam());
 
   function groepNaamCel(g, reden = null) {
     return h('th', { scope: 'row', class: 'db-groep-naam' },
@@ -1461,25 +1483,19 @@ export async function toon(container, ctx) {
       !reden && g.toelichting ? h('span', { class: 'db-th-sub' }, g.toelichting) : null);
   }
 
-  /** Kopje van een cijferkolom in de uitsplitsing. */
-  function cijferKolomNaam(cv) {
-    return cv.schaal_soort === 'nps' ? `eNPS: ${kort(cv.tekst, 50)}` : `Cijfer: ${kort(cv.tekst, 50)}`;
-  }
+  /** Verborgen cel in de uitsplitsing: ×, net als bij de verdeling van een achtergrondvraag (PR-22). */
+  const verborgenTd = () => h('td', { class: 'rechts getal db-cel-verborgen' }, verborgenCel(null));
 
-  /** Cel van een cijferkolom: eNPS (0–10) of het gemiddelde cijfer (1–10), of "<5". */
-  function cijferCel(c, cv, drempel) {
-    if (c && c.verborgen) return groepCel(c, drempel);
+  /** Cel van een cijferkolom: eNPS (0–10) of het gemiddelde cijfer (1–10), of ×. */
+  function cijferCel(c, cv) {
+    if (c && c.verborgen) return verborgenTd();
     if (cv.schaal_soort === 'nps') return h('td', { class: 'rechts getal' }, c && heeft(c.enps) ? metTeken(c.enps, 0) : '–');
     return h('td', { class: 'rechts getal' }, c && heeft(c.gemiddelde) ? getal(c.gemiddelde, 1) : '–');
   }
 
-  /** Cel in de uitsplitsing: getal, of "<5" als het om te weinig respondenten gaat. */
-  function groepCel(w, drempel) {
-    if (w && w.verborgen) {
-      return h('td', { class: 'rechts getal db-cel-verborgen', title: `Minder dan ${drempel} respondenten; niet getoond` },
-        h('span', { 'aria-hidden': 'true' }, `<${drempel}`),
-        h('span', { class: 'sr-only' }, `minder dan ${drempel} respondenten, niet getoond`));
-    }
+  /** Cel in de uitsplitsing: het gemiddelde, of × als het niet getoond wordt. */
+  function groepCel(w) {
+    if (w && w.verborgen) return verborgenTd();
     return h('td', { class: 'rechts getal' }, w && heeft(w.gemiddelde) ? getal(w.gemiddelde, 1) : '–');
   }
 
@@ -1524,17 +1540,20 @@ export async function toon(container, ctx) {
     const rijen = u.groepen.map((g) => {
       if (g.verborgen) {
         // De reden staat bij de groepsnaam (blijft zichtbaar bij schuiven op een telefoon); nooit getallen.
+        // Elke cel is ×, net als een verborgen cel in een zichtbare groep (één teken in deze tabel, PR-22).
         return h('tr', { class: 'db-rij-verborgen' },
           groepNaamCel(g, g.reden || `Minder dan ${u.drempel} respondenten per groep; niet getoond om anonimiteit te beschermen.`),
-          h('td', { colspan: themas.length + cijferKolommen.length + 1, class: 'db-reden' }, 'Niet getoond'));
+          verborgenTd(),
+          themas.map(() => verborgenTd()),
+          cijferKolommen.map(() => verborgenTd()));
       }
       const perThema = new Map(g.themas.map((t) => [t.thema_id, t]));
       const perCijfer = new Map((g.cijfers || []).map((c) => [c.vraag_id, c]));
       return h('tr', {},
         groepNaamCel(g),
         h('td', { class: 'rechts getal' }, nl(g.n)),
-        themas.map((t) => groepCel(perThema.get(t.thema_id), u.drempel)),
-        cijferKolommen.map((cv) => cijferCel(perCijfer.get(cv.vraag_id), cv, u.drempel)));
+        themas.map((t) => groepCel(perThema.get(t.thema_id))),
+        cijferKolommen.map((cv) => cijferCel(perCijfer.get(cv.vraag_id), cv)));
     });
 
     // Per vraag (alleen zichtbare groepen)
@@ -1552,7 +1571,7 @@ export async function toon(container, ctx) {
             h('tbody', {}, schaalVragen.map((q) => h('tr', {},
               h('th', { scope: 'row', class: 'db-vraag-cel' }, q.tekst),
               h('td', { class: 'rechts getal' }, getal(q.gemiddelde, 1)),
-              zichtbaar.map((g) => groepCel((g.vragen || []).find((x) => x.vraag_id === q.id), u.drempel))))),
+              zichtbaar.map((g) => groepCel((g.vragen || []).find((x) => x.vraag_id === q.id)))))),
           )))
       : null;
 
@@ -1570,7 +1589,7 @@ export async function toon(container, ctx) {
       !zichtbaar.length
         ? melding((u.groepen.find((g) => g.verborgen) || {}).reden || `Geen enkele groep heeft ${u.drempel} of meer respondenten, dus er zijn geen resultaten per groep te tonen.`)
         : null,
-      zichtbaar.length && u.uitleg_cel ? h('p', { class: 'klein zacht' }, u.uitleg_cel) : null,
+      uitsplitsingIetsVerborgen(u) ? h('p', { class: 'klein zacht db-verborgen-uitleg' }, VERBORGEN_UITLEG) : null,
       zichtbaar.length && cijferKolommen.length
         ? h('p', { class: 'klein zacht' }, 'eNPS: percentage promotors (9–10) min percentage criticasters (0–6), van −100 tot +100. Een cijfervraag telt niet mee in de themascores.')
         : null,
