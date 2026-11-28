@@ -215,6 +215,7 @@ function regels(css, selector) {
 test('G8: codeknoppen zijn minstens 44 px hoog; op een smal scherm plakt het codeboek onder de antwoorden', () => {
   const css = lees('../public/css/scherm-coderen.css');
   assert.equal(regels(css, '.cd-codeknop')['min-height'], '44px');
+  assert.equal(regels(css, '.cd-codeboek').top, '72px', 'breed scherm: het codeboek plakt onder de vaste kop, niet erachter');
   const smal = /@media \(max-width: 900px\) \{([\s\S]*?)\n\}/.exec(css);
   assert.ok(smal, 'er is een blok voor smalle schermen');
   const m = smal[1];

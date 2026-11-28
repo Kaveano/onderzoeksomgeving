@@ -94,7 +94,8 @@
 .cd-ivtekst { width: 100%; background: var(--vlak-licht); }
 
 /* Codeboek */
-.cd-codeboek { position: sticky; top: var(--ruimte-4); padding: var(--ruimte-4); margin: 0; max-height: calc(100dvh - 2 * var(--ruimte-4)); overflow-y: auto; }
+/* Breed scherm: rechts naast de antwoorden, plakt onder de vaste kop (60 px + rand), net als .rp-zijkant. */
+.cd-codeboek { position: sticky; top: 72px; padding: var(--ruimte-4); margin: 0; max-height: calc(100dvh - 88px); overflow-y: auto; }
 .cd-codeboek > summary { cursor: pointer; font-weight: 650; color: var(--primair); margin-bottom: var(--ruimte-2); }
 .cd-codes { list-style: none; margin: var(--ruimte-2) 0; padding: 0; }
 .cd-code { padding: var(--ruimte-2) 0; border-bottom: 1px solid var(--rand); }
