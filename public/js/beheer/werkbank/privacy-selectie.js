@@ -305,28 +305,33 @@ export function ordeStatistieken(gesorteerd, d = DREMPEL) {
 /**
  * B6: heeft een variabele in de steekproef hooguit twee verschillende waarden, dan is een gemiddelde per groep een
  * aandeel. Dan geldt de regel voor kruistabellen (nullen tellen als klein). Geeft per groep true als de groep
- * niet getoond mag worden, of null als de variabele meer dan twee waarden heeft.
+ * niet getoond mag worden, of null als de variabele meer dan maxWaarden (standaard twee) waarden heeft.
+ * Met maxWaarden = Infinity (een indeling die als getal meedoet, P3) geldt de regel voor de kruistabel waarde × groep:
+ * gemiddelde en spreiding per groep zouden anders de verborgen cellen van die kruistabel verraden.
  * waarden: per rij de waarde; basis: rijen die meedoen; groep: per rij het groepsnummer (−1 = geen; zonder groep
  * telt alles als één groep).
  */
-export function tweeWaardenRegel(waarden, basis, groep, aantalGroepen, d = DREMPEL, buren = null) {
+export function tweeWaardenRegel(waarden, basis, groep, aantalGroepen, d = DREMPEL, buren = null, maxWaarden = 2) {
   const verschillend = [];
+  const gezien = new Set();
   for (let r = 0; r < basis.length; r++) {
     if (!basis[r]) continue;
     const x = waarden[r];
-    if (!verschillend.includes(x)) {
+    if (!gezien.has(x)) {
+      gezien.add(x);
       verschillend.push(x);
-      if (verschillend.length > 2) return null;
+      if (verschillend.length > maxWaarden) return null;
     }
   }
   verschillend.sort((a, b) => a - b);
+  const kolomNr = new Map(verschillend.map((x, i) => [x, i]));
   // Met één waarde is de andere kolom helemaal 0: dan is alles een "aandeel van 100%".
   const kolommen = verschillend.length === 1 ? 2 : verschillend.length;
   const kolomVan = new Int32Array(basis.length).fill(-1);
   const rijVan = new Int32Array(basis.length).fill(-1);
   for (let r = 0; r < basis.length; r++) {
     if (!basis[r]) continue;
-    kolomVan[r] = verschillend.indexOf(waarden[r]);
+    kolomVan[r] = kolomNr.get(waarden[r]);
     rijVan[r] = groep ? groep[r] : 0;
   }
   const ng = groep ? aantalGroepen : 1;

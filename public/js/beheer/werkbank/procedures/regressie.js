@@ -22,7 +22,8 @@ import {
   indelingAlsGetalFout, getalFout, ontbreektTekst,
 } from './basis.js';
 import { voegKleineSamen, herindeel, randenMetBuren } from './kruistabel.js';
-import { vorm } from './beschrijven.js';
+import { vorm, groepKeuze } from './beschrijven.js';
+import { LABEL_OVERIG } from '../../privacy.js';
 
 const ALFA = 0.05;
 const MAX_KOLOMMEN = 40;
@@ -146,7 +147,7 @@ function verschillend(v, basis) {
  * @returns {{ fout, niveau } | { basis, geldig, n, rijen: number[], X: number[][], kolommen: [{ label, voorspeller, blok }],
  *            voorspellers: [{ v, soort, blok, kolommen: number[], groep?, groepen?, aantallen?, referentie? }], meldingen }}
  */
-export function ontwerp(ds, ctx, { uitkomst = null, uitkomstGeldig = null, blokken, referentie = 'grootste' }) {
+export function ontwerp(ds, ctx, { uitkomst = null, uitkomstGeldig = null, blokken, referentie = 'grootste', groepenAlsGemiddelden = false }) {
   const lijst = [];
   const gezien = new Set();
   for (const [b, blok] of blokken.entries()) {
@@ -199,8 +200,29 @@ export function ontwerp(ds, ctx, { uitkomst = null, uitkomstGeldig = null, blokk
       mee.push(x);
       continue;
     }
-    // Een indeling: kleine groepen in de steekproef samenvoegen (regel A), daarna regel D voor de groepen.
-    const groepen = v.beschermd.groepen;
+    // Een indeling: groepen die bij de uitkomst niet apart getoond worden (zoals bij Gemiddelden per groep: klein, ter
+    // aanvulling of door het dashboard verborgen, P2), gaan eerst samen; een B per groep is anders een verschil in
+    // gemiddelden dat zo'n groep verraadt. Daarna kleine groepen in de steekproef samenvoegen (regel A) en regel D.
+    let groepen = v.beschermd.groepen;
+    // Bij een uitkomst met twee waarden geldt daarna de kruistabelregel per groep (B6), die de analyse zo nodig weigert.
+    if (groepenAlsGemiddelden && uitkomst && isGetal(uitkomst) && verschillend(uitkomst, basis).length > 2) {
+      const k = groepKeuze(ds, ctx, uitkomst, v);
+      if (!k.fout) {
+        const mee = new Set(k.keuze.mee);
+        const weg = groepen.map((_, i) => !mee.has(i));
+        if (weg.some(Boolean) && weg.some((w) => !w)) {
+          const eerste = weg.indexOf(true);
+          const naar = groepen.map((_, i) => (weg[i] ? eerste : i));
+          const nieuwNr = [...new Set(naar)];
+          const samen = groepen.filter((_, i) => weg[i]);
+          const nieuw = nieuwNr.map((oud) => (oud === eerste && samen.length > 1
+            ? { label: LABEL_OVERIG, labels: samen.flatMap((gr) => gr.labels), samengevoegd: true, metLeeg: samen.some((gr) => gr.metLeeg) }
+            : groepen[oud]));
+          x.groep = herindeel(x.groep, naar.map((n) => nieuwNr.indexOf(n)));
+          groepen = nieuw;
+        }
+      }
+    }
     const t = new Array(groepen.length).fill(0);
     for (let r = 0; r < ds.n; r++) if (basis[r]) t[x.groep[r]]++;
     const s = voegKleineSamen(t, groepen, ctx.d);
@@ -332,7 +354,7 @@ export async function regressie(ds, spec, ctx) {
   const u = begin(ds, spec, ctx, titel, `Score: ${y?.label || yId}; voorspellers: ${naam(blok1)}${blok2.length ? `; tweede blok: ${naam(blok2)}` : ''}`);
   const fout = getalFout(y);
   if (fout) return weiger(ds, spec, ctx, titel, 'fout', fout);
-  const o = ontwerp(ds, ctx, { uitkomst: y, blokken: [blok1, blok2], referentie: spec.opties?.referentie || 'grootste' });
+  const o = ontwerp(ds, ctx, { uitkomst: y, blokken: [blok1, blok2], referentie: spec.opties?.referentie || 'grootste', groepenAlsGemiddelden: true });
   if (o.fout) return weiger(ds, spec, ctx, titel, o.niveau, o.fout);
   await ctx.pauze();
   // De uitkomst: als getal te gebruiken (B26), geen weggevallen respondenten (B7), en bij twee waarden de

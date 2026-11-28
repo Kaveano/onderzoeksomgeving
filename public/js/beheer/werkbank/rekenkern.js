@@ -18,7 +18,7 @@ import { leesDefinities, controleerSpec, specRefs, DefinitieFout, controleerDefi
 import { PROCEDURES } from './procedures/index.js';
 import { geweigerd } from './uitvoer.js';
 import { ontbreektTekst } from './procedures/basis.js';
-import { beschrijving } from './procedures/beschrijven.js';
+import { beschrijving, selectieGroepenFout } from './procedures/beschrijven.js';
 import { cronbachAlpha } from '../statistiek.js';
 
 /** Fout bij "Stoppen". */
@@ -175,6 +175,11 @@ export function maakRekenkern() {
     // Alle vragenlijsten onder elkaar: elke vragenlijst apart is een buur (regel D tussen bronnen). Wat je hier
     // ziet, mag nooit 1 tot 4 mensen verschillen van hetzelfde bij één vragenlijst.
     selectie = metBuren(ds, selectie);
+    // P1: een selectie op een indeling mag geen groep losmaken die bij deze variabelen samen met andere verborgen blijft.
+    if (selectie && !selectie.impliciet) {
+      const fout = selectieGroepenFout(ds, { d: invoer.d, selectie: metBuren(ds, null), streng, nu }, selectie, specRefs(spec));
+      if (fout) return geweigerd(basis, 'privacy', fout);
+    }
     const pauze = async () => {
       if (signaal?.aborted) throw stopFout();
       await new Promise((klaar) => setTimeout(klaar, 0));

@@ -273,6 +273,8 @@ export function maakVariabele(ds, def) {
     return { tekst: 'Deze soort definitie maakt geen variabele.' };
   }
   if (def.definitie.uitleg) v.uitleg = def.definitie.uitleg;
+  // Waaruit de variabele is berekend: het verbergpatroon van het dashboard geldt ook voor een score uit die vragen (P2).
+  v.bronnen = refs;
   return { v };
 }
 

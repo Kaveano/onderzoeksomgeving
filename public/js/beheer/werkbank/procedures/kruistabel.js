@@ -8,9 +8,9 @@ import { chiKwadraat, chi2Sf, aanpassingsToets, effectGrootte } from '../../stat
 import { fisherExact2x2 } from '../verdelingen.js';
 import { tabel, cel, tekstCel, verborgenCel, aantalCel, voeg, melding, sluitAf, methode } from '../uitvoer.js';
 import {
-  P_GEEN_TOETS, P_TE_WEINIG, P_SAMENGEVOEGD, UITLEG_RESIDUEN, ZIN_SIG_VERBAND, ZIN_GEEN_SIG_VERBAND, LET_OP_VERBAND, g, apaZinnen, effectWoord,
+  P_GEEN_TOETS, P_TE_WEINIG, P_SAMENGEVOEGD, P_VERDELING_PER_GROEP, UITLEG_RESIDUEN, ZIN_SIG_VERBAND, ZIN_GEEN_SIG_VERBAND, LET_OP_VERBAND, g, apaZinnen, effectWoord,
 } from '../uitvoer-tekst.js';
-import { inSelectie, groepVanRijen, selectieControle, begin, weiger, overlapFout, variabelenUit, tel } from './basis.js';
+import { inSelectie, groepVanRijen, selectieControle, begin, weiger, overlapFout, variabelenUit, tel, isVastGetal } from './basis.js';
 
 const ALFA = 0.05;
 const som = (a) => a.reduce((t, x) => t + x, 0);
@@ -161,6 +161,11 @@ export function kruistabel(ds, spec, ctx) {
   const buren = buurTabellen(ctx.selectie, basisAlles, rij, kol, nr, nk, ctx.d);
   const verborgen = maskeerMetBuren(T, ctx.d, buren);
   const ietsWeg = verborgen.some((r) => r.some(Boolean));
+  // P3: een schaal- of cijfervraag per groep met verborgen of samengevoegde cellen is uit het gemiddelde en de spreiding
+  // per groep terug te rekenen (die staan op het dashboard en bij Gemiddelden per groep). Dan geen kruistabel.
+  for (const [v, ind] of [[a, ri], [b, ki]]) {
+    if (isVastGetal(v) && (ietsWeg || ind.groepen.some((x) => x.samengevoegd))) return weiger(ds, spec, ctx, titel, 'privacy', P_VERDELING_PER_GROEP(v.label));
+  }
   const rijTot = T.map(som);
   const kolTot = T[0].map((_, j) => som(T.map((r) => r[j])));
   u.gegevens.n = N;
@@ -262,6 +267,9 @@ export function aanpassing(ds, spec, ctx) {
   if (!rd) return weiger(ds, spec, ctx, titel, 'privacy', `Er blijven geen twee groepen van minstens ${ctx.d} respondenten over.`);
   nieuw = rd.groep;
   gr = rd.groepen;
+  // P3: met een selectie is dit de verdeling binnen die selectie; samengevoegde waarden van een schaal- of cijfervraag
+  // zijn dan uit het gemiddelde en de spreiding van de selectie terug te rekenen.
+  if (ctx.selectie && !ctx.selectie.impliciet && isVastGetal(v) && gr.some((x) => x.samengevoegd)) return weiger(ds, spec, ctx, titel, 'privacy', P_VERDELING_PER_GROEP(v.label));
   const waargenomen = new Array(gr.length).fill(0);
   for (let r = 0; r < ds.n; r++) if (basis[r] && nieuw[r] >= 0) waargenomen[nieuw[r]]++;
   // Verwacht: gelijk, of per categorie een aantal (bijvoorbeeld medewerkers); per groep opgeteld.

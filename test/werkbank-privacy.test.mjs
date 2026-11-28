@@ -467,6 +467,9 @@ function zichtbareAantallen(u, soort, wat) {
         if (Number.isFinite(r[1].w)) uit.set(`${wat}|${sleutel}`, r[1].w);
       }
     }
+    if (soort === 'beschrijvend' && t.id === 'beschrijvend') {
+      for (const r of t.rijen) if (Number.isFinite(r[1]?.w)) uit.set(`${wat}|${r[0].t}`, r[1].w);
+    }
     if (soort === 'regressie' && t.id === 'groepen') {
       t.rijen.forEach((r, i) => { if (Number.isFinite(r[2].w)) uit.set(`${wat}|${t.samenstelling[i].labels.join('+')}`, r[2].w); });
     }
@@ -516,6 +519,9 @@ test('scenario 12: "aanvaller" – geneste selecties geven nooit een verschil va
       if (!u3.geweigerd) for (const [k, v] of zichtbareAantallen(u3, 'kruis', 'kt')) alle.set(k, v);
       const u4 = await b.run('regressie', { afhankelijk: 'd:3', voorspellers: ['d:0'] }, { filter: f });
       if (!u4.geweigerd) for (const [k, v] of zichtbareAantallen(u4, 'regressie', 'rg')) alle.set(k, v);
+      // Ook een getal zonder indeling in de analyse: een selectie op S die geen verborgen groep losmaakt, mag (P1).
+      const u5 = await b.run('beschrijvend', { variabelen: ['d:3'] }, { filter: f });
+      if (!u5.geweigerd) for (const [k, v] of zichtbareAantallen(u5, 'beschrijvend', 'bs')) alle.set(k, v);
       uitvoeren.set(f, alle);
     }
     // Geneste paren: (iedereen, S) en (S met groepen V, S met V zonder één groep).

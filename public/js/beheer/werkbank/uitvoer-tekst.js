@@ -37,6 +37,18 @@ export const P_OPEN = (titel) => `Vragenlijst “${titel}” staat nog open: de 
 export const P_TE_VEEL_WAARDEN = 'Deze variabele heeft te veel verschillende waarden. Deel hem eerst in groepen in (Indelen in groepen).';
 export const P_INDELING_ALS_GETAL = (label) => `“${label}” is een indeling (zoals afdeling of leeftijd) met een groep van minder dan 5 mensen. Als getal gebruikt zou die groep terug te rekenen zijn. Gebruik hem als groep, of voeg eerst groepen samen (Indelen in groepen).`;
 export const P_TWEE_WAARDEN = (label) => `“${label}” heeft maar twee waarden; een gemiddelde is dan een percentage. Groepen die niet van beide waarden minstens 5 mensen hebben, zijn daarom niet getoond.`;
+/** P2: groepen die het dashboard bij deze vraag of dit thema verbergt (onderdrukAlles), ook als ze zelf groot genoeg zijn. */
+export const P_DASHBOARD_VERBORGEN = (namen) => `Niet meegenomen: ${opsomming(namen)}. Op het dashboard ${namen.length === 1 ? 'staat deze groep' : 'staan deze groepen'} hier niet, omdat anders een kleine groep bij deze vraag of bij een andere vraag van hetzelfde thema terug te rekenen is.`;
+/** P1: een selectie die groepen uit elkaar haalt die bij deze variabele samen verborgen blijven. */
+export const P_SELECTIE_GROEPEN = (variabele, indeling, namen) => `“${variabele}”: deze selectie op “${indeling}” haalt groepen uit elkaar die hier samen verborgen blijven (zoals bij Gemiddelden per groep en op het dashboard). Dan is een kleine groep terug te rekenen. Kies een selectie met ${opsomming(namen)} ${namen.length === 2 ? 'allebei' : 'allemaal'} erin of ${namen.length === 2 ? 'allebei' : 'allemaal'} eruit.`;
+/**
+ * P3: van een vraag met vaste waarden (schaal of cijfer) staan gemiddelde en spreiding per groep op het dashboard en in
+ * de werkbank. Een verdeling per groep of per selectie met verborgen of samengevoegde cellen is daaruit terug te
+ * rekenen, dus die tonen we niet.
+ */
+export const P_VERDELING_PER_GROEP = (label) => `“${label}”: per groep of selectie tonen we deze verdeling niet, omdat er cellen verborgen of samengevoegd zouden worden. Die zijn terug te rekenen uit het gemiddelde en de spreiding per groep (op het dashboard en bij Gemiddelden per groep). Deel “${label}” eerst in groepen in (Indelen in groepen), bijvoorbeeld ‘oneens’, ‘neutraal’ en ‘eens’; met die indeling kan het wel.`;
+/** P3: een indeling (zoals leeftijd) als getal per groep: een gemiddelde per groep verraadt dan de verdeling in die groep. */
+export const P_INDELING_PER_GROEP = (label) => `“${label}” is een indeling met vaste waarden. Een gemiddelde per groep verraadt dan hoeveel mensen in die groep elke waarde hebben. Groepen waarin een waarde bij minder dan 5 mensen voorkomt (of bij niemand), zijn daarom niet getoond.`;
 export const P_GEEN_DATA = 'Ruwe gegevens per respondent zie je hier niet, om de anonimiteit te beschermen. Wil je ermee werken in SPSS of Excel, gebruik dan de export bij Afronden.';
 export const MINMAX_NOOT = `* Minimum en maximum: de ${DREMPEL}e laagste en de ${DREMPEL}e hoogste waarde. Zo hoort geen getal bij één persoon.`;
 

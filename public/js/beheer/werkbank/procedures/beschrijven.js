@@ -1,15 +1,16 @@
 // Werkbank: frequenties, beschrijvende statistiek en gemiddelden per groep (D2 §5.2). Zuivere module, geen DOM.
 
-import { REDEN, REDEN_LABELS, isVerdeling, isIndeling, isAchtergrond } from '../dataset.js';
+import { REDEN, REDEN_LABELS, isVerdeling, isIndeling, isAchtergrond, isGetal } from '../dataset.js';
 import { verbergMet, ordeStatistieken, tweeWaardenRegel, weggevallenRegel, groepBuren, selectieFout } from '../privacy-selectie.js';
 import { tKwantiel, momenten } from '../../statistiek.js';
 import { tabel, cel, tekstCel, verborgenCel, aantalCel, voeg, melding, sluitAf } from '../uitvoer.js';
 import {
   P_TE_VEEL_WAARDEN, P_GROEP_KLEIN, P_OOK_NIET, P_SAMENGEVOEGD, P_WEGGEVALLEN, P_TWEE_WAARDEN, MINMAX_NOOT, UITLEG_FREQUENTIES, g, apaZinnen,
+  P_DASHBOARD_VERBORGEN, P_INDELING_PER_GROEP, P_VERDELING_PER_GROEP, P_SELECTIE_GROEPEN,
 } from '../uitvoer-tekst.js';
 import {
   geldigMasker, inSelectie, iedereen, tel, groepVanRijen, kiesGroepen, selectieControle, selectieMelding, indelingAlsGetalFout,
-  getalFout, begin, weiger, overlapFout, ordinaalMelding, waardenIn, variabelenUit, buurReden,
+  getalFout, begin, weiger, overlapFout, ordinaalMelding, waardenIn, variabelenUit, buurReden, verborgenDoorDashboard, isVastGetal,
 } from './basis.js';
 
 const MAX_WAARDEN = 50;
@@ -115,6 +116,11 @@ function frequentieTabel(ds, v, ctx, u) {
       verschillen.push(verschil);
     }
     verborgen = verbergPerReeks(rijen, aantallen, ctx.d, { vooraf, verschillen });
+    // P3: binnen een selectie zijn verborgen antwoorden van een schaal- of cijfervraag terug te rekenen uit gemiddelde,
+    // spreiding, scheefheid en kurtosis van die selectie (Beschrijvende statistiek). Dan geen verdeling.
+    if (ctx.selectie && !ctx.selectie.impliciet && isVastGetal(v) && rijen.some((x, i) => x.geldig && verborgen[i])) {
+      return [melding('privacy', P_VERDELING_PER_GROEP(v.label))];
+    }
   } else {
     const fout = meningsvraagFout(ds, v, ctx, geldigMasker(ds, [v]));
     if (fout) return [melding('privacy', fout)];
@@ -383,11 +389,12 @@ export function beschrijvend(ds, spec, ctx) {
 // ---------- Gemiddelden per groep ----------
 
 /**
- * Groepen voor een getal-variabele v en indeling w (pergroep, t-toets, ANOVA): wie meedoet, met de regels
- * 'weglaten' (kleine groepen), D (selectie), B6 (twee waarden) en B7 (weggevallen respondenten).
- * @returns {{ basis, groep, ng, mee, meldingen, waarden: number[][] } | { fout, niveau }}
+ * Welke groepen van indeling w bij variabele v meedoen (pergroep, t-toets, ANOVA, regressie en de controle van een
+ * selectie), met de regels 'weglaten' (kleine groepen), D (selectie), B6 (twee waarden; bij een indeling die als getal
+ * meedoet: alle waarden, P3), B7 (weggevallen respondenten) en het verbergpatroon van het dashboard (P2).
+ * @returns {{ groep, ng, geldig, basisAlles, basis, aantallen, zonderGroep, keuze, redenen } | { fout, niveau }}
  */
-export function groepenVoor(ds, ctx, v, w) {
+export function groepKeuze(ds, ctx, v, w) {
   const groep = groepVanRijen(ds, w);
   const ng = w.beschermd.groepen.length;
   const geldig = geldigMasker(ds, [v]);
@@ -404,23 +411,41 @@ export function groepenVoor(ds, ctx, v, w) {
   const sel = selectieControle(ctx, geldig);
   if (sel) return { fout: sel, niveau: 'privacy' };
   const uitgesloten = new Array(ng).fill(false);
-  const redenen = { selectie: [], tweeWaarden: [], weggevallen: [] };
+  const redenen = { selectie: [], tweeWaarden: [], weggevallen: [], dashboard: [] };
   groepBuren(ctx.selectie, basisAlles, groep, ng, ctx.d).forEach((x, i) => { if (x) { uitgesloten[i] = true; redenen.selectie.push(i); } });
-  const twee = tweeWaardenRegel(v.waarden, basis, groep, ng, ctx.d, ctx.selectie);
-  if (twee) twee.forEach((x, i) => { if (x && aantallen[i] > 0) { uitgesloten[i] = true; redenen.tweeWaarden.push(i); } });
+  // B6: twee waarden; een indeling als getal (P3): elke rij van de kruistabel waarde × groep zonder verborgen cel.
+  const twee = tweeWaardenRegel(v.waarden, basis, groep, ng, ctx.d, ctx.selectie, v.groepering ? Infinity : 2);
+  if (twee) twee.forEach((x, i) => { if (x && aantallen[i] > 0 && !uitgesloten[i]) { uitgesloten[i] = true; redenen.tweeWaarden.push(i); } });
   if (v.score) {
     const inGroep = new Uint8Array(ds.n);
     for (let r = 0; r < ds.n; r++) inGroep[r] = groep[r] >= 0 && (!ctx.selectie || ctx.selectie.F[r]) ? 1 : 0;
-    weggevallenRegel(v.reden, inGroep, groep, ng, ctx.d).forEach((x, i) => { if (x && aantallen[i] > 0) { uitgesloten[i] = true; redenen.weggevallen.push(i); } });
+    weggevallenRegel(v.reden, inGroep, groep, ng, ctx.d).forEach((x, i) => { if (x && aantallen[i] > 0 && !uitgesloten[i]) { uitgesloten[i] = true; redenen.weggevallen.push(i); } });
   }
+  // P2: wat het dashboard bij deze vraag of dit thema (of de vragen waaruit een score bestaat) in een groep verbergt,
+  // verbergt de werkbank ook. Kleine groepen houden hun eigen reden ("minder dan 5").
+  const dash = verborgenDoorDashboard(ds, ctx, v, w);
+  if (dash) dash.forEach((x, i) => { if (x && aantallen[i] >= ctx.d && !uitgesloten[i]) { uitgesloten[i] = true; redenen.dashboard.push(i); } });
   const keuze = kiesGroepen(aantallen, { extraVerborgen: zonderGroep, uitgesloten, d: ctx.d });
+  return { groep, ng, geldig, basisAlles, basis, aantallen, zonderGroep, keuze, redenen };
+}
+
+/**
+ * Groepen voor een getal-variabele v en indeling w (pergroep, t-toets, ANOVA): wie meedoet (groepKeuze), met de
+ * meldingen waarom groepen niet meedoen.
+ * @returns {{ basis, groep, ng, mee, meldingen, waarden: number[][] } | { fout, niveau }}
+ */
+export function groepenVoor(ds, ctx, v, w) {
+  const k = groepKeuze(ds, ctx, v, w);
+  if (k.fout) return k;
+  const { groep, ng, basis, keuze, redenen } = k;
   const naam = (i) => w.beschermd.groepen[i].label;
   const meldingen = [];
   const samengevoegd = w.beschermd.groepen.filter((gr) => gr.samengevoegd);
   if (samengevoegd.length) meldingen.push(melding('privacy', P_SAMENGEVOEGD(samengevoegd[0].labels, samengevoegd[0].metLeeg)));
   if (keuze.klein.length) meldingen.push(melding('privacy', P_GROEP_KLEIN(keuze.klein.map(naam))));
   if (redenen.weggevallen.length) meldingen.push(melding('privacy', `${redenen.weggevallen.map((i) => `“${naam(i)}”`).join(', ')}: ${P_WEGGEVALLEN}.`));
-  if (redenen.tweeWaarden.length) meldingen.push(melding('privacy', P_TWEE_WAARDEN(v.label)));
+  if (redenen.tweeWaarden.length) meldingen.push(melding('privacy', v.groepering && !twee2(v, basis) ? P_INDELING_PER_GROEP(v.label) : P_TWEE_WAARDEN(v.label)));
+  if (redenen.dashboard.length) meldingen.push(melding('privacy', P_DASHBOARD_VERBORGEN(redenen.dashboard.map(naam))));
   if (redenen.selectie.length) meldingen.push(melding('privacy', `Niet meegenomen, omdat ze ${buurReden(ctx)} maar een paar mensen verschillen: ${redenen.selectie.map((i) => `“${naam(i)}”`).join(', ')}.`));
   if (keuze.ookNiet.length) meldingen.push(melding('privacy', P_OOK_NIET(keuze.ookNiet.map(naam))));
   const waarden = Array.from({ length: ng }, () => []);
@@ -435,6 +460,54 @@ export function groepenVoor(ds, ctx, v, w) {
   const alsGetal = indelingAlsGetalFout(v, basis, ctx.d, ctx.selectie?.F);
   if (alsGetal) return { fout: alsGetal, niveau: 'privacy' };
   return { basis, groep, ng, mee: keuze.mee, meldingen, waarden, naam };
+}
+
+/**
+ * P1: een selectie op een indeling w mag de groepen die bij variabele v samen verborgen blijven (klein, ter aanvulling,
+ * of door het dashboard verborgen; groepKeuze zonder de selectie) niet uit elkaar halen. Bevat de selectie rijen uit
+ * die verborgen groepen, maar niet allemaal, dan zou een verborgen groep (of een deel ervan) met de selectie toch te
+ * zien zijn: met het totaal en de getoonde groepen is dan een kleine groep terug te rekenen.
+ * ctxZonder: dezelfde context zonder de eigen selectie (bij een gestapelde bron met de buren per vragenlijst).
+ * ids: de variabelen van de analyse. Geeft null (in orde) of de melding.
+ */
+export function selectieGroepenFout(ds, ctxZonder, selectie, ids) {
+  if (!selectie || selectie.impliciet || !selectie.voorwaarden?.length) return null;
+  const indelingen = [...new Set(selectie.voorwaarden.map((vw) => vw.variabele).filter(Boolean))]
+    .map((id) => ds.perId.get(id)).filter((w) => isIndeling(w));
+  for (const id of ids) {
+    const v = ds.perId.get(id);
+    if (!v || !v.analyseerbaar || v.soort === 'set') continue;
+    for (const w of indelingen) {
+      if (w.id === v.id) continue;
+      const k = groepKeuze(ds, ctxZonder, v, w);
+      if (k.fout) continue;
+      const mee = new Set(k.keuze.mee);
+      const verborgen = k.aantallen.map((n, i) => n > 0 && !mee.has(i));
+      if (!verborgen.some(Boolean)) continue;
+      let inM = 0;
+      let inF = 0;
+      for (let r = 0; r < ds.n; r++) {
+        if (!k.geldig[r] || k.groep[r] < 0 || !verborgen[k.groep[r]]) continue;
+        inM++;
+        if (selectie.F[r]) inF++;
+      }
+      if (inF > 0 && inF < inM) {
+        return P_SELECTIE_GROEPEN(v.label, w.label, w.beschermd.groepen.filter((_, i) => verborgen[i]).map((gr) => gr.label));
+      }
+    }
+  }
+  return null;
+}
+
+/** Heeft v in de basis hooguit twee waarden? (Dan gaat het om een percentage, B6.) */
+function twee2(v, basis) {
+  const gezien = new Set();
+  for (let r = 0; r < basis.length; r++) {
+    if (!basis[r]) continue;
+    gezien.add(v.waarden[r]);
+    if (gezien.size > 2) return false;
+  }
+  return true;
 }
 
 export function pergroep(ds, spec, ctx) {
