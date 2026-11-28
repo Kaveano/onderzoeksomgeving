@@ -706,6 +706,10 @@ test('niet-gekoppelde groepen in het personeelsbestand: een eigen reden en een z
   const twee = kern(kenmerkExport([20, 15, 10]), {}, bestand([['Groep A', 30], ['Keukenteam', 38], ['Stagiairs', 6]])).kenmerken[0];
   assert.deepEqual(twee.ongekoppeld, ['Keukenteam', 'Stagiairs']);
   assert.equal(twee.groepen.find((g) => g.label === 'Groep A').populatie, 30);
+  // Alleen Groep A is vergeleken: geen 100% tegen 100%, geen verschil en geen figuur.
+  assert.deepEqual([twee.groepen[0].pct_vergelijk, twee.groepen[0].verschil_pp, twee.representativiteit.verschillen], [null, null, []]);
+  assert.deepEqual(R.samenstellingTabel(twee).rijen[0].cellen.slice(0, 6), ['Groep A', '20', '–', '30', '–', '–']);
+  assert.equal(R.kerncijferFiguren(kern(kenmerkExport([20, 15, 10]), {}, bestand([['Groep A', 30], ['Keukenteam', 38], ['Stagiairs', 6]]))).find((f) => f.id.startsWith('samenstelling-')), undefined);
   assert.match(R.ongekoppeldZin(twee), /^In het personeelsbestand staan groepen die bij geen antwoord van deze vraag horen \(Keukenteam, Stagiairs\)\. .*koppel ze aan een antwoord/);
   // Geen enkele mogelijkheid gekoppeld: geen vergelijking, wel de zin.
   const niets = kern(kenmerkExport([20, 15, 10]), {}, bestand([['Keukenteam', 38], ['Staf', 40]])).kenmerken[0];

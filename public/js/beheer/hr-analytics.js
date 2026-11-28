@@ -397,7 +397,8 @@ function samenstelling(q, lijst, instellingen, personeel, d) {
   if (pop) {
     const nV = vergelijk.reduce((t, g) => t + g.n, 0);
     const pV = vergelijk.reduce((t, g) => t + g.populatie, 0);
-    for (const g of vergelijk) {
+    // Eén vergeleken groep is altijd 100% tegen 100%: dan geen percentages, verschil of figuur.
+    for (const g of vergelijk.length >= 2 ? vergelijk : []) {
       g.pct_vergelijk = pct(g.n, nV);
       const pp = pct(g.populatie, pV);
       g.verschil_pp = g.pct_vergelijk !== null && pp !== null ? g.pct_vergelijk - pp : null;
@@ -409,7 +410,7 @@ function samenstelling(q, lijst, instellingen, personeel, d) {
     const basisR = {
       chi2: null, df: null, p: null, n: nV, kleinste_verwacht: null, populatie_bron: pop.bron, niet_vergeleken: nietVergeleken, niet_gekoppeld: nietGekoppeld,
     };
-    const verschillen = vergelijk.map((g) => ({ label: g.label, pct_respondenten: g.pct_vergelijk, pct_medewerkers: g.populatie_pct_vergelijk, verschil_pp: g.verschil_pp }));
+    const verschillen = vergelijk.filter((g) => g.verschil_pp !== null).map((g) => ({ label: g.label, pct_respondenten: g.pct_vergelijk, pct_medewerkers: g.populatie_pct_vergelijk, verschil_pp: g.verschil_pp }));
     if (!toets || toets.reden) {
       representativiteit = { oordeel: 'niet_te_toetsen', reden: toets?.reden || 'klein', ...basisR, verschillen, afwijkend: [] };
     } else {
