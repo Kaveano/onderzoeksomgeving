@@ -793,6 +793,47 @@ function kolomVerborgen(aantallen, vooraf, d) {
   return cellen.map((c) => c.verborgen);
 }
 
+/**
+ * De groepen van een indeling die in de tabel per groep niet getoond worden (zoals personeelKpis ze verbergt): een Map
+ * label → aantal medewerkers. Ook populatieVoorVraag en de aandelen van de organisatie houden hier rekening mee.
+ */
+export function verborgenGroepen(aggregaat, dim, d = DREMPEL) {
+  const gs = aggregaat?.dimensies?.[dim]?.groepen || [];
+  const weg = kolomVerborgen(gs.map((g) => g.medewerkers), gs.map(() => false), d).map((w, i) => w || !!gs[i].klein);
+  return new Map(gs.filter((_, i) => weg[i]).map((g) => [g.label, g.medewerkers]));
+}
+
+/**
+ * Zou een getal over een deel van de groepen (binnen(label): true, false, of null = gedeeltelijk) een verborgen groep
+ * los laten zien? Dat gebeurt als het deel sommige verborgen groepen wel en andere niet bevat, of een verborgen groep
+ * maar voor een deel. Bevat het alle verborgen groepen of geen enkele, dan is er niets nieuws te zien: het totaal van de
+ * verborgen groepen volgt al uit het totaal min de getoonde groepen. Verborgen groepen met 0 tellen niet mee: daarvan
+ * zou je alleen zien dat ze leeg zijn, en de andere verborgen groepen blijven samen.
+ * verborgen: Map label → aantal (verborgenGroepen).
+ */
+export function splitstVerborgen(verborgen, binnen) {
+  if (!verborgen?.size) return false;
+  let wel = 0;
+  let niet = 0;
+  for (const [label, n] of verborgen) {
+    if (n === 0) continue;
+    const b = binnen(label);
+    if (b === null) return true;
+    if (b) wel++;
+    else niet++;
+  }
+  return wel > 0 && niet > 0;
+}
+
+/** Ligt een klasse van een indeling (leeftijd …) helemaal vanaf de grens (true), helemaal eronder (false) of erover heen (null)? */
+const vanafGrens = (klassen, grens) => (label) => {
+  const k = klassen.get(label);
+  if (!k) return false; // Onbekend: hoort nergens bij
+  if (k.van !== null && k.van >= grens) return true;
+  if (k.tot !== null && k.tot <= grens) return false;
+  return null;
+};
+
 /** Een verdeling [{ label, n, pct }] met verbergReeks (kleine aantallen weg, nullen erbij als er iets weg is). */
 function verdeling(labels, aantallen, totaal, d) {
   const weg = verbergReeks(aantallen, d);
@@ -849,16 +890,30 @@ export function personeelKpis(aggregaat, { d = DREMPEL } = {}) {
     ? verdeling(REDEN_SLEUTELS.map((s) => REDEN_LABELS[s]), REDEN_SLEUTELS.map((s) => t.uitstroom_reden[s] || 0), t.uitstroom, d)
     : [];
   const eigenVerzoekZichtbaar = redenen.length > 0 && !redenen[0].verborgen;
+  // Aandelen van de organisatie mogen een verborgen groep uit de tabel per groep (of de leeftijdsopbouw) niet los laten
+  // zien: "55 jaar of ouder" min "60 jaar of ouder" zou anders de verborgen klasse 55–60 geven, en daarmee ook de kleine
+  // klasse die zij beschermt. Dat geldt voor de teller en voor de noemer (iedereen van wie het gegeven bekend is).
+  const bekend = (label) => label !== ONBEKEND;
+  const leeftijdKlassen = new Map((aggregaat.dimensies?.leeftijd?.klassen || []).map((c) => [c.label, c]));
+  const leeftijdGroepen = aggregaat.dimensies?.leeftijd?.groepen || [];
+  const verborgenLeeftijd = verborgenGroepen(aggregaat, 'leeftijd', d);
+  dimVerdeling('leeftijd').forEach((x, i) => { if (x.verborgen) verborgenLeeftijd.set(x.label, leeftijdGroepen[i].medewerkers); });
+  const leeftijdVeilig = (grens) => !splitstVerborgen(verborgenLeeftijd, vanafGrens(leeftijdKlassen, grens)) && !splitstVerborgen(verborgenLeeftijd, bekend);
+  const verborgenGeslacht = verborgenGroepen(aggregaat, 'geslacht', d);
+  const geslachtAantallen = [t.geslacht?.Man || 0, t.geslacht?.Vrouw || 0, t.geslacht?.Anders || 0, t.medewerkers - geslachtN];
+  geslacht.forEach((x, i) => { if (x.verborgen) verborgenGeslacht.set(x.label, geslachtAantallen[i]); });
+  const verborgenLeiding = verborgenGroepen(aggregaat, 'leidinggevend', d);
+  const deelVeilig = (verborgen, label) => !splitstVerborgen(verborgen, (l) => l === label) && !splitstVerborgen(verborgen, bekend);
   const totaal = {
     medewerkers: t.medewerkers,
     fte: zeker(t.fte, kan('fte')),
     gem_leeftijd: zeker(k.gem_leeftijd, t.leeftijd_n >= d),
-    pct_55plus: zeker(k.pct_55plus, veiligAandeel(t.n_55plus, t.leeftijd_n, d)),
-    pct_60plus: zeker(k.pct_60plus, veiligAandeel(t.n_60plus, t.leeftijd_n, d)),
-    pct_vrouw: zeker(k.pct_vrouw, kan('pct_vrouw') && veiligAandeel(t.geslacht.Vrouw, geslachtN, d) && !geslacht[1]?.verborgen),
+    pct_55plus: zeker(k.pct_55plus, veiligAandeel(t.n_55plus, t.leeftijd_n, d) && leeftijdVeilig(55)),
+    pct_60plus: zeker(k.pct_60plus, veiligAandeel(t.n_60plus, t.leeftijd_n, d) && leeftijdVeilig(60)),
+    pct_vrouw: zeker(k.pct_vrouw, kan('pct_vrouw') && veiligAandeel(t.geslacht.Vrouw, geslachtN, d) && !geslacht[1]?.verborgen && deelVeilig(verborgenGeslacht, 'Vrouw')),
     gem_diensttijd_jaar: zeker(k.gem_diensttijd_jaar, t.diensttijd_n >= d),
     pct_deeltijd: zeker(k.pct_deeltijd, veiligAandeel(t.n_deeltijd, t.deeltijd_n, d)),
-    pct_leidinggevend: zeker(k.pct_leidinggevend, veiligAandeel(t.n_leidinggevend, t.leidinggevend_n, d)),
+    pct_leidinggevend: zeker(k.pct_leidinggevend, veiligAandeel(t.n_leidinggevend, t.leidinggevend_n, d) && deelVeilig(verborgenLeiding, 'Ja')),
     verzuim_pct: zeker(k.verzuim_pct, !!v),
     meldingsfrequentie: zeker(k.meldingsfrequentie, !!v),
     gem_duur_per_melding: zeker(k.gem_duur_per_melding, !!v),
@@ -934,13 +989,16 @@ export function personeelKpis(aggregaat, { d = DREMPEL } = {}) {
  *   medewerkers. Komt geen enkele mogelijkheid overeen, dan null.
  * "Dat zeg ik liever niet" en "Onbekend" krijgen geen aantal.
  */
-export function populatieVoorVraag(aggregaat, vraag) {
+export function populatieVoorVraag(aggregaat, vraag, { d = DREMPEL } = {}) {
   const dim = DIMENSIE_VAN_KENMERK[vraag?.kenmerk];
   const dd = aggregaat?.dimensies?.[dim];
   if (!dd || !Array.isArray(dd.groepen)) return null;
   const opties = optiesVan(vraag).filter((o) => o && !isLieverNiet(o.label));
   if (!opties.length) return null;
   const groepen = dd.groepen.filter((g) => g.label !== ONBEKEND);
+  // Een mogelijkheid die een deel van de verborgen groepen van de personeelscijfers dekt, krijgt geen aantal: anders zou
+  // je een verborgen groep kunnen terugrekenen door dit aantal naast de tabel per groep te leggen.
+  const verborgen = verborgenGroepen(aggregaat, dim, d);
   const uit = {};
   if (KLASSEN[dim]) {
     const klassen = new Map((dd.klassen || []).map((k) => [k.label, k]));
@@ -950,13 +1008,17 @@ export function populatieVoorVraag(aggregaat, vraag) {
       if (!k) return null;
       // Past elke klasse helemaal binnen of helemaal buiten de mogelijkheid?
       let som = 0;
+      const erin = new Set();
       for (const c of dd.klassen || []) {
         const binnen = (k.van === null || (c.van !== null && c.van >= k.van)) && (k.tot === null || (c.tot !== null && c.tot <= k.tot));
         const buiten = (k.tot !== null && c.van !== null && c.van >= k.tot) || (k.van !== null && c.tot !== null && c.tot <= k.van);
         if (!binnen && !buiten) return null;
-        if (binnen) som += metGrens.find((x) => x.k.label === c.label)?.g.medewerkers || 0;
+        if (binnen) {
+          som += metGrens.find((x) => x.k.label === c.label)?.g.medewerkers || 0;
+          erin.add(c.label);
+        }
       }
-      uit[o.id] = som;
+      if (!splitstVerborgen(verborgen, (label) => erin.has(label))) uit[o.id] = som;
     }
     return uit;
   }
@@ -964,7 +1026,8 @@ export function populatieVoorVraag(aggregaat, vraag) {
   for (const o of opties) {
     const g = groepen.find((x) => normaal(x.label) === normaal(o.label));
     if (g) gevonden++;
-    uit[o.id] = g ? g.medewerkers : 0;
+    if (!g) uit[o.id] = 0;
+    else if (!splitstVerborgen(verborgen, (label) => label === g.label)) uit[o.id] = g.medewerkers;
   }
   return gevonden ? uit : null;
 }

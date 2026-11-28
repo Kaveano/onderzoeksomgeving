@@ -473,3 +473,76 @@ test('ontbreekt: kengetallen zonder kolom staan in de lijst', () => {
   assert.equal(aggregaat.totaal.verzuim, null);
   for (const k of ontbreekt) assert.ok(P.KENGETALLEN[k], k);
 });
+
+// ---------- Terugrekenen tussen de kengetallen, de tabel per groep en de populatie (fase B) ----------
+
+test('aandelen 55+ en 60+ splitsen de verborgen leeftijdsklassen niet: anders volgt de kleine klasse uit het verschil', () => {
+  // Klassen op 2026-10: <25: 2 (klein), 25–35: 30, 35–45: 30, 45–55: 30, 55–60: 12, 60+: 20.
+  // De klasse <25 is verborgen en daarmee ook de kleinste andere (55–60). "55 jaar of ouder" min "60 jaar of ouder"
+  // zou 55–60 geven en dus ook <25: 55+ blijft weg, 60+ mag (die klasse staat zelf al in de tabel).
+  const rijen = [
+    ...groep(2, { geboren: '2004-01-01' }), ...groep(30, { geboren: '1996-01-01' }), ...groep(30, { geboren: '1986-01-01' }),
+    ...groep(30, { geboren: '1976-01-01' }), ...groep(12, { geboren: '1969-01-01' }), ...groep(20, { geboren: '1963-01-01' }),
+  ];
+  const { aggregaat } = verwerk(rijen);
+  const verborgen = P.verborgenGroepen(aggregaat, 'leeftijd');
+  assert.deepEqual([...verborgen.keys()].sort(), ['55 tot 60 jaar', 'Jonger dan 25 jaar'].sort());
+  const k = P.personeelKpis(aggregaat);
+  assert.equal(k.totaal.pct_55plus, null);
+  assert.equal(k.totaal.pct_60plus, (20 / 124) * 100);
+  assert.deepEqual(k.totaal.leeftijd.filter((x) => x.verborgen).map((x) => x.label).sort(), [...verborgen.keys()].sort());
+  // Geen verborgen klassen: allebei zichtbaar.
+  const ruim = P.personeelKpis(verwerk([...groep(6, { geboren: '2004-01-01' }), ...rijen.slice(2)]).aggregaat);
+  assert.equal(ruim.totaal.pct_55plus, (32 / 128) * 100);
+  assert.equal(ruim.totaal.pct_60plus, (20 / 128) * 100);
+  // De verborgen klassen allebei vanaf 55 (55–60: 3 en 60+: 4): 55+ dekt alle verborgen klassen en mag; 60+ splitst ze.
+  const oud = P.personeelKpis(verwerk([...groep(30, { geboren: '1996-01-01' }), ...groep(3, { geboren: '1969-01-01' }), ...groep(4, { geboren: '1963-01-01' })]).aggregaat);
+  assert.equal(oud.totaal.pct_55plus, (7 / 37) * 100);
+  assert.equal(oud.totaal.pct_60plus, null);
+});
+
+test('aandeel leidinggevend en vrouw: niet als de noemer (bekend) een verborgen groep van "Onbekend" scheidt', () => {
+  const kop = ['Leidinggevend', 'Geslacht', 'Afdeling'];
+  const rollen = { 0: 'leidinggevend', 1: 'geslacht', 2: 'afdeling' };
+  const r = (lg, g, n) => Array.from({ length: n }, () => [lg, g, 'Zorg']);
+  // Leidinggevend: Ja 20, Nee 6, Onbekend 2 → Onbekend en Nee verborgen. Ja / (Ja + Nee) zou Nee geven en dus Onbekend.
+  // Geslacht: V 20, M 6, onbekend 2 → zelfde situatie.
+  const rijen = [...r('ja', 'V', 20), ...r('nee', 'M', 6), ...r('', '', 2)];
+  const { aggregaat } = P.verwerkPersoneel(kop, rijen, { rollen, periode: PERIODE });
+  const k = P.personeelKpis(aggregaat);
+  assert.equal(k.totaal.pct_leidinggevend, null);
+  assert.equal(k.totaal.pct_vrouw, null);
+  // Zonder onbekenden: gewoon zichtbaar.
+  const goed = P.personeelKpis(P.verwerkPersoneel(kop, [...r('ja', 'V', 20), ...r('nee', 'M', 6)], { rollen, periode: PERIODE }).aggregaat);
+  assert.equal(goed.totaal.pct_leidinggevend, (20 / 26) * 100);
+  assert.equal(goed.totaal.pct_vrouw, (20 / 26) * 100);
+});
+
+test('populatie per mogelijkheid: geen aantal als de mogelijkheid een deel van de verborgen groepen dekt', () => {
+  const rijen = [
+    ...groep(2, { geboren: '2004-01-01' }), ...groep(30, { geboren: '1996-01-01' }), ...groep(30, { geboren: '1986-01-01' }),
+    ...groep(30, { geboren: '1976-01-01' }), ...groep(12, { geboren: '1969-01-01' }), ...groep(20, { geboren: '1963-01-01' }),
+  ];
+  const { aggregaat } = verwerk(rijen);
+  // Fijn: <25, 25–35, 35–45, 45–55, 55+. "Jonger dan 25" (2) en "55 jaar of ouder" (12 + 20) splitsen {<25, 55–60}.
+  const fijn = vraagVan('leeftijd', KENMERKVRAGEN.leeftijd.varianten.fijn.map((o) => o.label));
+  assert.deepEqual(P.populatieVoorVraag(aggregaat, fijn), { o2: 30, o3: 30, o4: 30 });
+  // Grof: <35 (2 + 30), 35–55, 55+: <35 bevat <25 maar niet 55–60 → ook geen aantal.
+  const grof = vraagVan('leeftijd', KENMERKVRAGEN.leeftijd.varianten.grof);
+  assert.deepEqual(P.populatieVoorVraag(aggregaat, grof), { o2: 60 });
+  // Afdelingen: een verborgen afdeling krijgt geen aantal; nooit een aantal onder de 5.
+  const afd = verwerk([...groep(3, { afdeling: 'Staf' }), ...groep(8, { afdeling: 'ICT' }), ...groep(20, { afdeling: 'Zorg' })]).aggregaat;
+  assert.deepEqual(P.populatieVoorVraag(afd, vraagVan('afdeling', ['Staf', 'ICT', 'Zorg', 'Keuken'])), { o3: 20, o4: 0 });
+  for (const v of Object.values(P.populatieVoorVraag(afd, vraagVan('afdeling', ['Staf', 'ICT', 'Zorg'])))) assert.ok(v === 0 || v >= 5);
+});
+
+test('zwangerschaps- en bevallingsverlof (K S4): alleen met een verzuimkolom, als vaste keuze', () => {
+  const metVerzuim = verwerk(groep(12, { dagen: 3, meldingen: 1 }), { zwangerschapsverlof: 'telt_niet' }).aggregaat;
+  assert.equal(metVerzuim.zwangerschapsverlof, 'telt_niet');
+  assert.equal(P.personeelKpis(metVerzuim).zwangerschapsverlof, 'telt_niet');
+  // Onzin of zonder verzuimkolom: niet in het aggregaat.
+  assert.equal(verwerk(groep(12), { zwangerschapsverlof: 'misschien' }).aggregaat.zwangerschapsverlof, undefined);
+  const zonder = P.verwerkPersoneel(['Afdeling'], groep(12).map((x) => [x[3]]), { rollen: { 0: 'afdeling' }, periode: PERIODE, zwangerschapsverlof: 'telt_mee' });
+  assert.equal(zonder.aggregaat.zwangerschapsverlof, undefined);
+  assert.deepEqual(Object.keys(P.ZWANGERSCHAPSVERLOF).sort(), ['onbekend', 'telt_mee', 'telt_niet']);
+});

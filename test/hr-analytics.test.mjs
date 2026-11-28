@@ -579,3 +579,44 @@ test('rekentijd: verzamelKerncijfers op 3.000 respondenten × 100 vragen in mind
   assert.ok(ms < 1500, `${Math.round(ms)} ms`);
   R.controleerKerncijfers(k);
 });
+
+// ---------- Fase B: de tabel "Wie deden mee" (scherm, Word en Excel) en de validatie van het aggregaat ----------
+
+test('samenstellingTabel: zonder organisatie Groep/Respondenten/%; met organisatie het verschil van de afgeronde percentages', async () => {
+  const zonder = R.samenstellingTabel(kern(kenmerkExport([18, 9, 6, 7])).kenmerken[0]);
+  assert.equal(zonder.metOrganisatie, false);
+  assert.deepEqual(zonder.kop, ['Groep', 'Respondenten', '%']);
+  assert.deepEqual(zonder.rijen.map((r) => r.cellen), [['Groep A', '18', '45%'], ['Groep B', '9', '23%'], ['Groep C', '6', '15%'], ['Groep D', '7', '18%']]);
+  const km = kern(kenmerkExport([18, 9, 6, 7], { populatie: [60, 20, 25, 15] })).kenmerken[0];
+  const t = R.samenstellingTabel(km);
+  assert.equal(t.metOrganisatie, true);
+  assert.equal(t.kop.length, 6);
+  for (const r of t.rijen) {
+    const [, , pR, , pM, verschil] = r.getallen;
+    assert.equal(verschil, pR - pM, 'het verschil klopt met de getoonde percentages');
+  }
+  assert.deepEqual(t.rijen.map((r) => r.getallen.slice(2)), [[45, 60, 50, -5], [23, 20, 17, 6], [15, 25, 21, -6], [18, 15, 13, 5]]);
+  assert.ok(t.noten.includes(R.VERGELIJK_UITLEG));
+  // Gemaskeerd: de kleine groepen samen, een verborgen populatie is ×, "Niet ingevuld" wordt niet vergeleken.
+  const m = R.samenstellingTabel(kern(kenmerkExport([18, 9, 3, 1, 9], { populatie: [60, 25, 3, 5, 20], nietIngevuld: 12 })).kenmerken[0]);
+  const tekst = JSON.stringify(m.rijen.map((r) => r.cellen));
+  assert.ok(!/"[1-4]"/.test(tekst), 'geen zichtbaar aantal van 1 tot 4');
+  const ni = m.rijen.find((r) => r.cellen[0] === 'Niet ingevuld');
+  assert.ok(ni && ni.cellen[3] === '–' && ni.vergeleken === false);
+  // Excel gebruikt dezelfde getallen.
+  const blad = R.kerncijferBladen({ ...kern(kenmerkExport([18, 9, 6, 7], { populatie: [60, 20, 25, 15] })) }).find((b) => b.naam === 'Samenstelling');
+  assert.deepEqual(blad.rijen[1].slice(1, 7), ['Groep A', 18, 45, 60, 50, -5]);
+});
+
+test('controleerPersoneelsaggregaat: zwangerschapsverlof alleen als vaste keuze en met een verzuimkolom', async () => {
+  const { controleerPersoneelsaggregaat } = await import('../src/lib/hr-validatie.js');
+  const kop = ['Afdeling', 'Verzuimdagen', 'Ziekmeldingen'];
+  const rijen = Array.from({ length: 12 }, (_, i) => ['Zorg', i % 3, i % 2]);
+  const periode = { van: '2025-11', tot: '2026-10' };
+  const met = verwerkPersoneel(kop, rijen, { rollen: { 0: 'afdeling', 1: 'verzuimdagen', 2: 'verzuimmeldingen' }, periode, zwangerschapsverlof: 'telt_mee' }).aggregaat;
+  assert.equal(controleerPersoneelsaggregaat(structuredClone(met)).zwangerschapsverlof, 'telt_mee');
+  assert.throws(() => controleerPersoneelsaggregaat({ ...structuredClone(met), zwangerschapsverlof: 'ja hoor' }), /zwangerschaps/);
+  const zonder = verwerkPersoneel(['Afdeling'], rijen.map((r) => [r[0]]), { rollen: { 0: 'afdeling' }, periode }).aggregaat;
+  assert.equal(controleerPersoneelsaggregaat(structuredClone(zonder)).zwangerschapsverlof, undefined);
+  assert.throws(() => controleerPersoneelsaggregaat({ ...structuredClone(zonder), zwangerschapsverlof: 'telt_niet' }), /verzuimkolom/);
+});
