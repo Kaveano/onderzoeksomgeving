@@ -3,7 +3,7 @@
 
 import { h, vervang, maakDialoog, uniekeId, melding, meld, meldFout, vertraag, datum } from '../ui.js';
 import { GROEPEN, isGetal, isIndeling } from '../werkbank/dataset.js';
-import { naamFout, BEREKEN_FUNCTIES } from '../werkbank/definities.js';
+import { naamFout, BEREKEN_FUNCTIES, zelfdeScore } from '../werkbank/definities.js';
 import { spssNaam } from '../bestanden.js';
 import { P_GEEN_DATA } from '../werkbank/uitvoer-tekst.js';
 import { VERBORGEN, VERBORGEN_UITLEG } from '../privacy.js';
@@ -16,7 +16,21 @@ const ONTBREKEND = ['', 'leeg', 'weet niet', 'niet gevraagd', 'eigen code', 'te 
 /** G4: korte aanduiding bij een score die om B7 niet te gebruiken is (in keuzelijsten). */
 export const B7_KORT = '(niet te gebruiken: 1 tot 4 weggevallen)';
 const B7_UITLEG_THEMA = 'Niet te gebruiken: 1 tot 4 respondenten beantwoordden te weinig vragen van deze score en vallen weg. Maak met “Schaalscore maken” een score van dezelfde vragen met minimaal 1 beantwoorde vraag; dan valt niemand weg.';
+/** R11: de schaalscore van "Schaalscore maken" bestaat al; verwijs daarnaar in plaats van een tweede te maken. */
+export const AL_SCHAALSCORE = (naam) => `Er is al een schaalscore van deze vragen: ${naam}. Gebruik die; daarin valt niemand weg.`;
 const B7_UITLEG_EIGEN = 'Niet te gebruiken: 1 tot 4 respondenten beantwoordden te weinig vragen van deze score en vallen weg. Kies “Aanpassen” en zet het minimum aantal beantwoorde vragen op 1; dan valt niemand weg.';
+
+/** De uitleg bij een score die om B7 niet te gebruiken is; noemt de schaalscore als die er al is (R11). */
+function b7Uitleg(wb, v) {
+  if (v.bron !== 'thema' && v.bron !== 'meetpunt') return B7_UITLEG_EIGEN;
+  const al = alGemaakt(wb, vragenVanScore(wb, v));
+  return al ? `Niet te gebruiken: 1 tot 4 respondenten beantwoordden te weinig vragen van deze score en vallen weg. ${AL_SCHAALSCORE(al.naam)}` : B7_UITLEG_THEMA;
+}
+
+/** De eigen score die "Schaalscore maken" van deze vragen zou maken, als die er al is. */
+function alGemaakt(wb, items) {
+  return items.length ? zelfdeScore(wb.definities, { functie: 'gemiddelde', variabelen: items, min_geldig: 1 }, { datasetId: wb.datasetId() }) : null;
+}
 
 /** De schaalvragen van een thema- of meetpuntscore (dezelfde vragen als de score; G4). */
 function vragenVanScore(wb, v) {
@@ -192,6 +206,9 @@ export function berekenDialoog(wb, start = {}, bestaand = null) {
       if (!vars.length) return { fout: 'Kies de vragen of variabelen voor de score.' };
       const def = { functie: functie.value, variabelen: vars };
       if (min.value && ['gemiddelde', 'som'].includes(functie.value)) def.min_geldig = Number(min.value);
+      // R11: geen tweede score met precies dezelfde berekening (bijvoorbeeld twee keer "Schaalscore maken").
+      const dubbel = zelfdeScore(wb.definities, def, { datasetId: wb.datasetId(), zonderId: bestaand?.id ?? null });
+      if (dubbel) return { fout: `Er is al een schaalscore van deze vragen: ${dubbel.naam}. Gebruik die, of kies andere vragen of een ander minimum.` };
       return { soort: 'bereken', ...namen.lees(), definitie: def };
     },
   });
@@ -492,7 +509,19 @@ export function toonVariabelen(paneel, wb) {
             acties.push(h('button', { type: 'button', class: 'knop knop-klein knop-licht', onclick: () => wb.verwijderDefinitie(wb.definities.find((d) => d.id === v.definitie_id)) }, 'Verwijderen', h('span', { class: 'sr-only' }, `: ${v.naam}`)));
           } else {
             const items = v.b7 && (v.bron === 'thema' || v.bron === 'meetpunt') ? vragenVanScore(wb, v) : [];
-            if (items.length) {
+            const al = items.length ? alGemaakt(wb, items) : null;
+            if (al) {
+              // R11: die score is er al; laat hem zien in plaats van een tweede te maken.
+              acties.push(h('button', {
+                type: 'button', class: 'knop knop-klein knop-licht',
+                onclick: () => {
+                  keuze.zoek = al.naam;
+                  keuze.groep = '';
+                  toonVariabelen(paneel, wb);
+                  paneel.querySelector('input[type="search"]')?.focus();
+                },
+              }, `Toon ${al.naam}`));
+            } else if (items.length) {
               acties.push(h('button', {
                 type: 'button', class: 'knop knop-klein', 'aria-haspopup': 'dialog',
                 onclick: () => berekenDialoog(wb, { functie: 'gemiddelde', variabelen: items, min_geldig: 1, label: `${v.label} (minimaal 1 vraag)` }),
@@ -507,7 +536,7 @@ export function toonVariabelen(paneel, wb) {
           h('td', { 'data-label': 'Omschrijving' }, v.label,
             v.kenmerk ? h('span', { class: 'label wb-kenmerk-label' }, v.kenmerk.naam) : null,
             v.reden_niet ? h('span', { class: 'wb-klein zacht' }, v.reden_niet) : null,
-            v.b7 ? h('span', { class: 'wb-klein wb-waarschuwing' }, v.bron === 'thema' || v.bron === 'meetpunt' ? B7_UITLEG_THEMA : B7_UITLEG_EIGEN) : null,
+            v.b7 ? h('span', { class: 'wb-klein wb-waarschuwing' }, b7Uitleg(wb, v)) : null,
             v.uitleg ? h('span', { class: 'wb-klein zacht' }, v.uitleg) : null,
             (v.waarschuwingen || []).map((w) => h('span', { class: 'wb-klein wb-waarschuwing' }, w))),
           h('td', { 'data-label': 'Soort' }, SOORT[v.soort] || v.soort),

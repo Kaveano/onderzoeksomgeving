@@ -170,3 +170,47 @@ test('P4-fix (V3): het punt van een kopie zonder kenmerk blijft zichtbaar; het v
   const v2 = rijenVerloop([3, 18, 2], [10, 12, 0], [8, 9, 0]);
   for (const lijst of [1, 2, 3]) assert.equal(verloopVan(v2, lijst).find((p) => p.meetmoment_id === 1).percentage_ja, null, `vanuit ${lijst}`);
 });
+
+// ---------- R10: Antwoorden wissen noemt de codes en citaten die meegaan ----------
+
+import { codeerwerkTekst, codeerwerkGewist } from '../public/js/beheer/schermen/vragenlijst-bewerken.js';
+
+test('R10: de bevestiging en de melding noemen de gegeven codes en citaten; zonder codeerwerk niets extra', () => {
+  assert.equal(codeerwerkTekst({ coderingen: 4, citaten: 2 }), 'Ook de 4 codes die je aan deze antwoorden gaf en de 2 citaten eruit worden gewist. Het codeboek zelf blijft staan.');
+  assert.equal(codeerwerkTekst({ coderingen: 1, citaten: 0 }), 'Ook de code die je aan deze antwoorden gaf wordt gewist. Het codeboek zelf blijft staan.');
+  assert.equal(codeerwerkTekst({ coderingen: 0, citaten: 1 }), 'Ook het citaat eruit wordt gewist. Het codeboek zelf blijft staan.');
+  assert.equal(codeerwerkTekst({ coderingen: 0, citaten: 0 }), null);
+  assert.equal(codeerwerkGewist({ coderingen: 4, citaten: 2 }), 'Ook 4 gegeven codes en 2 citaten zijn gewist.');
+  const scherm = readFileSync(new URL('../public/js/beheer/schermen/vragenlijst-bewerken.js', import.meta.url), 'utf8');
+  assert.match(scherm, /codeerwerkTekst\(telling\)/, 'de bevestiging gebruikt de verse telling');
+  const handleiding = readFileSync(new URL('../docs/handleiding.md', import.meta.url), 'utf8');
+  assert.match(handleiding, /\*\*Antwoorden wissen\*\*[^\n]*codes die je aan die antwoorden gaf en de citaten eruit worden dan gewist; het codeboek zelf blijft staan/);
+});
+
+// ---------- R11: "Schaalscore maken" maakt geen tweede, gelijke score ----------
+
+import { zelfdeScore } from '../public/js/beheer/werkbank/definities.js';
+
+test('R11: zelfdeScore vindt een eigen score met dezelfde vragen, omscoring en minimum; het scherm verwijst ernaar', () => {
+  const defs = [
+    { id: 1, soort: 'bereken', naam: 'samenwerking_en_sfeer_mi', dataset_id: null, verwijderd: false, definitie: { functie: 'gemiddelde', variabelen: ['v:3', 'v:2'], min_geldig: 1 } },
+    { id: 2, soort: 'bereken', naam: 'weg', dataset_id: null, verwijderd: true, definitie: { functie: 'gemiddelde', variabelen: ['v:7'], min_geldig: 1 } },
+    { id: 3, soort: 'bereken', naam: 'om', dataset_id: null, verwijderd: false, definitie: { functie: 'gemiddelde', variabelen: [{ id: 'v:4', omscoren: true }, 'v:5'], min_geldig: 1 } },
+    { id: 4, soort: 'bereken', naam: 'ander_bron', dataset_id: 9, verwijderd: false, definitie: { functie: 'gemiddelde', variabelen: ['v:8'], min_geldig: 1 } },
+  ];
+  // Dezelfde vragen in een andere volgorde, met { id, omscoren: false }: dezelfde score.
+  assert.equal(zelfdeScore(defs, { functie: 'gemiddelde', variabelen: ['v:2', { id: 'v:3', omscoren: false }], min_geldig: 1 })?.naam, 'samenwerking_en_sfeer_mi');
+  assert.equal(zelfdeScore(defs, { functie: 'gemiddelde', variabelen: ['v:2', 'v:3'], min_geldig: 2 }), null, 'ander minimum');
+  assert.equal(zelfdeScore(defs, { functie: 'som', variabelen: ['v:2', 'v:3'], min_geldig: 1 }), null, 'andere functie');
+  assert.equal(zelfdeScore(defs, { functie: 'gemiddelde', variabelen: ['v:2', 'v:3', 'v:9'], min_geldig: 1 }), null, 'andere vragen');
+  assert.equal(zelfdeScore(defs, { functie: 'gemiddelde', variabelen: ['v:7'], min_geldig: 1 }), null, 'verwijderd telt niet');
+  assert.equal(zelfdeScore(defs, { functie: 'gemiddelde', variabelen: ['v:4', 'v:5'], min_geldig: 1 }), null, 'zonder omscoren is het een andere score');
+  assert.equal(zelfdeScore(defs, { functie: 'gemiddelde', variabelen: ['v:5', { id: 'v:4', omscoren: true }], min_geldig: 1 })?.naam, 'om');
+  assert.equal(zelfdeScore(defs, { functie: 'gemiddelde', variabelen: ['v:8'], min_geldig: 1 }), null, 'andere gegevensbron');
+  assert.equal(zelfdeScore(defs, { functie: 'gemiddelde', variabelen: ['v:8'], min_geldig: 1 }, { datasetId: 9 })?.naam, 'ander_bron');
+  assert.equal(zelfdeScore(defs, { functie: 'gemiddelde', variabelen: ['v:2', 'v:3'], min_geldig: 1 }, { zonderId: 1 }), null, 'de score die je aanpast');
+  const scherm = readFileSync(new URL('../public/js/beheer/schermen/werkbank-variabelen.js', import.meta.url), 'utf8');
+  assert.match(scherm, /Er is al een schaalscore van deze vragen: \$\{naam\}/);
+  assert.match(scherm, /Toon \$\{al\.naam\}/, 'de rij verwijst naar de bestaande score');
+  assert.match(scherm, /const dubbel = zelfdeScore\(wb\.definities, def/, 'het venster maakt geen dubbele');
+});

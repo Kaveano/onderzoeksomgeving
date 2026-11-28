@@ -543,6 +543,17 @@ export function leesJsonKolom(w) {
  * De definities uit de export of de GET-route als bruikbare objecten:
  * [{ id, dataset_id, soort, naam, label, definitie, volgorde, verwijderd }]. Onleesbare definities vallen weg.
  */
+/**
+ * Een bestaande eigen score met dezelfde berekening (functie, dezelfde vragen met dezelfde omscoring, hetzelfde
+ * minimum aantal beantwoorde vragen) in dezelfde gegevensbron, of null. Zo maakt "Schaalscore maken" geen tweede,
+ * gelijke score (G4, R11). zonderId: de definitie die je aanpast (telt niet mee).
+ */
+export function zelfdeScore(definities, definitie, { datasetId = null, zonderId = null } = {}) {
+  const sleutel = (d) => JSON.stringify([d?.functie || '', [...(d?.variabelen || [])].map((x) => (typeof x === 'string' ? x : `${x.id}${x.omscoren ? '~om' : ''}`)).sort(), d?.min_geldig ?? null]);
+  const k = sleutel(definitie);
+  return (definities || []).find((d) => d.soort === 'bereken' && !d.verwijderd && d.id !== zonderId && (d.dataset_id ?? null) === datasetId && sleutel(d.definitie) === k) || null;
+}
+
 export function leesDefinities(rijen) {
   const uit = [];
   for (const r of rijen || []) {
