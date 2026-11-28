@@ -6,7 +6,8 @@
 //   1 tot 4 verborgen (B26 geldt alleen op het eigen scherm), zodat kleinste_n altijd minstens 5 is;
 // - pauze(): geeft de browser even de tijd (en stopt bij "Stoppen"); voortgang(tekst) meldt hoe ver het is.
 
-import { REDEN, isGetal, isAchtergrond, isIndeling } from '../dataset.js';
+import { REDEN, isGetal, isAchtergrond, isIndeling, getalWeergave } from '../dataset.js';
+import { PROCEDURES as SLOTS } from '../definities.js';
 import { verdeelInGroepen, verbergReeks, onderdrukAlles, onderdrukKolom, DREMPEL } from '../../privacy.js';
 import { selectieFout } from '../privacy-selectie.js';
 import { controleerWortels, P_FILTER_REST, pFilterBuur } from '../transformaties.js';
@@ -226,7 +227,41 @@ export function indelingAlsGetalFout(v, basis, d = DREMPEL, F = null) {
     for (let r = 0; r < v.reden.length; r++) if (v.reden[r] === REDEN.GEEN && (!F || F[r])) leeg++;
     reeks.push(leeg);
   }
+  // "Dat zeg ik liever niet" doet als getal niet mee, maar blijft een groep: anders volgt dat aantal uit n (J2).
+  if (v.origineel) {
+    let liever = 0;
+    for (let r = 0; r < v.reden.length; r++) if (v.reden[r] === REDEN.LIEVER_NIET && (!F || F[r])) liever++;
+    reeks.push(liever);
+  }
   return verbergReeks(reeks, d).some(Boolean) ? P_INDELING_ALS_GETAL(v.label) : null;
+}
+
+/** Gebruikt de analyse deze voorspeller als indeling (dummy's) of als getal? (regressie en logistische regressie) */
+export function soortVoorspeller(v) {
+  if (isIndeling(v) && (v.meetniveau === 'nominaal' || v.groepering)) return 'groep';
+  if (isGetal(v)) return 'getal';
+  return null;
+}
+
+/** Vakjes waarin een variabele als getal meedoet (definities.js: soort 'getal' of 'item'). */
+const isGetalVak = (vak) => vak?.soort === 'getal' || vak?.soort === 'item';
+
+/**
+ * Alle variabelen van een analyse zoals de analyse ze gebruikt: als getal (getalWeergave: "Dat zeg ik liever niet"
+ * ontbreekt) in een vakje voor getallen en bij een voorspeller die als getal meedoet, anders de variabele zelf.
+ * Voor de controle van een selectie (selectieGroepenFout) en de melding over "liever niet" (J2).
+ * @returns {{ id, v, alsGetal: boolean }[]}
+ */
+export function analyseVariabelen(ds, spec) {
+  const uit = [];
+  for (const vak of SLOTS[spec.procedure]?.slots || []) {
+    for (const { id, v } of variabelenUit(ds, spec, vak.sleutel)) {
+      if (!v) continue;
+      const alsGetal = isGetalVak(vak) || (vak.soort === 'voorspeller' && soortVoorspeller(v) === 'getal');
+      uit.push({ id, v: alsGetal ? getalWeergave(v) : v, alsGetal });
+    }
+  }
+  return uit;
 }
 
 /**
@@ -302,11 +337,19 @@ export function waardenPerGroep(v, masker, groep, aantal) {
   return uit;
 }
 
-/** Variabelen uit een slot van de spec (één of meer ids). */
+/**
+ * Variabelen uit een slot van de spec (één of meer ids). In een vakje voor getallen (soort 'getal' of 'item' in
+ * definities.js) komt de getalweergave: daar is "Dat zeg ik liever niet" ontbrekend (J2). Een voorspeller kan getal
+ * of indeling zijn; dat beslist ontwerp() in regressie.js.
+ */
 export function variabelenUit(ds, spec, slot) {
   const w = spec.variabelen?.[slot];
   const ids = w === undefined ? [] : Array.isArray(w) ? w : [w];
-  return ids.map((id) => ({ id, v: ds.perId.get(id) || null }));
+  const getal = isGetalVak(SLOTS[spec.procedure]?.slots?.find((x) => x.sleutel === slot));
+  return ids.map((id) => {
+    const v = ds.perId.get(id) || null;
+    return { id, v: getal ? getalWeergave(v) : v };
+  });
 }
 
 /** Melding bij een variabele die niet meer bestaat; naam is de omschrijving (of null als die onbekend is). */

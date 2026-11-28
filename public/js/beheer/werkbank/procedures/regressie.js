@@ -8,18 +8,18 @@
 // - regressie(ds, spec, ctx): de analyse zelf. Geen residuen of voorspelde waarden per persoon (regel G); het aantal
 //   residuen groter dan 3 SD is verborgen als het 1 tot 4 is.
 
-import { isGetal, isIndeling } from '../dataset.js';
+import { isGetal, isIndeling, getalWeergave } from '../dataset.js';
 import { tCdf, tKwantiel, fSf, momenten } from '../../statistiek.js';
 import { kleinsteKwadraten, inverseSpd, correlatieMatrix } from '../matrix.js';
 import { tweeWaardenRegel, weggevallenRegel } from '../privacy-selectie.js';
 import { tabel, cel, tekstCel, aantalCel, voeg, melding, sluitAf, methode } from '../uitvoer.js';
 import {
-  P_TE_WEINIG, P_SAMENGEVOEGD, P_WEGGEVALLEN, P_LOGIT_CEL, P_AFHANKELIJK, P_WEINIG_RESPONDENTEN_MODEL, P_VIF, LET_OP_VERBAND,
+  P_TE_WEINIG, P_SAMENGEVOEGD, pWeggevallen, P_LOGIT_CEL, P_AFHANKELIJK, P_WEINIG_RESPONDENTEN_MODEL, P_VIF, LET_OP_VERBAND,
   uitlegRegressie, g, apaZinnen,
 } from '../uitvoer-tekst.js';
 import {
   geldigMasker, inSelectie, iedereen, tel, groepVanRijen, selectieControle, begin, weiger, overlapFout, ordinaalMelding, variabelenUit,
-  indelingAlsGetalFout, getalFout, ontbreektTekst,
+  indelingAlsGetalFout, getalFout, ontbreektTekst, soortVoorspeller,
 } from './basis.js';
 import { voegKleineSamen, herindeel, randenMetBuren } from './kruistabel.js';
 import { vorm, groepKeuze } from './beschrijven.js';
@@ -122,12 +122,8 @@ export function fVerandering(fit1, fit2) {
 
 // ---------- Voorspellers klaarzetten (gedeeld met de logistische regressie) ----------
 
-/** Gebruikt de analyse deze voorspeller als indeling (dummy's) of als getal? */
-export function soortVoorspeller(v) {
-  if (isIndeling(v) && (v.meetniveau === 'nominaal' || v.groepering)) return 'groep';
-  if (isGetal(v)) return 'getal';
-  return null;
-}
+/** Gebruikt de analyse deze voorspeller als indeling (dummy's) of als getal? (staat in basis.js) */
+export { soortVoorspeller };
 
 /** Aantal verschillende waarden in de basis (stopt bij 3). */
 function verschillend(v, basis) {
@@ -158,7 +154,8 @@ export function ontwerp(ds, ctx, { uitkomst = null, uitkomstGeldig = null, blokk
       gezien.add(v.id);
       const soort = soortVoorspeller(v);
       if (!soort) return { fout: `“${v.label}” is niet als voorspeller te gebruiken: kies een getal of een indeling met vaste groepen.`, niveau: 'fout' };
-      lijst.push({ v, soort, blok: b });
+      // Als getal is "Dat zeg ik liever niet" ontbrekend; als indeling is het een eigen groep (J2).
+      lijst.push({ v: soort === 'getal' ? getalWeergave(v) : v, soort, blok: b });
     }
   }
   if (!lijst.length) return { fout: 'Kies minstens één voorspeller.', niveau: 'fout' };
@@ -185,7 +182,7 @@ export function ontwerp(ds, ctx, { uitkomst = null, uitkomstGeldig = null, blokk
       const alsGetal = indelingAlsGetalFout(v, basis, ctx.d, ctx.selectie?.F);
       if (alsGetal) { meldingen.push(melding('privacy', alsGetal)); continue; }
       if (v.score && weggevallenRegel(v.reden, ctx.selectie ? ctx.selectie.F : iedereen(ds), null, 1, ctx.d)[0]) {
-        meldingen.push(melding('privacy', `“${v.label}”: ${P_WEGGEVALLEN}.`));
+        meldingen.push(melding('privacy', pWeggevallen(v)));
         continue;
       }
       const w = verschillend(v, basis);
@@ -361,7 +358,7 @@ export async function regressie(ds, spec, ctx) {
   // kruistabelregel per groep van elke voorspeller (B6): dan is een B een verschil in percentages.
   const alsGetal = indelingAlsGetalFout(y, o.basis, ctx.d, ctx.selectie?.F);
   if (alsGetal) return weiger(ds, spec, ctx, titel, 'privacy', alsGetal);
-  if (y.score && weggevallenRegel(y.reden, ctx.selectie ? ctx.selectie.F : iedereen(ds), null, 1, ctx.d)[0]) return weiger(ds, spec, ctx, titel, 'privacy', `“${y.label}”: ${P_WEGGEVALLEN}.`);
+  if (y.score && weggevallenRegel(y.reden, ctx.selectie ? ctx.selectie.F : iedereen(ds), null, 1, ctx.d)[0]) return weiger(ds, spec, ctx, titel, 'privacy', pWeggevallen(y));
   const yWaarden = verschillend(y, o.basis);
   if (yWaarden.length < 2) return weiger(ds, spec, ctx, titel, 'fout', `“${y.label}” heeft bij iedereen dezelfde waarde; dan is er niets te voorspellen.`);
   if (yWaarden.length === 2) {

@@ -6,7 +6,7 @@ import { pearson, spearman, effectGrootte } from '../../statistiek.js';
 import { tweeWaardenRegel, selectieFout, weggevallenRegel } from '../privacy-selectie.js';
 import { holm } from '../verdelingen.js';
 import { tabel, cel, tekstCel, verborgenCel, voeg, melding, sluitAf, methode } from '../uitvoer.js';
-import { ZIN_SIG_VERBAND, ZIN_GEEN_SIG_VERBAND, LET_OP_VERBAND, g, apaZinnen, effectWoord, P_WEGGEVALLEN } from '../uitvoer-tekst.js';
+import { ZIN_SIG_VERBAND, ZIN_GEEN_SIG_VERBAND, LET_OP_VERBAND, g, apaZinnen, effectWoord, pWeggevallen } from '../uitvoer-tekst.js';
 import { getalFout, begin, weiger, ordinaalMelding, variabelenUit, indelingAlsGetalFout, inSelectie, iedereen } from './basis.js';
 
 const ALFA = 0.05;
@@ -41,7 +41,7 @@ export async function correlatie(ds, spec, ctx) {
     const basis = inSelectie(alleGeldig || Uint8Array.from(v.reden, (x) => (x === REDEN.GELDIG ? 1 : 0)), ctx.selectie);
     const t = indelingAlsGetalFout(v, basis, ctx.d, F);
     if (t) return t;
-    if (v.score && weggevallenRegel(v.reden, F || iedereen(ds), null, 1, ctx.d)[0]) return `“${v.label}”: ${P_WEGGEVALLEN}.`;
+    if (v.score && weggevallenRegel(v.reden, F || iedereen(ds), null, 1, ctx.d)[0]) return pWeggevallen(v);
     return null;
   });
   for (const t of new Set(uitgesloten.filter(Boolean))) voeg(u, melding('privacy', t));

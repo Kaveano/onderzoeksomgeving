@@ -6,7 +6,7 @@
 // niet in de keuzelijsten.
 
 import { DREMPEL } from '../privacy.js';
-import { REDEN, werkTellingBij, pasEigenschappenToe, isGetal, inLeegGroep } from './dataset.js';
+import { REDEN, werkTellingBij, pasEigenschappenToe, isGetal, inLeegGroep, getalWeergave } from './dataset.js';
 import { eigenRefs, refsVan, EIGENSCHAPPEN_NAAM } from './definities.js';
 import { burenVan, controleerOverlap, telIn, verschilVeilig } from './privacy-selectie.js';
 import { nlGetal } from '../opmaak.js';
@@ -192,8 +192,10 @@ function intervalVan(bron, van, tot) {
   return { soort: 'bereik', delen: [[van, tot]] };
 }
 
-function hercoderen(ds, def, bron) {
+function hercoderen(ds, def, bronZelf) {
   const dd = def.definitie;
+  // Met grenzen is de bron een getal: "Dat zeg ik liever niet" valt dan in geen enkele groep (ontbrekend, J2).
+  const bron = dd.manier === 'grenzen' ? getalWeergave(bronZelf) : bronZelf;
   const v = nieuw(ds, def, { soort: 'categorie', groepering: true, wortel: bron.wortel || bron.id, dekking: new Map() });
   const n = ds.n;
   if (dd.manier === 'grenzen') {
@@ -264,7 +266,8 @@ export function maakVariabele(ds, def) {
     const geenBereik = items.find((i) => i.omscoren && !i.v.bereik);
     if (geenGetal) return { tekst: `“${geenGetal.v.label}” is geen getal; die kun je niet in een score gebruiken.` };
     if (geenBereik) return { tekst: `“${geenBereik.v.label}” heeft geen vaste schaal; omscoren kan dan niet.` };
-    v = bereken(ds, def, items);
+    // In een score doet "Dat zeg ik liever niet" niet mee als getal (J2).
+    v = bereken(ds, def, items.map((i) => ({ ...i, v: getalWeergave(i.v) })));
   } else if (def.soort === 'omscoren') {
     const bron = ds.perId.get(def.definitie.variabele);
     if (!bron.bereik && def.definitie.laag === undefined) return { tekst: `“${bron.label}” heeft geen vaste schaal (zoals 1 tot 5); omscoren kan dan niet.` };
@@ -414,9 +417,11 @@ export function voorwaardeMasker(ds, vw) {
     }
     return { masker, eenheden };
   }
+  // Van … tot …: een vergelijking van getallen, dus zonder "Dat zeg ik liever niet" (J2).
+  const g = getalWeergave(v);
   for (let r = 0; r < n; r++) {
-    if (v.reden[r] !== REDEN.GELDIG) continue;
-    const x = v.waarden[r];
+    if (g.reden[r] !== REDEN.GELDIG) continue;
+    const x = g.waarden[r];
     masker[r] = (vw.van === undefined || x >= vw.van) && (vw.tot === undefined || x <= vw.tot) ? 1 : 0;
   }
   return { masker, eenheden: [] };

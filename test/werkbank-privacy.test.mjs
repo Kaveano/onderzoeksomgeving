@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { lcg, maakExport, maakBestand } from './werkbank-fixture.mjs';
 import { beschermIndeling, verbergMet, maskeerMetBuren, controleerOverlap, ordeStatistieken } from '../public/js/beheer/werkbank/privacy-selectie.js';
 import { maakRekenkern } from '../public/js/beheer/werkbank/rekenkern.js';
-import { uitvoerNaarBlokken, P_FILTER_REST, P_WEGGEVALLEN, P_GEEN_TOETS, P_CEL, P_LOGIT_CEL, P_SAMENGEVOEGD, P_SCHEIDING, P_LIJST_BUUR } from '../public/js/beheer/werkbank/uitvoer-tekst.js';
+import { uitvoerNaarBlokken, P_FILTER_REST, P_WEGGEVALLEN, pWeggevallen, P_GEEN_TOETS, P_CEL, P_LOGIT_CEL, P_SAMENGEVOEGD, P_SCHEIDING, P_LIJST_BUUR } from '../public/js/beheer/werkbank/uitvoer-tekst.js';
 import { pOverlap } from '../public/js/beheer/werkbank/transformaties.js';
 import { analysesVoorRapport, TE_GROOT } from '../public/js/beheer/werkbank/rapport.js';
 import { DREMPEL, LABEL_OVERIG, VERBORGEN, VERBORGEN_UITLEG, verbergReeks, maskeerKruistabel } from '../public/js/beheer/privacy.js';
@@ -821,9 +821,11 @@ test('bevinding 5: frequenties van een themascore volgen B7 (1 tot 4 weggevallen
   k.stel({ data: drie });
   const u = await k.voerUit(wbSpec(LIJST, 'frequenties', { variabelen: ['t:10'] }));
   assert.equal(u.geweigerd, true);
-  assert.deepEqual(meldingen(u), [`“Werkdruk”: ${P_WEGGEVALLEN}.`]);
+  // G4: na de vaste B7-zin volgen de reden en de uitweg (Schaalscore maken).
+  assert.deepEqual(meldingen(u), [pWeggevallen({ label: 'Werkdruk', bron: 'thema' })]);
+  assert.ok(meldingen(u)[0].startsWith(`“Werkdruk”: ${P_WEGGEVALLEN}.`));
   const b = await k.voerUit(wbSpec(LIJST, 'beschrijvend', { variabelen: ['t:10'] }));
-  assert.deepEqual(meldingen(b), [`“Werkdruk”: ${P_WEGGEVALLEN}.`], 'beschrijvend noemt de echte reden (B7)');
+  assert.deepEqual(meldingen(b), [pWeggevallen({ label: 'Werkdruk', bron: 'thema' })], 'beschrijvend noemt de echte reden (B7)');
   const zes = exportMet([{ id: 100, groepen: [['a', 30, (i) => 1 + (i % 5), (i) => ({ onvolledig: i < 6 })]] }]);
   k.stel({ data: zes });
   const f = await k.voerUit(wbSpec(LIJST, 'frequenties', { variabelen: ['t:10'] }));

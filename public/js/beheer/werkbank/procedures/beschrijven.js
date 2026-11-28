@@ -5,7 +5,7 @@ import { verbergMet, ordeStatistieken, tweeWaardenRegel, weggevallenRegel, groep
 import { tKwantiel, momenten } from '../../statistiek.js';
 import { tabel, cel, tekstCel, verborgenCel, aantalCel, voeg, melding, sluitAf } from '../uitvoer.js';
 import {
-  P_TE_VEEL_WAARDEN, P_GROEP_KLEIN, P_OOK_NIET, P_SAMENGEVOEGD, P_WEGGEVALLEN, P_TWEE_WAARDEN, MINMAX_NOOT, UITLEG_FREQUENTIES, g, apaZinnen,
+  P_TE_VEEL_WAARDEN, P_GROEP_KLEIN, P_OOK_NIET, P_SAMENGEVOEGD, P_WEGGEVALLEN, pWeggevallen, P_TWEE_WAARDEN, MINMAX_NOOT, UITLEG_FREQUENTIES, g, apaZinnen,
   P_DASHBOARD_VERBORGEN, P_INDELING_PER_GROEP, P_VERDELING_PER_GROEP, P_SELECTIE_GROEPEN,
 } from '../uitvoer-tekst.js';
 import {
@@ -100,7 +100,7 @@ function frequentieTabel(ds, v, ctx, u) {
     if (fout) return [melding('privacy', `“${v.label}”: ${selectieMelding(fout)}`)];
   }
   // B7: een score waarbij 1 tot 4 respondenten wegvielen (te weinig vragen beantwoord), toont niets.
-  if (v.score && weggevallenRegel(v.reden, F || iedereen(ds), null, 1, ctx.d)[0]) return [melding('privacy', `“${v.label}”: ${P_WEGGEVALLEN}.`)];
+  if (v.score && weggevallenRegel(v.reden, F || iedereen(ds), null, 1, ctx.d)[0]) return [melding('privacy', pWeggevallen(v))];
   // B26: zonder selectie zie je bij een meningsvraag de hele verdeling (zoals op het dashboard); bij een indeling,
   // een score, een kolom van een eigen dataset, met een selectie of bij het vastleggen in een rapport gaan
   // aantallen van 1 tot 4 weg (regel B en D). De buren van een gestapelde bron (één vragenlijst) tellen mee.
@@ -340,7 +340,7 @@ export function beschrijvend(ds, spec, ctx) {
     // B7: wie een score kreeg en wie wegviel omdat te weinig vragen beantwoord waren.
     if (v.score && weggevallenRegel(v.reden, ctx.selectie ? ctx.selectie.F : iedereen(ds), null, 1, ctx.d)[0]) {
       teWeinig(P_WEGGEVALLEN);
-      meldingen.push(melding('privacy', `“${v.label}”: ${P_WEGGEVALLEN}.`));
+      meldingen.push(melding('privacy', pWeggevallen(v)));
       continue;
     }
     const xs = waardenIn(v, basis);
@@ -414,7 +414,18 @@ export function groepKeuze(ds, ctx, v, w) {
   const redenen = { selectie: [], tweeWaarden: [], weggevallen: [], dashboard: [] };
   groepBuren(ctx.selectie, basisAlles, groep, ng, ctx.d).forEach((x, i) => { if (x) { uitgesloten[i] = true; redenen.selectie.push(i); } });
   // B6: twee waarden; een indeling als getal (P3): elke rij van de kruistabel waarde × groep zonder verborgen cel.
-  const twee = tweeWaardenRegel(v.waarden, basis, groep, ng, ctx.d, ctx.selectie, v.groepering ? Infinity : 2);
+  // Bij een indeling als getal telt "Dat zeg ik liever niet" in die kruistabel als eigen waarde mee (J2): als getal
+  // ontbreekt het, maar dat aantal per groep volgt anders uit de groepsgrootte min n.
+  const o = v.groepering && v.origineel ? v.origineel : null;
+  let twee;
+  if (o) {
+    const geldigO = geldigMasker(ds, [o]);
+    const basisO = new Uint8Array(ds.n);
+    for (let r = 0; r < ds.n; r++) basisO[r] = geldigO[r] && groep[r] >= 0 ? 1 : 0;
+    twee = tweeWaardenRegel(o.waarden, inSelectie(basisO, ctx.selectie), groep, ng, ctx.d, ctx.selectie, Infinity);
+  } else {
+    twee = tweeWaardenRegel(v.waarden, basis, groep, ng, ctx.d, ctx.selectie, v.groepering ? Infinity : 2);
+  }
   if (twee) twee.forEach((x, i) => { if (x && aantallen[i] > 0 && !uitgesloten[i]) { uitgesloten[i] = true; redenen.tweeWaarden.push(i); } });
   if (v.score) {
     const inGroep = new Uint8Array(ds.n);
@@ -443,7 +454,7 @@ export function groepenVoor(ds, ctx, v, w) {
   const samengevoegd = w.beschermd.groepen.filter((gr) => gr.samengevoegd);
   if (samengevoegd.length) meldingen.push(melding('privacy', P_SAMENGEVOEGD(samengevoegd[0].labels, samengevoegd[0].metLeeg)));
   if (keuze.klein.length) meldingen.push(melding('privacy', P_GROEP_KLEIN(keuze.klein.map(naam))));
-  if (redenen.weggevallen.length) meldingen.push(melding('privacy', `${redenen.weggevallen.map((i) => `“${naam(i)}”`).join(', ')}: ${P_WEGGEVALLEN}.`));
+  if (redenen.weggevallen.length) meldingen.push(melding('privacy', pWeggevallen(v, `“${v.label}” bij ${redenen.weggevallen.map((i) => `“${naam(i)}”`).join(', ')}`)));
   if (redenen.tweeWaarden.length) meldingen.push(melding('privacy', v.groepering && !twee2(v, basis) ? P_INDELING_PER_GROEP(v.label) : P_TWEE_WAARDEN(v.label)));
   if (redenen.dashboard.length) meldingen.push(melding('privacy', P_DASHBOARD_VERBORGEN(redenen.dashboard.map(naam))));
   if (redenen.selectie.length) meldingen.push(melding('privacy', `Niet meegenomen, omdat ze ${buurReden(ctx)} maar een paar mensen verschillen: ${redenen.selectie.map((i) => `“${naam(i)}”`).join(', ')}.`));
@@ -455,7 +466,7 @@ export function groepenVoor(ds, ctx, v, w) {
     const mee = new Set(keuze.mee);
     const inMee = new Uint8Array(ds.n);
     for (let r = 0; r < ds.n; r++) inMee[r] = mee.has(groep[r]) && (!ctx.selectie || ctx.selectie.F[r]) ? 1 : 0;
-    if (weggevallenRegel(v.reden, inMee, null, 1, ctx.d)[0]) return { fout: `“${v.label}”: ${P_WEGGEVALLEN}.`, niveau: 'privacy' };
+    if (weggevallenRegel(v.reden, inMee, null, 1, ctx.d)[0]) return { fout: pWeggevallen(v), niveau: 'privacy' };
   }
   const alsGetal = indelingAlsGetalFout(v, basis, ctx.d, ctx.selectie?.F);
   if (alsGetal) return { fout: alsGetal, niveau: 'privacy' };
@@ -474,8 +485,9 @@ export function selectieGroepenFout(ds, ctxZonder, selectie, ids) {
   if (!selectie || selectie.impliciet || !selectie.voorwaarden?.length) return null;
   const indelingen = [...new Set(selectie.voorwaarden.map((vw) => vw.variabele).filter(Boolean))]
     .map((id) => ds.perId.get(id)).filter((w) => isIndeling(w));
+  // ids: de id's, of de variabelen zoals de analyse ze gebruikt (analyseVariabelen: als getal zonder "liever niet").
   for (const id of ids) {
-    const v = ds.perId.get(id);
+    const v = typeof id === 'string' ? ds.perId.get(id) : id;
     if (!v || !v.analyseerbaar || v.soort === 'set') continue;
     for (const w of indelingen) {
       if (w.id === v.id) continue;
@@ -541,8 +553,15 @@ export function pergroep(ds, spec, ctx) {
     iets = true;
     voeg(u, tabel(`pergroep-${v.id}`, `“${v.label}” per “${w.label}”`, ['Groep', 'N', 'Gemiddelde', 'SD', 'SE', 'Mediaan', ...(percentielen ? ['25e percentiel', '75e percentiel'] : [])], rijen,
       { voetnoten: [`De mediaan${percentielen ? ' en de percentielen staan' : ' staat'} er alleen bij als er aan beide kanten minstens ${ctx.d} respondenten zijn.`] }), gr.meldingen);
-    if (gr.mee.length >= 2) {
-      const gem = gr.mee.map((i) => ({ naam: gr.naam(i), m: beschrijving(gr.waarden[i]).gemiddelde })).sort((a, b) => b.m - a.m);
+    // "Dat zeg ik liever niet" staat als groep in de tabel, maar niet in de zin over het hoogst en het laagst (J2).
+    const lieverNiet = new Set(w.geenGetal || []);
+    const alleenLieverNiet = (i) => {
+      const cats = w.beschermd.groepen[i].categorieen || [];
+      return cats.length > 0 && cats.every((c) => lieverNiet.has(w.labels[c]?.code));
+    };
+    const inZin = gr.mee.filter((i) => !alleenLieverNiet(i));
+    if (inZin.length >= 2) {
+      const gem = inZin.map((i) => ({ naam: gr.naam(i), m: beschrijving(gr.waarden[i]).gemiddelde })).sort((a, b) => b.m - a.m);
       u.duiding.zinnen.push(`Bij “${v.label}” scoort “${gem[0].naam}” het hoogst (gemiddeld ${g(gem[0].m)}) en “${gem[gem.length - 1].naam}” het laagst (gemiddeld ${g(gem[gem.length - 1].m)}).`);
     }
   }

@@ -7,7 +7,7 @@ import { api } from '../api.js';
 import { PROCEDURES as META, standaardOpties } from '../werkbank/definities.js';
 import { beschikbaar } from '../werkbank/procedures/index.js';
 import { GROEPEN, isGetal, isIndeling, isVerdeling } from '../werkbank/dataset.js';
-import { variabeleSelect } from './werkbank-variabelen.js';
+import { variabeleSelect, B7_KORT } from './werkbank-variabelen.js';
 
 const KEUZE_TEKST = {
   procenten: { geen: 'Geen', rij: 'Binnen de rij', kolom: 'Binnen de kolom', totaal: 'Van het totaal' },
@@ -26,13 +26,19 @@ const GROEP_VOLGORDE = ['Beschrijven', 'Groepen vergelijken', 'Samenhang', 'Scha
 // Per onderzoek: de gekozen analyse en wat er in het formulier staat.
 const formulieren = new Map();
 
-function past(slot, v) {
+/** Past variabele v (metadata uit het overzicht) in dit vakje van een formulier? */
+export function past(slot, v) {
   if (!v || v.verwijderd || !v.analyseerbaar) return false;
   if (slot.soort === 'verdeling') return isVerdeling(v) && v.soort !== 'onbekend' && !v.lid_van;
   if (slot.soort === 'groep') return isIndeling(v) && !!v.beschermd?.bruikbaar;
   if (slot.soort === 'voorspeller') return isGetal(v) || isIndeling(v);
+  // Een cijfervraag hoort nooit bij de vragen van een schaal (Cronbachs alfa, factoranalyse; J3).
+  if (slot.soort === 'item') return isGetal(v) && !(v.bron === 'vraag' && v.type === 'cijfer');
   return isGetal(v);
 }
+
+/** Een schaalvraag van een thema (de vragen van de themascore, zonder cijfervragen; J3). */
+export const isThemaVraag = (v, t) => v.thema_id === t && v.groep === 'vraag' && v.type === 'schaal' && !v.lid_van;
 
 /** Meerdere variabelen kiezen: zoeken plus een lijst met vinkjes, met snelkeuze per thema. */
 function meerdereKiezer(wb, slot, gekozen, bijWijziging) {
@@ -68,18 +74,19 @@ function meerdereKiezer(wb, slot, gekozen, bijWijziging) {
               bijWijziging();
             },
           }),
-          h('span', {}, h('span', { class: 'mono' }, v.naam), ` ${v.label}`));
+          h('span', {}, h('span', { class: 'mono' }, v.naam), ` ${v.label}`, v.b7 ? h('span', { class: 'wb-klein wb-waarschuwing' }, ` ${B7_KORT}`) : null));
       }))));
     if (!groepen.size) vervang(lijst, h('p', { class: 'zacht' }, 'Geen passende variabelen.'));
   };
   zoek.addEventListener('input', teken);
-  const themas = [...new Map(kandidaten.filter((v) => v.groep === 'vraag' && v.thema_id).map((v) => [v.thema_id, wb.variabele(`t:${v.thema_id}`)?.label || `Thema ${v.thema_id}`])).entries()];
+  // Snel kiezen: de schaalvragen van een thema, dezelfde vragen als de themascore (dus geen cijfervragen, J3).
+  const themas = [...new Map(kandidaten.filter((v) => isThemaVraag(v, v.thema_id)).map((v) => [v.thema_id, wb.variabele(`t:${v.thema_id}`)?.label || `Thema ${v.thema_id}`])).entries()];
   const snel = themas.length && (slot.soort === 'item' || slot.soort === 'getal') ? h('select', {
     'aria-label': `Snel kiezen voor ${slot.label}`,
     onchange: (e) => {
       const t = Number(e.target.value);
       e.target.value = '';
-      for (const v of kandidaten) if (v.thema_id === t && v.groep === 'vraag' && !gekozen.includes(v.id) && gekozen.length < slot.max) gekozen.push(v.id);
+      for (const v of kandidaten) if (isThemaVraag(v, t) && !gekozen.includes(v.id) && gekozen.length < slot.max) gekozen.push(v.id);
       teken();
       bijWijziging();
     },

@@ -8,7 +8,7 @@ import { tweeWaardenRegel, weggevallenRegel } from '../privacy-selectie.js';
 import { correlatieMatrix, inverseSpd, cholesky, logDeterminant, jacobiEigen } from '../matrix.js';
 import { tabel, cel, tekstCel, voeg, melding, sluitAf, methode } from '../uitvoer.js';
 import {
-  ALFA_UITLEG, P_TE_WEINIG, P_WEGGEVALLEN, P_NIET_PD, P_HEYWOOD, P_WEINIG_FACTOR, UITLEG_FACTOR, apaZinnen, g, opsomming,
+  ALFA_UITLEG, P_TE_WEINIG, pWeggevallen, P_CIJFER_ITEM, P_BEREIK_VERSCHILT, P_NIET_PD, P_HEYWOOD, P_WEINIG_FACTOR, UITLEG_FACTOR, apaZinnen, g, opsomming,
 } from '../uitvoer-tekst.js';
 import { getalFout, begin, weiger, variabelenUit, indelingAlsGetalFout, inSelectie, iedereen, selectieControle, tel } from './basis.js';
 
@@ -72,6 +72,14 @@ export function betrouwbaarheidVan(ruw) {
   };
 }
 
+/** J3: een cijfervraag (0 tot 10 of 1 tot 10) hoort nooit bij de vragen van een schaal (BOUWPLAN §1.1). */
+export const isCijfervraag = (v) => !!v && v.bron === 'vraag' && v.type === 'cijfer';
+
+/** Hebben de items een verschillend bereik (bijvoorbeeld 1 tot 5 naast een eigen score zonder vast bereik)? */
+function bereikVerschilt(vars) {
+  return new Set(vars.map((v) => (v.bereik ? `${v.bereik.laag}:${v.bereik.hoog}` : 'geen'))).size > 1;
+}
+
 export function betrouwbaarheid(ds, spec, ctx) {
   const titel = 'Betrouwbaarheid (Cronbachs alfa)';
   const lijst = variabelenUit(ds, spec, 'items');
@@ -81,10 +89,12 @@ export function betrouwbaarheid(ds, spec, ctx) {
   for (const { id, v } of lijst) {
     const fout = getalFout(v);
     if (fout) return weiger(ds, spec, ctx, titel, 'fout', fout);
+    if (isCijfervraag(v)) return weiger(ds, spec, ctx, titel, 'fout', P_CIJFER_ITEM(v.label));
     if (omscoren.has(id) && !v.bereik) return weiger(ds, spec, ctx, titel, 'fout', `“${v.label}” heeft geen vaste schaal; omscoren kan dan niet.`);
     items.push({ id, v, om: omscoren.has(id) });
   }
   if (items.length < 2) return weiger(ds, spec, ctx, titel, 'fout', 'Kies minstens twee vragen.');
+  if (bereikVerschilt(items.map((x) => x.v))) voeg(u, melding('waarschuwing', P_BEREIK_VERSCHILT));
   const geldig = new Uint8Array(ds.n).fill(1);
   for (const { v } of items) for (let r = 0; r < ds.n; r++) if (v.reden[r] !== REDEN.GELDIG) geldig[r] = 0;
   const sel = selectieControle(ctx, geldig);
@@ -94,7 +104,7 @@ export function betrouwbaarheid(ds, spec, ctx) {
     const t = indelingAlsGetalFout(v, basis, ctx.d, ctx.selectie?.F);
     if (t) return weiger(ds, spec, ctx, titel, 'privacy', t);
     if (tweeWaardenRegel(v.waarden, basis, null, 1, ctx.d)?.[0]) return weiger(ds, spec, ctx, titel, 'privacy', `“${v.label}” heeft maar twee waarden en een daarvan komt bij minder dan ${ctx.d} mensen voor.`);
-    if (v.score && weggevallenRegel(v.reden, ctx.selectie ? ctx.selectie.F : iedereen(ds), null, 1, ctx.d)[0]) return weiger(ds, spec, ctx, titel, 'privacy', `“${v.label}”: ${P_WEGGEVALLEN}.`);
+    if (v.score && weggevallenRegel(v.reden, ctx.selectie ? ctx.selectie.F : iedereen(ds), null, 1, ctx.d)[0]) return weiger(ds, spec, ctx, titel, 'privacy', pWeggevallen(v));
   }
   const rijen = [];
   for (let r = 0; r < ds.n; r++) {
@@ -305,9 +315,11 @@ export async function factoranalyse(ds, spec, ctx) {
   for (const { v } of lijst) {
     const fout = getalFout(v);
     if (fout) return weiger(ds, spec, ctx, titel, 'fout', fout);
+    if (isCijfervraag(v)) return weiger(ds, spec, ctx, titel, 'fout', P_CIJFER_ITEM(v.label));
     items.push(v);
   }
   if (items.length < 3) return weiger(ds, spec, ctx, titel, 'fout', 'Kies minstens drie vragen.');
+  if (bereikVerschilt(items)) voeg(u, melding('waarschuwing', P_BEREIK_VERSCHILT));
   const k = items.length;
   const geldig = new Uint8Array(ds.n).fill(1);
   for (const v of items) for (let r = 0; r < ds.n; r++) if (v.reden[r] !== REDEN.GELDIG) geldig[r] = 0;
@@ -318,7 +330,7 @@ export async function factoranalyse(ds, spec, ctx) {
     const t = indelingAlsGetalFout(v, basis, ctx.d, ctx.selectie?.F);
     if (t) return weiger(ds, spec, ctx, titel, 'privacy', t);
     if (tweeWaardenRegel(v.waarden, basis, null, 1, ctx.d, ctx.selectie)?.[0]) return weiger(ds, spec, ctx, titel, 'privacy', `“${v.label}” heeft maar twee waarden en een daarvan komt bij minder dan ${ctx.d} mensen voor.`);
-    if (v.score && weggevallenRegel(v.reden, ctx.selectie ? ctx.selectie.F : iedereen(ds), null, 1, ctx.d)[0]) return weiger(ds, spec, ctx, titel, 'privacy', `“${v.label}”: ${P_WEGGEVALLEN}.`);
+    if (v.score && weggevallenRegel(v.reden, ctx.selectie ? ctx.selectie.F : iedereen(ds), null, 1, ctx.d)[0]) return weiger(ds, spec, ctx, titel, 'privacy', pWeggevallen(v));
   }
   const n = tel(basis);
   const minN = Math.max(50, 2 * k);

@@ -9,7 +9,7 @@
 // maakRekenkern() geeft een eigen exemplaar (de standaardfuncties delen er één).
 
 import { DREMPEL, drempelVan, verbergReeks, VERBORGEN, VERBORGEN_UITLEG } from '../privacy.js';
-import { bouwDataset, bronSleutel, metadata, REDEN, isAchtergrond } from './dataset.js';
+import { bouwDataset, bronSleutel, metadata, REDEN, REDEN_LABELS, isAchtergrond, getalWeergave } from './dataset.js';
 import { metLijstBuren, verbergMet } from './privacy-selectie.js';
 import {
   pasDefinitiesToe, eigenschappenVan, maakSelectie, controleerSelectie, controleerNieuweIndeling, maakVariabele, voorwaardeTekst, definitiesVoorBron,
@@ -17,7 +17,9 @@ import {
 import { leesDefinities, controleerSpec, specRefs, DefinitieFout, controleerDefinitie } from './definities.js';
 import { PROCEDURES } from './procedures/index.js';
 import { geweigerd } from './uitvoer.js';
-import { ontbreektTekst } from './procedures/basis.js';
+import { ontbreektTekst, analyseVariabelen } from './procedures/basis.js';
+import { melding } from './uitvoer.js';
+import { P_LIEVER_NIET } from './uitvoer-tekst.js';
 import { beschrijving, selectieGroepenFout } from './procedures/beschrijven.js';
 import { cronbachAlpha } from '../statistiek.js';
 
@@ -87,6 +89,9 @@ export function maakRekenkern() {
         // aantal uit n min de zichtbare groepen.
         m.geldig = (v.telling.geldig > 0 && v.telling.geldig < d) || verdelingVerbergt(ds, v, d) ? null : v.telling.geldig;
         m.verdeling = verdelingVoorLijst(v);
+        // G4: een score waarbij 1 tot 4 respondenten wegvallen (B7), is niet te gebruiken; dat staat er vooraf bij.
+        const weg = v.score ? v.telling.perReden[REDEN.ONVOLLEDIG] : 0;
+        m.b7 = weg > 0 && weg < d;
         return m;
       }),
       filters: [...(ds.filters?.values() || [])].map((f) => {
@@ -179,7 +184,7 @@ export function maakRekenkern() {
     selectie = metBuren(ds, selectie);
     // P1: een selectie op een indeling mag geen groep losmaken die bij deze variabelen samen met andere verborgen blijft.
     if (selectie && !selectie.impliciet) {
-      const fout = selectieGroepenFout(ds, { d: invoer.d, selectie: metBuren(ds, null), streng, nu }, selectie, specRefs(spec));
+      const fout = selectieGroepenFout(ds, { d: invoer.d, selectie: metBuren(ds, null), streng, nu }, selectie, analyseVariabelen(ds, spec).map((x) => x.v));
       if (fout) return geweigerd(basis, 'privacy', fout);
     }
     const pauze = async () => {
@@ -191,6 +196,15 @@ export function maakRekenkern() {
     await pauze();
     try {
       const u = await procedure.voerUit(ds, spec, ctx);
+      // J2: zeg erbij dat "Dat zeg ik liever niet" als getal niet meetelt (als groep wel).
+      if (!u.geweigerd) {
+        const gezien = new Set();
+        for (const { v, alsGetal } of analyseVariabelen(ds, spec)) {
+          if (!alsGetal || !v.lieverNietAantal || gezien.has(v.id)) continue;
+          gezien.add(v.id);
+          u.onderdelen.push(melding('info', P_LIEVER_NIET(v.label)));
+        }
+      }
       return u;
     } catch (e) {
       if (e?.name === 'AbortError') throw e;
@@ -245,7 +259,7 @@ export function maakRekenkern() {
     if (def.soort === 'bereken' && geldig >= d) {
       const b = beschrijving(xs);
       voorbeeld.push(`Gemiddelde ${b.gemiddelde.toLocaleString('nl-NL', { maximumFractionDigits: 2 })}; SD ${b.sd === null ? '–' : b.sd.toLocaleString('nl-NL', { maximumFractionDigits: 2 })}`);
-      const items = schoon.variabelen.map((x) => (typeof x === 'string' ? { v: ds.perId.get(x), om: false } : { v: ds.perId.get(x.id), om: x.omscoren }));
+      const items = schoon.variabelen.map((x) => (typeof x === 'string' ? { v: getalWeergave(ds.perId.get(x)), om: false } : { v: getalWeergave(ds.perId.get(x.id)), om: x.omscoren }));
       if (items.length >= 2 && ['gemiddelde', 'som'].includes(schoon.functie)) {
         const rijen = [];
         for (let r = 0; r < ds.n; r++) {
@@ -282,7 +296,7 @@ export function maakRekenkern() {
   /** Grenzen voor "gelijke groepen" (mediaan, tertielen, kwartielen) uit de huidige gegevens, afgerond. */
   function gelijkeGroepen(id, aantal, bron = huidig) {
     const ds = datasetVan(bron);
-    const v = ds.perId.get(id);
+    const v = getalWeergave(ds.perId.get(id));
     if (!v) return null;
     const xs = [];
     for (let r = 0; r < ds.n; r++) if (v.reden[r] === REDEN.GELDIG) xs.push(v.waarden[r]);
@@ -324,7 +338,7 @@ function lijstBurenVan(ds) {
 function tellingen(ds, v, masker = null) {
   const index = new Map(v.labels.map((l, i) => [l.code, i]));
   const cat = new Array(v.labels.length).fill(0);
-  const mis = new Array(6).fill(0);
+  const mis = new Array(REDEN_LABELS.length).fill(0);
   for (let r = 0; r < ds.n; r++) {
     if (masker && !masker[r]) continue;
     if (v.reden[r] === REDEN.GELDIG) {

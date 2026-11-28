@@ -12,7 +12,17 @@ import { nlGetal } from '../opmaak.js';
 const SOORT = { getal: 'Getal', categorie: 'Groepen', set: 'Meerdere antwoorden', tekst: 'Tekst', onbekend: 'Onbekend' };
 const NIVEAUS = [['nominaal', 'Nominaal (groepen zonder volgorde)'], ['ordinaal', 'Ordinaal (groepen met volgorde)'], ['interval', 'Interval (getal)']];
 const FUNCTIES = { gemiddelde: 'Gemiddelde van de vragen', som: 'Som van de vragen', aantal_geldig: 'Aantal beantwoorde vragen', zscore: 'z-score (afwijking van het gemiddelde in SD)', verschil: 'Verschil tussen twee variabelen (A − B)' };
-const ONTBREKEND = ['', 'leeg', 'weet niet', 'niet gevraagd', 'eigen code', 'te weinig vragen'];
+const ONTBREKEND = ['', 'leeg', 'weet niet', 'niet gevraagd', 'eigen code', 'te weinig vragen', 'liever niet'];
+/** G4: korte aanduiding bij een score die om B7 niet te gebruiken is (in keuzelijsten). */
+export const B7_KORT = '(niet te gebruiken: 1 tot 4 weggevallen)';
+const B7_UITLEG_THEMA = 'Niet te gebruiken: 1 tot 4 respondenten beantwoordden te weinig vragen van deze score en vallen weg. Maak met “Schaalscore maken” een score van dezelfde vragen met minimaal 1 beantwoorde vraag; dan valt niemand weg.';
+const B7_UITLEG_EIGEN = 'Niet te gebruiken: 1 tot 4 respondenten beantwoordden te weinig vragen van deze score en vallen weg. Kies “Aanpassen” en zet het minimum aantal beantwoorde vragen op 1; dan valt niemand weg.';
+
+/** De schaalvragen van een thema- of meetpuntscore (dezelfde vragen als de score; G4). */
+function vragenVanScore(wb, v) {
+  const sleutel = v.bron === 'meetpunt' ? 'meetpunt_id' : 'thema_id';
+  return wb.overzicht.variabelen.filter((x) => !x.verwijderd && x.groep === 'vraag' && x.type === 'schaal' && !x.lid_van && x[sleutel] === v[sleutel]).map((x) => x.id);
+}
 const kort = (x) => nlGetal(x, 2).replace(/(,\d*?)0+$/, '$1').replace(/,$/, '');
 
 // Filterkeuze per onderzoek (blijft staan als je even een ander tabblad kiest).
@@ -44,7 +54,7 @@ export function variabeleSelect(wb, { id, waarde = '', filter = () => true, leeg
   const volgorde = Object.keys(GROEPEN).filter((g) => groepen.has(g));
   return h('select', { id, onchange },
     h('option', { value: '' }, leeg),
-    volgorde.map((g) => h('optgroup', { label: GROEPEN[g] }, groepen.get(g).map((v) => h('option', { value: v.id, selected: v.id === waarde }, `${v.naam} – ${v.label}`)))));
+    volgorde.map((g) => h('optgroup', { label: GROEPEN[g] }, groepen.get(g).map((v) => h('option', { value: v.id, selected: v.id === waarde }, `${v.naam} – ${v.label}${v.b7 ? ` ${B7_KORT}` : ''}`)))));
 }
 
 /**
@@ -132,7 +142,9 @@ export function berekenDialoog(wb, start = {}, bestaand = null) {
   const min = h('input', { id: minId, type: 'number', min: 1, step: 1, inputmode: 'numeric', value: dd.min_geldig ?? '' });
   const zoekId = uniekeId('wb-zoek');
   const zoek = h('input', { id: zoekId, type: 'search', placeholder: 'Zoek een vraag', autocomplete: 'off' });
-  const themas = [...new Map(kandidaten.filter((v) => v.thema_id && v.groep === 'vraag').map((v) => [v.thema_id, wb.overzicht.variabelen.find((t) => t.id === `t:${v.thema_id}`)?.label || `Thema ${v.thema_id}`])).entries()];
+  // Snel kiezen: de schaalvragen van een thema (zoals de themascore; geen cijfervragen, J3).
+  const themaVraag = (v, t) => v.thema_id === t && v.groep === 'vraag' && v.type === 'schaal';
+  const themas = [...new Map(kandidaten.filter((v) => themaVraag(v, v.thema_id)).map((v) => [v.thema_id, wb.overzicht.variabelen.find((t) => t.id === `t:${v.thema_id}`)?.label || `Thema ${v.thema_id}`])).entries()];
   const lijst = h('div', { class: 'wb-kieslijst' });
   const tekenLijst = () => {
     const q = zoek.value.trim().toLowerCase();
@@ -155,7 +167,7 @@ export function berekenDialoog(wb, start = {}, bestaand = null) {
       onchange: (e) => {
         const t = Number(e.target.value);
         if (!t) return;
-        for (const v of kandidaten) if (v.thema_id === t && v.groep === 'vraag' && v.meetniveau !== 'nominaal') gekozen.set(v.id, gekozen.get(v.id) || false);
+        for (const v of kandidaten) if (themaVraag(v, t)) gekozen.set(v.id, gekozen.get(v.id) || false);
         e.target.value = '';
         tekenLijst();
         lijst.dispatchEvent(new Event('change', { bubbles: true }));
@@ -470,13 +482,22 @@ export function toonVariabelen(paneel, wb) {
             },
           }, NIVEAUS.map(([w, t]) => h('option', { value: w, selected: w === v.meetniveau }, t)))
           : (NIVEAUS.find(([w]) => w === v.meetniveau)?.[1] || '–');
-        const ontbreekt = v.telling.perReden.map((n, i) => (i > 0 && n > 0 ? ONTBREKEND[i] : null)).filter(Boolean).join(', ') || '–';
+        // "Dat zeg ik liever niet" is een groep, maar als getal ontbrekend (J2).
+        const ontbreekt = [...v.telling.perReden.map((n, i) => (i > 0 && n > 0 ? ONTBREKEND[i] : null)),
+          v.geenGetal?.length && v.soort !== 'set' ? '“liever niet” (als getal)' : null].filter(Boolean).join(', ') || '–';
         const acties = [];
         if (!ro && v.analyseerbaar) {
           if (v.definitie_id) {
             acties.push(h('button', { type: 'button', class: 'knop knop-klein', 'aria-haspopup': 'dialog', onclick: () => aanpassen(wb, v) }, 'Aanpassen', h('span', { class: 'sr-only' }, `: ${v.naam}`)));
             acties.push(h('button', { type: 'button', class: 'knop knop-klein knop-licht', onclick: () => wb.verwijderDefinitie(wb.definities.find((d) => d.id === v.definitie_id)) }, 'Verwijderen', h('span', { class: 'sr-only' }, `: ${v.naam}`)));
           } else {
+            const items = v.b7 && (v.bron === 'thema' || v.bron === 'meetpunt') ? vragenVanScore(wb, v) : [];
+            if (items.length) {
+              acties.push(h('button', {
+                type: 'button', class: 'knop knop-klein', 'aria-haspopup': 'dialog',
+                onclick: () => berekenDialoog(wb, { functie: 'gemiddelde', variabelen: items, min_geldig: 1, label: `${v.label} (minimaal 1 vraag)` }),
+              }, 'Schaalscore maken', h('span', { class: 'sr-only' }, `: ${v.naam}`)));
+            }
             if (v.bereik && isGetal(v)) acties.push(h('button', { type: 'button', class: 'knop knop-klein', 'aria-haspopup': 'dialog', onclick: () => omscorenDialoog(wb, v.id) }, 'Omscoren', h('span', { class: 'sr-only' }, `: ${v.naam}`)));
             if (v.soort !== 'set' && (v.labels.length || isGetal(v))) acties.push(h('button', { type: 'button', class: 'knop knop-klein', 'aria-haspopup': 'dialog', onclick: () => indelenDialoog(wb, v.id) }, 'Indelen in groepen', h('span', { class: 'sr-only' }, `: ${v.naam}`)));
           }
@@ -486,6 +507,7 @@ export function toonVariabelen(paneel, wb) {
           h('td', { 'data-label': 'Omschrijving' }, v.label,
             v.kenmerk ? h('span', { class: 'label wb-kenmerk-label' }, v.kenmerk.naam) : null,
             v.reden_niet ? h('span', { class: 'wb-klein zacht' }, v.reden_niet) : null,
+            v.b7 ? h('span', { class: 'wb-klein wb-waarschuwing' }, v.bron === 'thema' || v.bron === 'meetpunt' ? B7_UITLEG_THEMA : B7_UITLEG_EIGEN) : null,
             v.uitleg ? h('span', { class: 'wb-klein zacht' }, v.uitleg) : null,
             (v.waarschuwingen || []).map((w) => h('span', { class: 'wb-klein wb-waarschuwing' }, w))),
           h('td', { 'data-label': 'Soort' }, SOORT[v.soort] || v.soort),

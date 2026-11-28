@@ -16,11 +16,13 @@ import { kolomSoort, isCodekolom, getalNotatie, alsGetal, verdachteKolommen } fr
 import { DREMPEL } from '../privacy.js';
 import { beschermIndeling } from './privacy-selectie.js';
 import { telling, codesPerItem, isAntwoord } from '../codering-regels.js';
+import { isLieverNiet } from '../kenmerken.js';
 
 /** Reden per rij: 0 geldig, 1 geen antwoord, 2 weet niet, 3 niet gevraagd (andere vragenlijst), 4 eigen
- *  ontbrekende code of niet ingedeeld, 5 te weinig vragen beantwoord voor een score (B7). */
-export const REDEN = { GELDIG: 0, GEEN: 1, WEET_NIET: 2, NIET_GEVRAAGD: 3, EIGEN: 4, ONVOLLEDIG: 5 };
-export const REDEN_LABELS = ['Geldig', 'Geen antwoord', 'Weet niet', 'Niet gevraagd', 'Ontbrekend', 'Te weinig vragen beantwoord'];
+ *  ontbrekende code of niet ingedeeld, 5 te weinig vragen beantwoord voor een score (B7), 6 "Dat zeg ik liever niet"
+ *  bij gebruik als getal (alleen in getalWeergave, of in een variabele die daaruit is berekend). */
+export const REDEN = { GELDIG: 0, GEEN: 1, WEET_NIET: 2, NIET_GEVRAAGD: 3, EIGEN: 4, ONVOLLEDIG: 5, LIEVER_NIET: 6 };
+export const REDEN_LABELS = ['Geldig', 'Geen antwoord', 'Weet niet', 'Niet gevraagd', 'Ontbrekend', 'Te weinig vragen beantwoord', 'Dat zeg ik liever niet'];
 
 /** Groepen in de keuzelijsten, in deze volgorde (achtergrondkenmerken eerst, D2 §3.3). */
 export const GROEPEN = {
@@ -141,7 +143,8 @@ export const VRAAGSOORTEN = {
     maak(s, ctx) {
       s.mogelijk = mogelijkheden(s.perLijst, ctx.model.lijsten);
       if (!s.eerste.meerdere) {
-        const labels = s.mogelijk.map((m, k) => ({ code: k + 1, label: m.label, bronwaarde: m.eersteId, bronwaarden: [...m.ids] }));
+        // "Dat zeg ik liever niet" is een gewone groep, maar geen waarde op de schaal (zie getalWeergave).
+        const labels = s.mogelijk.map((m, k) => ({ code: k + 1, label: m.label, bronwaarde: m.eersteId, bronwaarden: [...m.ids], ...(m.labels.some(isLieverNiet) ? { lieverNiet: true } : {}) }));
         const geordend = !!s.kenmerk?.geordend;
         return [nieuweVariabele(ctx.n, { soort: 'categorie', meetniveau: geordend ? 'ordinaal' : 'nominaal', labels })];
       }
@@ -292,9 +295,11 @@ export function pasEigenschappenToe(ds, eigenschappen, alleen = null) {
 
 /** Telling op de hele bron en (bij een indeling) de beschermde groepen (regel A). */
 export function werkTellingBij(ds, v) {
-  const perReden = [0, 0, 0, 0, 0, 0];
+  const perReden = new Array(REDEN_LABELS.length).fill(0);
   for (let r = 0; r < ds.n; r++) perReden[v.reden[r]]++;
   v.telling = { geldig: perReden[0], perReden };
+  v.geenGetal = geenGetalCodes(v);
+  delete v.alsGetalWeergave;
   v.beschermd = null;
   if (v.labels.length && v.soort !== 'set' && v.soort !== 'tekst' && v.analyseerbaar) {
     const index = new Map(v.labels.map((l, i) => [l.code, i]));
@@ -309,6 +314,40 @@ export function werkTellingBij(ds, v) {
     const achtergrond = isAchtergrond(v);
     v.beschermd = beschermIndeling(aantallen, v.labels.map((l) => l.label), ds.d, { nietIngevuld: achtergrond ? perReden[REDEN.GEEN] : 0, achtergrond });
   }
+}
+
+// ---------- "Dat zeg ik liever niet": wel een groep, geen getal (J2) ----------
+
+/** De codes van een variabele die als getal ontbreken: het antwoord "Dat zeg ik liever niet" (ook bij een eigen indeling). */
+function geenGetalCodes(v) {
+  if (!v.labels?.length || v.soort === 'set' || v.soort === 'tekst') return [];
+  return v.labels.filter((l) => l.lieverNiet || isLieverNiet(l.label)).map((l) => l.code);
+}
+
+/**
+ * De variabele zoals hij als getal meedoet (beschrijvend, correlatie, t-toets, regressie, scores, grenzen …):
+ * "Dat zeg ik liever niet" is dan ontbrekend (reden LIEVER_NIET), want het is geen leeftijd of diensttijd en hoort
+ * niet als hoogste klasse mee te tellen. Als groep (frequenties, kruistabel, groepen, dummy's) blijft het een gewone
+ * groep: daar gebruik je de variabele zelf. Dezelfde id; origineel wijst naar de variabele zelf (voor de
+ * privacyregels, die het antwoord als groep blijven tellen). Zonder zo'n antwoord: de variabele zelf.
+ */
+export function getalWeergave(v) {
+  if (!v || !v.geenGetal?.length || v.origineel) return v;
+  if (v.alsGetalWeergave) return v.alsGetalWeergave;
+  const weg = new Set(v.geenGetal);
+  const waarden = Float64Array.from(v.waarden);
+  const reden = Uint8Array.from(v.reden);
+  let aantal = 0;
+  for (let r = 0; r < reden.length; r++) {
+    if (reden[r] === REDEN.GELDIG && weg.has(waarden[r])) {
+      reden[r] = REDEN.LIEVER_NIET;
+      waarden[r] = NaN;
+      aantal++;
+    }
+  }
+  const weergave = { ...v, waarden, reden, labels: v.labels.filter((l) => !weg.has(l.code)), geenGetal: [], origineel: v, lieverNietAantal: aantal };
+  Object.defineProperty(v, 'alsGetalWeergave', { value: weergave, enumerable: false, configurable: true });
+  return weergave;
 }
 
 /** Een achtergrondvraag uit een vragenlijst (kenmerk of uitsplitsvraag): "Niet ingevuld" telt als groep. */
@@ -684,7 +723,7 @@ function bouwUitBestand(dataset, bron, d, eigenschappen) {
 
 /** De gegevens van een variabele zonder de waarden per respondent (voor keuzelijsten en de variabelenlijst). */
 export function metadata(v) {
-  const { waarden, reden, optie, aantallen, ...rest } = v;
+  const { waarden, reden, optie, aantallen, origineel, ...rest } = v;
   return {
     ...rest,
     vraagIds: v.vraagIds ? Object.fromEntries(v.vraagIds) : null,
@@ -692,11 +731,12 @@ export function metadata(v) {
   };
 }
 
-/** Kan een variabele als getal meedoen (gemiddelde, correlatie …)? Ordinaal of interval, of 0/1 (ja/nee). */
+/** Kan een variabele als getal meedoen (gemiddelde, correlatie …)? Ordinaal of interval, of 0/1 (ja/nee).
+ *  "Dat zeg ik liever niet" telt daarbij niet als waarde (getalWeergave). */
 export function isGetal(v) {
   if (!v || !v.analyseerbaar || v.soort === 'tekst' || v.soort === 'set' || v.soort === 'onbekend') return false;
   if (v.meetniveau === 'ordinaal' || v.meetniveau === 'interval') return true;
-  return v.labels.length === 2;
+  return v.labels.length - (v.geenGetal?.length || 0) === 2;
 }
 
 /** Kan een variabele als indeling (groepen) meedoen? Een categorie met minstens twee beschermde groepen. */

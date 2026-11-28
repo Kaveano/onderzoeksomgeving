@@ -33,6 +33,24 @@ export const P_LOGIT_CEL = (voorspeller, uitkomst) => `Bij “${voorspeller}” 
 export const P_ORDINAAL = 'Je gebruikt losse vragen (ordinaal) als getal. Bij een schaal van 1 tot 5 is dat gebruikelijk; kijk ook naar de toets met rangnummers.';
 /** Dezelfde zin als TOETS_WEGGEVALLEN in rapport-feiten.js (BOUWPLAN B7). */
 export const P_WEGGEVALLEN = 'niet getoond: te weinig volledig ingevulde antwoorden om dit veilig naast het dashboard te tonen';
+/**
+ * G4: waarom een score om B7 niet meedoet, en wat je dan wel kunt doen. Bij een thema of meetpunt: zelf een
+ * schaalscore maken van dezelfde vragen met minimaal 1 beantwoorde vraag (dan valt niemand weg); bij een eigen score:
+ * het minimum verlagen.
+ */
+export const P_WEGGEVALLEN_WAAROM = 'Een paar mensen (1 tot 4) beantwoordden te weinig vragen van deze score en vallen daarom weg; naast het dashboard zou je hun antwoorden kunnen terugrekenen.';
+export const P_WEGGEVALLEN_UITWEG = 'Wil je deze score toch gebruiken? Kies bij Variabelen de knop “Schaalscore maken” bij deze score: dat is een score van dezelfde vragen met minimaal 1 beantwoorde vraag. Dan valt niemand weg.';
+export const P_WEGGEVALLEN_UITWEG_EIGEN = 'Wil je deze score toch gebruiken? Kies bij Variabelen “Aanpassen” bij deze score en zet het minimum aantal beantwoorde vragen op 1. Dan valt niemand weg.';
+/** De uitweg bij score v (thema, meetpunt of eigen score). */
+export const weggevallenUitweg = (v) => (v?.bron === 'thema' || v?.bron === 'meetpunt' ? P_WEGGEVALLEN_UITWEG : P_WEGGEVALLEN_UITWEG_EIGEN);
+/** De hele melding bij score v; wie: wat er niet getoond wordt (standaard de naam van de score). */
+export const pWeggevallen = (v, wie = `“${v.label}”`) => `${wie}: ${P_WEGGEVALLEN}. ${P_WEGGEVALLEN_WAAROM} ${weggevallenUitweg(v)}`;
+/** J2: bij gebruik als getal telt "Dat zeg ik liever niet" niet mee. */
+export const P_LIEVER_NIET = (label) => `Bij “${label}” telt “Dat zeg ik liever niet” hier niet mee: het is geen waarde op de schaal (zoals een leeftijd). Als groep, bijvoorbeeld in een kruistabel of bij groepen vergelijken, doet het wel mee.`;
+/** J3: een cijfervraag hoort nooit bij de vragen van een schaal (thema, Cronbachs alfa, factoranalyse). */
+export const P_CIJFER_ITEM = (label) => `“${label}” is een cijfervraag (0 tot 10 of 1 tot 10). Een cijfervraag hoort niet bij de vragen van een schaal of thema; haal hem weg bij Vragen. Wil je weten hoe hij samenhangt met het thema, gebruik dan de correlatiematrix.`;
+/** J3: items met een verschillend bereik (bijvoorbeeld 1 tot 5 naast 0 tot 10). */
+export const P_BEREIK_VERSCHILT = 'Let op: de gekozen vragen hebben niet allemaal hetzelfde bereik (bijvoorbeeld 1 tot 5 naast een ander getal). Een vraag met een groter bereik telt dan zwaarder mee. Kijk ook naar de gestandaardiseerde uitkomst, of kies vragen met hetzelfde bereik.';
 export const P_OPEN = (titel) => `Vragenlijst “${titel}” staat nog open: de uitkomst kan nog veranderen.`;
 export const P_TE_VEEL_WAARDEN = 'Deze variabele heeft te veel verschillende waarden. Deel hem eerst in groepen in (Indelen in groepen).';
 export const P_INDELING_ALS_GETAL = (label) => `“${label}” is een indeling (zoals afdeling of leeftijd) met een groep van minder dan 5 mensen. Als getal gebruikt zou die groep terug te rekenen zijn. Gebruik hem als groep, of voeg eerst groepen samen (Indelen in groepen).`;

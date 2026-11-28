@@ -9,7 +9,7 @@ import { tweeWaardenRegel, weggevallenRegel } from '../privacy-selectie.js';
 import { tabel, cel, tekstCel, verborgenCel, voeg, melding, sluitAf, methode } from '../uitvoer.js';
 import {
   UITLEG_LEVENE, UITLEG_POSTHOC, ZIN_SIG_VERSCHIL, ZIN_GEEN_SIG_VERSCHIL, ZIN_SIG_GROEPEN, ZIN_GEEN_SIG_GROEPEN, LET_OP_VERSCHIL,
-  P_GEPAARD, P_WEGGEVALLEN, UITLEG_GEPAARD, g, apaZinnen, effectWoord, pWaarde,
+  P_GEPAARD, pWeggevallen, UITLEG_GEPAARD, g, apaZinnen, effectWoord, pWaarde,
 } from '../uitvoer-tekst.js';
 import {
   getalFout, begin, weiger, overlapFout, ordinaalMelding, variabelenUit, geldigMasker, inSelectie, iedereen, selectieControle, indelingAlsGetalFout,
@@ -42,7 +42,7 @@ export function levene(ruw, midden = 'gemiddelde') {
   return r ? zonderNaN({ f: r.f, df1: r.df1, df2: r.df2, p: r.p }) : null;
 }
 
-/** t-toets met gelijke spreiding (Student, gepoolde variantie); verschil = b − a. */
+/** t-toets met gelijke spreiding (Student, gepoolde variantie); verschil = b − a (de t-toets roept hem aan als (b, a)). */
 export function studentT(a, b) {
   const A = momenten(schoon(a));
   const B = momenten(schoon(b));
@@ -198,16 +198,18 @@ export async function ttoets(ds, spec, ctx) {
     statRijen.push([tekstCel(''), tekstCel(naamB), cel(B.n, 'aantal'), cel(B.gemiddelde, 'gem'), cel(B.sd, 'gem'), cel(B.se, 'gem')]);
     const lev = levene([a, b], midden);
     leveneRijen.push([tekstCel(v.label), cel(lev?.f, 'stat'), cel(lev?.df1, 'df'), cel(lev?.df2, 'df'), cel(lev?.p, 'p')]);
-    const st = studentT(a, b);
-    const we = welchT(a, b);
+    // Zoals SPSS (en scipy.stats.ttest_ind(a, b)): verschil, t, d, g en de intervallen zijn groep 1 min groep 2
+    // (G2). De functies rekenen "tweede min eerste", dus gaat groep 2 eerst.
+    const st = studentT(b, a);
+    const we = welchT(b, a);
     const seWelch = we ? Math.sqrt(momenten(a).ss / (a.length - 1) / a.length + momenten(b).ss / (b.length - 1) / b.length) : null;
     tRijen.push([tekstCel(v.label), tekstCel('Gelijke spreiding aangenomen'), cel(st?.t, 'stat'), cel(st?.df, 'df'), cel(st?.p, 'p'), cel(st?.verschil, 'gem'), cel(st?.se, 'gem'), tekstCel(st ? `${g(st.ciLaag)} tot ${g(st.ciHoog)}` : '–')]);
     tRijen.push([tekstCel(''), tekstCel('Gelijke spreiding niet aangenomen (Welch, aanbevolen)', { nadruk: true }), cel(we?.t, 'stat'), cel(we?.df, 'df'), cel(we?.p, 'p'), cel(we?.verschil, 'gem'), cel(seWelch, 'gem'), tekstCel(we ? `${g(we.ciLaag)} tot ${g(we.ciHoog)}` : '–')]);
-    const d = cohensD(a, b);
+    const d = cohensD(b, a);
     dRijen.push([tekstCel(v.label), cel(d?.d, 'stat'), cel(d?.g, 'stat'), tekstCel(d ? `${g(d.ciLaag)} tot ${g(d.ciHoog)}` : '–')]);
     let mw = null;
     if (metMw) {
-      mw = mannWhitney(a, b);
+      mw = mannWhitney(b, a); // U van groep 1; z positief als groep 1 hoger ligt
       const { rangen } = gemiddeldeRangen([a, b]);
       mwRijen.push([tekstCel(v.label), cel(rangen[0], 'gem'), cel(rangen[1], 'gem'), cel(mw?.u, 'stat'), cel(mw?.z, 'stat'), cel(mw?.p, 'p'), cel(mw?.r, 'r')]);
     }
@@ -223,10 +225,11 @@ export async function ttoets(ds, spec, ctx) {
     tabel('groepsstatistieken', 'Groepsstatistieken', ['Score', 'Groep', 'N', 'Gemiddelde', 'SD', 'SE'], statRijen),
     tabel('levene', `Toets van Levene (op basis van ${midden === 'mediaan' ? 'de mediaan' : 'het gemiddelde'})`, ['Score', 'F', 'df1', 'df2', 'p'], leveneRijen, { uitleg: UITLEG_LEVENE }),
     tabel('ttoets', 't-toets voor onafhankelijke groepen', ['Score', 'Aanname', 't', 'df', 'p', 'Verschil', 'SE verschil', '95%-BI'], tRijen,
-      { voetnoten: [`Verschil = “${naamB}” min “${naamA}”.`] }),
-    tabel('effect', 'Effectgrootte', ['Score', 'Cohens d', 'Hedges’ g', '95%-BI van g'], dRijen),
+      { voetnoten: [`Verschil = “${naamA}” min “${naamB}” (zoals SPSS: groep 1 min groep 2). Een positief verschil en een positieve t betekenen dat “${naamA}” hoger scoort.`] }),
+    tabel('effect', 'Effectgrootte', ['Score', 'Cohens d', 'Hedges’ g', '95%-BI van g'], dRijen,
+      { voetnoten: [`Ook d en g zijn “${naamA}” min “${naamB}”: positief als “${naamA}” hoger scoort.`] }),
     metMw ? tabel('mannwhitney', 'Toets van Mann-Whitney (rangnummers)', ['Score', `Gemiddelde rang “${naamA}”`, `Gemiddelde rang “${naamB}”`, 'U', 'z', 'p', 'r'], mwRijen,
-      { voetnoten: ['z met continuïteitscorrectie; SPSS toont z zonder die correctie (verschil in de 2e of 3e decimaal).'] }) : null,
+      { voetnoten: [`U is die van “${naamA}”; z is positief als “${naamA}” hogere rangnummers heeft. z met continuïteitscorrectie; SPSS toont z zonder die correctie (verschil in de 2e of 3e decimaal).`] }) : null,
     ordinaalMelding(deps.map((x) => x.v).filter(Boolean)));
   methode(u, 'student', 'welch', 'levene', metMw ? 'mannwhitney' : null);
   if (eerste) {
@@ -235,18 +238,18 @@ export async function ttoets(ds, spec, ctx) {
     const effect = d ? effectGrootte(d.g, 'g') : null;
     u.duiding.significant = significant;
     u.duiding.effect = effect;
+    // Steeds groep 1 voorop, met hetzelfde teken als in de tabel (G2).
     const richting = Math.abs(we.verschil) < 0.005 ? `“${naamA}” en “${naamB}” scoren gemiddeld ongeveer gelijk op “${v.label}”.`
-      : `“${we.verschil > 0 ? naamB : naamA}” scoort gemiddeld ${g(Math.abs(we.verschil))} punt hoger op “${v.label}” dan “${we.verschil > 0 ? naamA : naamB}”.`;
+      : `“${naamA}” scoort gemiddeld ${g(Math.abs(we.verschil))} punt ${we.verschil > 0 ? 'hoger' : 'lager'} op “${v.label}” dan “${naamB}”.`;
     u.duiding.zinnen.push(richting, significant ? ZIN_SIG_VERSCHIL : ZIN_GEEN_SIG_VERSCHIL);
     if (effect) u.duiding.zinnen.push(`Het verschil is ${effectWoord(effect)} (Hedges' g = ${g(d.g)}).`);
     if (mw && (mw.p < ALFA) !== significant) u.duiding.zinnen.push(`De controle met rangnummers (Mann-Whitney, p = ${pWaarde(mw.p)}) komt op een andere conclusie uit. Wees daarom extra voorzichtig.`);
     u.duiding.zinnen.push(UITLEG_LEVENE, LET_OP_VERSCHIL);
-    const hoger = we.verschil >= 0;
+    // De zin volgt de tabel: groep 1 voorop, t en g met hun teken (groep 1 min groep 2), het interval zoals berekend.
     u.apa = apaZinnen((f) => {
-      const [h, l, Mh, Ml] = hoger ? [naamB, naamA, B, A] : [naamA, naamB, A, B];
-      const werkwoord = significant ? `scoorde ${Math.abs(we.verschil) < 0.005 ? 'gelijk' : 'hoger'} op “${v.label}” dan` : `verschilde op “${v.label}” niet significant van`;
-      const gTekst = d ? `; *g* = ${f.g(Math.abs(d.g))}, 95%-BI [${f.g(hoger ? d.ciLaag : -d.ciHoog)}; ${f.g(hoger ? d.ciHoog : -d.ciLaag)}]` : '';
-      return `De groep “${h}” (*M* = ${f.g(Mh.gemiddelde)}; *SD* = ${f.g(Mh.sd)}) ${werkwoord} de groep “${l}” (*M* = ${f.g(Ml.gemiddelde)}; *SD* = ${f.g(Ml.sd)}), *t*(${f.df(we.df)}) = ${f.g(Math.abs(we.t))}; ${f.p(we.p)}${gTekst}.`;
+      const werkwoord = significant ? `scoorde ${Math.abs(we.verschil) < 0.005 ? 'gelijk' : we.verschil > 0 ? 'hoger' : 'lager'} op “${v.label}” dan` : `verschilde op “${v.label}” niet significant van`;
+      const gTekst = d ? `; *g* = ${f.g(d.g)}, 95%-BI [${f.g(d.ciLaag)}; ${f.g(d.ciHoog)}]` : '';
+      return `De groep “${naamA}” (*M* = ${f.g(A.gemiddelde)}; *SD* = ${f.g(A.sd)}) ${werkwoord} de groep “${naamB}” (*M* = ${f.g(B.gemiddelde)}; *SD* = ${f.g(B.sd)}), *t*(${f.df(we.df)}) = ${f.g(we.t)}; ${f.p(we.p)}${gTekst}.`;
     });
   }
   return sluitAf(u);
@@ -456,7 +459,7 @@ export async function gepaard(ds, spec, ctx) {
     if (sel) { voeg(u, melding('privacy', `${label}: ${sel}`)); teWeinig('niet getoond (selectie)'); continue; }
     const basis = inSelectie(geldig, ctx.selectie);
     const privacy = indelingAlsGetalFout(a, basis, ctx.d, ctx.selectie?.F) || indelingAlsGetalFout(b, basis, ctx.d, ctx.selectie?.F)
-      || ([a, b].some((v) => v.score && weggevallenRegel(v.reden, ctx.selectie ? ctx.selectie.F : iedereen(ds), null, 1, ctx.d)[0]) ? `${label}: ${P_WEGGEVALLEN}.` : null)
+      || ((weg) => (weg ? pWeggevallen(weg, `${label}: “${weg.label}”`) : null))([a, b].find((v) => v.score && weggevallenRegel(v.reden, ctx.selectie ? ctx.selectie.F : iedereen(ds), null, 1, ctx.d)[0]))
       || ([a, b].some((v) => tweeWaardenRegel(v.waarden, basis, null, 1, ctx.d, ctx.selectie)?.[0]) ? `${label}: een van de vragen heeft maar twee waarden en een daarvan komt bij minder dan ${ctx.d} mensen voor.` : null);
     if (privacy) { voeg(u, melding('privacy', privacy)); teWeinig('niet getoond'); continue; }
     const x = [];
