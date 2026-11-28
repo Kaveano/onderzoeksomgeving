@@ -899,7 +899,7 @@ export async function toon(container, ctx) {
     const vrouw = geslacht.find((x) => x.label === 'Vrouw');
     const verg = (sleutel) => benchmark(sleutel).map(benchmarkZin);
     const KPI = new Map(R.KPI_NAMEN.map(([s, naam, f]) => [s, { naam, f }]));
-    const kpi = (s, naam = null, ...onder) => (kan(s) && KPI.has(s) ? tegel(naam || KPI.get(s).naam, KPI.get(s).f(t[s]), ...onder) : null);
+    const kpi = (s, naam = null, ...onder) => (kan(s) && KPI.has(s) ? tegel(naam || KPI.get(s).naam, R.kpiNvt(p, s) ? '–' : KPI.get(s).f(t[s]), ...onder) : null);
     const tegels = [
       tegel('Medewerkers op de peildatum', n0(t.medewerkers)),
       kpi('fte', 'Fte'),

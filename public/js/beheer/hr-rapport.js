@@ -707,6 +707,11 @@ export const KPI_NAMEN = [
 const KPI_KOLOM = { uitstroom: 'verloop_pct', instroom: 'instroom_pct' };
 /** Staat dit kengetal in de personeelscijfers (had het bestand de kolom ervoor)? */
 export const heeftKpi = (p, sleutel) => !(p?.ontbreekt || []).includes(KPI_KOLOM[sleutel] || sleutel);
+/**
+ * Is dit kengetal niet van toepassing (geen getal, maar ook niet verborgen)? Het deel vertrekkers in hun eerste jaar
+ * bestaat niet als er niemand vertrok; sinds R18 staat er dan "0 vertrekkers", dus geen × ernaast maar "–".
+ */
+export const kpiNvt = (p, sleutel) => sleutel === 'pct_eerste_jaar' && p?.totaal?.uitstroom === 0 && !eindig(p.totaal.pct_eerste_jaar);
 
 /** De kolommen van de tabel per groep van het personeelsbestand: [sleutel, kop, tekst (scherm/Word), waarde (Excel)]. */
 const GROEP_KOLOMMEN = [
@@ -743,7 +748,7 @@ function personeelBlokken(k, figuren, bronnen = {}) {
   const uit = [];
   uit.push(alinea(`Uit het personeelsbestand "${p.naam}" (${p.periode.van} tot en met ${p.periode.tot}; peildatum ${nlDatum(p.peildatum)}). Alleen groepscijfers; geen gegevens per medewerker.`));
   const t = p.totaal;
-  const rijen = KPI_NAMEN.filter(([s]) => heeftKpi(p, s)).map(([s, naam, f]) => [naam, f(t[s])]);
+  const rijen = KPI_NAMEN.filter(([s]) => heeftKpi(p, s)).map(([s, naam, f]) => [naam, kpiNvt(p, s) ? '–' : f(t[s])]);
   uit.push(tabel(['Kengetal', 'Waarde'], rijen, 'HR-kengetallen van de organisatie'));
   if (kleinVerloop(p)) uit.push(alinea(`*${KLEIN_VERLOOP_UITLEG}*`));
   if (rijen.some((r) => r[1] === VERBORGEN)) uit.push(alinea(`*${PERSONEEL_VERBORGEN}*`));
@@ -890,7 +895,7 @@ export function kerncijferBladen(k) {
   }
   if (k.personeel) {
     const p = k.personeel;
-    const rijen = [['Kengetal', 'Waarde'], ...KPI_NAMEN.filter(([sl]) => heeftKpi(p, sl)).map(([sl, naam]) => [naam, xr(p.totaal[sl], sl === 'meldingsfrequentie' ? 2 : 1)])];
+    const rijen = [['Kengetal', 'Waarde'], ...KPI_NAMEN.filter(([sl]) => heeftKpi(p, sl)).map(([sl, naam]) => [naam, kpiNvt(p, sl) ? '' : xr(p.totaal[sl], sl === 'meldingsfrequentie' ? 2 : 1)])];
     const noten = new Set();
     if (kleinVerloop(p)) noten.add(KLEIN_VERLOOP_UITLEG);
     if (p.totaal?.verzuim_reden) noten.add(VERZUIM_VERBORGEN_ORGANISATIE);

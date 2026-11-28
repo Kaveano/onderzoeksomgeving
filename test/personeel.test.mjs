@@ -915,6 +915,8 @@ test('R18: verloop en instroom van de organisatie bij 0, 1, 3, 4, 5 en 20 (aanta
     assert.equal(waarde('Nieuwe medewerkers in de periode'), String(n));
     assert.notEqual(waarde('Verloop'), '×');
     assert.notEqual(waarde('Instroom'), '×');
+    // Het deel vertrekkers in hun eerste jaar bestaat niet bij 0 vertrekkers: "–" (niet van toepassing), geen ×.
+    assert.equal(waarde('Vertrekkers in hun eerste jaar'), n === 0 ? '–' : n < 10 ? '×' : waarde('Vertrekkers in hun eerste jaar'));
     const noot = blokken.some((b) => b.soort === 'alinea' && b.tekst.includes(R.KLEIN_VERLOOP_UITLEG));
     assert.equal(noot, n > 0 && n < 5);
     const blad = R.kerncijferBladen(kerncijfersMet(k)).find((b) => b.naam === 'Personeel').rijen;
@@ -922,6 +924,7 @@ test('R18: verloop en instroom van de organisatie bij 0, 1, 3, 4, 5 en 20 (aanta
     assert.ok(eindig(blad.find((r) => r[0] === 'Verloop')[1]));
     assert.ok(eindig(blad.find((r) => r[0] === 'Instroom')[1]));
     assert.equal(blad.some((r) => r[0] === R.KLEIN_VERLOOP_UITLEG), n > 0 && n < 5);
+    if (n === 0) assert.deepEqual(blad.find((r) => r[0] === 'Vertrekkers in hun eerste jaar'), ['Vertrekkers in hun eerste jaar', '']);
   }
 });
 
