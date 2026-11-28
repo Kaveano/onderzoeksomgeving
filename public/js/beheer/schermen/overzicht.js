@@ -38,6 +38,10 @@ const g1 = (x) => (eindig(x) ? nlGetal(x, 1) : VERBORGEN);
 const pc = (x) => (eindig(x) ? nlProcent(x) : VERBORGEN);
 const n0 = (x) => (eindig(x) ? nlGetal(x, 0) : VERBORGEN);
 const sc = (x) => (eindig(x) ? metTeken(Math.round(x), 0) : VERBORGEN);
+const kortTekst = (t, max = 60) => (String(t).length > max ? `${String(t).slice(0, max - 1)}…` : String(t));
+/** De uitkomst van "Wat hangt samen met …?" kort, voor de kop van de kaart. */
+const uitkomstKort = (u) => (u.soort === 'cijfer_nps' ? 'de eNPS' : u.soort === 'cijfer_rapport' ? 'het rapportcijfer'
+  : u.soort === 'thema' ? `het thema "${u.naam}"` : `"${kortTekst(u.naam)}"`);
 const nlKort = (iso) => {
   const t = nlDatum(iso);
   return t ? t.replace(/ \d{4}$/, '').replace(/(\w{3})\w*$/, '$1') : '';
@@ -546,7 +550,7 @@ export async function toon(container, ctx) {
         : (k.lijst && !k.lijst.verborgen && k.lijst.n ? noot('De foutmarge staat er zodra bekend is hoeveel mensen de vragenlijst kregen: vul het aantal uitgenodigden in bij de vragenlijst, of voeg een personeelsbestand toe.') : null),
       curve ? [h('h3', { class: 'hr-subkop' }, 'Wanneer werd er ingevuld?'), figuurVak(curve),
         k.deelname.per_dag_samengevoegd ? noot('Dagen met minder dan 5 ingevulde vragenlijsten zijn samengenomen met de dagen erna.') : null] : null,
-      perGroep ? [h('h3', { class: 'hr-subkop' }, `Respons per ${(km?.kenmerk_naam || 'groep').toLowerCase()}`), perGroep] : null);
+      perGroep ? [responsFig ? null : h('h3', { class: 'hr-subkop' }, `Respons per ${(km?.kenmerk_naam || 'groep').toLowerCase()}`), perGroep] : null);
   }
 
   function curveFiguur() {
@@ -691,7 +695,13 @@ export async function toon(container, ctx) {
       return h('td', { class: `rechts getal ${klasse}` }, rij.soort === 'enps' ? sc(waarde) : g1(waarde),
         klasse ? h('span', { class: 'sr-only' }, klasse === 'hm-hoger' ? ' (hoger dan iedereen)' : ' (lager dan iedereen)') : null);
     };
-    const rijNaam = (r) => (r.soort === 'enps' ? `eNPS: ${r.naam}` : r.soort === 'cijfer' ? `Cijfer: ${r.naam}` : r.naam);
+    // Cijfervragen kort ("eNPS", "Rapportcijfer"); de hele vraag staat erbij voor schermlezers en als je erop wijst.
+    const aantalSoort = (soort) => g.rijen.filter((r) => r.soort === soort).length;
+    const rijNaam = (r) => {
+      if (r.soort !== 'enps' && r.soort !== 'cijfer') return r.naam;
+      const basis = r.soort === 'enps' ? 'eNPS' : 'Rapportcijfer';
+      return h('span', { title: r.naam }, aantalSoort(r.soort) > 1 ? `${basis}: ${kortTekst(r.naam, 30)}` : basis, h('span', { class: 'sr-only' }, ` (${r.naam})`));
+    };
     const tabelEl = h('div', { class: 'tabel-wrapper hr-heatmap-wrapper' },
       h('table', { class: 'tabel hr-heatmap' },
         h('caption', { class: 'sr-only' }, `Gemiddelde per thema per groep, naar ${g.tekst}`),
@@ -750,7 +760,7 @@ export async function toon(container, ctx) {
       },
       huidig ? null : h('option', { value: '', selected: true }, 'Kies een uitkomst'),
       groepen.map((gr) => h('optgroup', { label: gr }, opties.filter((o) => o.groep === gr).map((o) => h('option', { value: o.sleutel, selected: o.sleutel === huidig }, o.naam.length > 90 ? `${o.naam.slice(0, 89)}…` : o.naam)))))) : null;
-    const titelTekst = dr ? `Wat hangt samen met "${dr.uitkomst.naam}"?` : 'Wat hangt samen met …?';
+    const titelTekst = dr ? `Wat hangt samen met ${uitkomstKort(dr.uitkomst)}?` : 'Wat hangt samen met …?';
     if (!dr) {
       return kaart('hr-drijvers', titelTekst, 'Samenhang', {},
         kies,
@@ -932,7 +942,8 @@ export async function toon(container, ctx) {
           h('select', { id: perId, onchange: (e) => { keuze.dimensie = e.target.value; bewaarKeuze(onderzoekId, keuze); vulGroep(); } },
             dims.map((g) => h('option', { value: g.dimensie, selected: g.dimensie === keuze.dimensie }, g.dimensie_naam)))) : null,
         groepVak] : null,
-      leeftijdFig ? [h('h3', { class: 'hr-subkop' }, 'Leeftijdsopbouw'), figuurVak(leeftijdFig)] : null,
+      leeftijdFig ? figuurVak(leeftijdFig) : null,
+      contractTabel(t.contract),
       redenen.length ? [h('h3', { class: 'hr-subkop' }, 'Redenen van vertrek (hele organisatie)'),
         tabel(['Reden', 'Aantal'], redenen.map((r) => [r.label, n0(r.aantal)]), { bijschrift: 'Redenen van vertrek' }),
         noot('Redenen van vertrek staan er alleen voor de hele organisatie, nooit per groep.')] : null,
@@ -947,6 +958,15 @@ export async function toon(container, ctx) {
           h('li', {}, 'Volgens de gangbare norm (NVA) tel je verzuim in kalenderdagen, gewogen naar de deeltijdfactor, en zonder zwangerschaps- en bevallingsverlof.'),
           zwanger ? h('li', {}, `In dit bestand: ${zwanger.charAt(0).toLowerCase()}${zwanger.slice(1)}`) : null,
           h('li', {}, `Verzuim staat er alleen bij groepen van minstens ${R.MIN_VERZUIM} medewerkers, en niet als het cijfer vooral over één persoon zou gaan.`))));
+  }
+
+  /** Soort dienstverband van de organisatie (afgeschermd zoals de leeftijdsopbouw). */
+  function contractTabel(contract) {
+    const rijen = (contract || []).filter((c) => c.verborgen || c.n > 0);
+    if (rijen.length < 2) return null;
+    return [h('h3', { class: 'hr-subkop' }, 'Soort dienstverband'),
+      tabel(['Soort dienstverband', 'Medewerkers', '%'], rijen.map((c) => [c.label, n0(c.n), pc(c.pct)]), { bijschrift: 'Medewerkers per soort dienstverband' }),
+      rijen.some((c) => c.verborgen) ? noot(R.PERSONEEL_VERBORGEN) : null];
   }
 
   // ---------- 12. Eigen cijfers ----------

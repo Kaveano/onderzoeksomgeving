@@ -87,6 +87,8 @@
 .hr .tabel th.rechts, .hr .tabel td.rechts { text-align: right; }
 .hr .tabel tbody th { background: transparent; color: var(--tekst); font-size: 0.9rem; font-weight: 600; }
 .hr-th-sub { display: block; font-size: 0.75rem; font-weight: 400; color: var(--tekst-zacht); white-space: normal; }
+/* Getallen (en "0,50 tot 0,65") niet afbreken: de tabel scrolt dan binnen zijn vak. */
+.hr .tabel td.getal { white-space: nowrap; }
 
 /* Thema's per groep (heatmap): scrolt binnen de kaart; de eerste kolom blijft staan */
 .hr-heatmap-wrapper { max-width: 100%; }
