@@ -952,9 +952,9 @@ export async function toon(container, ctx) {
           h('li', {}, 'Gemiddelde duur per melding: de verzuimdagen gedeeld door het aantal meldingen. Dit is een benadering: een melding die over de grens van de periode loopt, telt maar voor een deel mee.'),
           h('li', {}, 'Nulverzuim: het deel van de medewerkers dat de hele periode in dienst was en zich niet ziek meldde.'),
           h('li', {}, 'Verloop en instroom: het aantal vertrekkers en nieuwe medewerkers in de periode, gedeeld door het gemiddelde aantal medewerkers (begin plus einde, gedeeld door twee).'),
-          h('li', {}, 'Volgens de gangbare norm (NVA) tel je verzuim in kalenderdagen, gewogen naar de deeltijdfactor, en zonder zwangerschaps- en bevallingsverlof.'),
+          h('li', {}, 'Volgens de gangbare norm voor verzuimregistratie (de NVS-standaard van het CBS) tel je verzuim in kalenderdagen, gewogen naar de deeltijdfactor, en zonder zwangerschaps- en bevallingsverlof.'),
           zwanger ? h('li', {}, `In dit bestand: ${zwanger.charAt(0).toLowerCase()}${zwanger.slice(1)}`) : null,
-          h('li', {}, `Verzuim staat er alleen bij groepen van minstens ${R.MIN_VERZUIM} medewerkers, en niet als het cijfer vooral over één persoon zou gaan.`))));
+          h('li', {}, `Verzuim staat er alleen bij groepen van minstens ${R.MIN_VERZUIM} medewerkers, en niet als het cijfer vooral over één persoon zou gaan (bij de verzuimdagen of bij de ziekmeldingen).`))));
   }
 
   /** Soort dienstverband van de organisatie (afgeschermd zoals de leeftijdsopbouw). */

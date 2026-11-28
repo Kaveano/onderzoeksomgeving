@@ -11,6 +11,7 @@ import { Fout } from './http.js';
 import { DREMPEL } from '../../public/js/beheer/privacy.js';
 import {
   ROLLEN, DIMENSIES, KLASSEN, KENGETALLEN, REDEN_SLEUTELS, MIN_VERZUIM, MAX_MAANDEN, MAX_GROEPEN, ONBEKEND, ZWANGERSCHAPSVERLOF, maandNr, peildatumVan, periodeDagen,
+  lijktPersoonsKolom,
 } from '../../public/js/beheer/personeel-regels.js';
 
 export const MAX_INSTELLINGEN = 100_000; // tekens (JSON)
@@ -276,6 +277,17 @@ export function controleerPersoneelsaggregaat(a) {
     // Elke indeling verdeelt dezelfde mensen (met "Onbekend" voor wie geen waarde heeft).
     const som = (veld) => uitDim.groepen.reduce((s, g) => s + g[veld], 0);
     regel(som('in_periode') === totaal.in_periode && som('medewerkers') === totaal.medewerkers, `de groepen van ${DIMENSIES[dim]} tellen niet op tot de hele organisatie.`);
+    // Groepsnamen zijn nooit namen of nummers van medewerkers (B4): geslacht en leidinggeven hebben vaste namen, en een
+    // andere indeling waarin bijna iedereen een eigen groep heeft, weigert de server (dezelfde regel als de browser).
+    if (!klassen) {
+      const vast = dim === 'geslacht' ? ['Man', 'Vrouw', 'Anders'] : dim === 'leidinggevend' ? ['Ja', 'Nee'] : null;
+      const echt = uitDim.groepen.filter((g) => g.label !== ONBEKEND);
+      if (vast) regel(echt.every((g) => vast.includes(g.label)), `onbekende groep bij ${DIMENSIES[dim]}.`);
+      else {
+        regel(!lijktPersoonsKolom({ n: totaal.in_periode, groepen: echt.length, eenpersoons: echt.filter((g) => g.in_periode === 1).length }),
+          `bij ${DIMENSIES[dim]} heeft bijna iedereen een eigen groep; dat lijken namen of nummers en die worden niet bewaard.`);
+      }
+    }
     // Verzuim aanvullend verborgen: zijn er groepen zonder en groepen met verzuim, dan tellen die zonder samen minstens 10.
     if (metVerzuim) {
       const zonder = uitDim.groepen.filter((g) => !g.verzuim?.toonbaar);

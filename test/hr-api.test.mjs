@@ -248,6 +248,18 @@ test('personeelscijfers: de server weigert alles wat niet bij groepscijfers hoor
   })(), /alleen de aantallen/);
   // De groepen tellen niet op tot de organisatie.
   await fout((() => { const a = kopie(); dimA(a).groepen[0].in_periode += 1; return a; })(), /tellen niet op/);
+  // Een groep per medewerker (een namenkolom als afdeling): ook een vervalst aggregaat dat wel optelt, weigert de server.
+  await fout((() => {
+    const a = kopie();
+    let nog = a.totaal.medewerkers;
+    dimA(a).groepen = Array.from({ length: a.totaal.in_periode }, (_, i) => {
+      const m = nog > 0 ? 1 : 0;
+      nog -= m;
+      return { label: `Persoon Achternaam${i}`, medewerkers: m, in_periode: 1, klein: true, verzuim: { toonbaar: false, reden: 'klein' } };
+    });
+    return a;
+  })(), /eigen groep/);
+  await fout((() => { const a = kopie(); a.dimensies.geslacht.groepen[0].label = 'Persoon Achternaam1'; return a; })(), /onbekende groep bij Geslacht/);
   // Meer 55-plussers dan medewerkers met een leeftijd.
   await fout((() => { const a = kopie(); a.totaal.n_55plus = a.totaal.leeftijd_n + 1; return a; })(), /leeftijden/);
   await fout((() => { const a = kopie(); a.totaal.uitstroom_reden.overig += 1; return a; })(), /redenen van vertrek/);

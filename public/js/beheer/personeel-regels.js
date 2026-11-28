@@ -632,11 +632,32 @@ function alleenAantallen(g) {
   return { medewerkers: g.medewerkers, in_periode: g.in_periode, klein: true, verzuim: g.verzuim ? { toonbaar: false, reden: 'klein' } : null };
 }
 
-/** Is het verzuim van een groep personen toonbaar? Ook naar fte gewogen dagen mogen niet van één persoon zijn. */
+/**
+ * Is het verzuim van een groep personen toonbaar? Niemand mag meer dan de helft hebben van de verzuimdagen, van de
+ * naar fte gewogen dagen én van de ziekmeldingen: anders gaat het verzuimpercentage of de meldingsfrequentie vooral
+ * over één persoon (PR-16). Zonder kolom zijn die waarden 0 en tellen ze niet.
+ */
 function verzuimOk(personen, n, minN, d) {
-  const ruw = verzuimToonbaar({ n, dagenPerPersoon: personen.map((p) => p.dagen ?? 0) }, { minN, d });
-  if (!ruw.toonbaar) return ruw;
-  return verzuimToonbaar({ n, dagenPerPersoon: personen.map((p) => (p.dagen ?? 0) * (p.fte ?? 1)) }, { minN, d });
+  const reeksen = [
+    personen.map((p) => p.dagen ?? 0),
+    personen.map((p) => (p.dagen ?? 0) * (p.fte ?? 1)),
+    personen.map((p) => p.meldingen ?? 0),
+  ];
+  for (const dagenPerPersoon of reeksen) {
+    const uit = verzuimToonbaar({ n, dagenPerPersoon }, { minN, d });
+    if (!uit.toonbaar) return uit;
+  }
+  return { toonbaar: true, reden: null };
+}
+
+/**
+ * Lijkt een kolom met categorieën (afdeling, locatie …) meer op een kolom met namen of nummers: bijna iedereen een
+ * eigen waarde? Dan zou elke groep één medewerker zijn en zou de naam als groepsnaam mee naar de server gaan.
+ * n: het aantal medewerkers in de periode (ook die zonder waarde); groepen: het aantal verschillende waarden;
+ * eenpersoons: het aantal waarden met precies één medewerker. De server (hr-validatie.js) gebruikt dezelfde regel.
+ */
+export function lijktPersoonsKolom({ n, groepen, eenpersoons }) {
+  return groepen > MAX_GROEPEN || (n >= 6 && groepen * 2 > n) || eenpersoons * 2 > n;
 }
 
 /**
@@ -682,9 +703,14 @@ export function verwerkPersoneel(kop, rijen, {
     } else {
       const rol = dim;
       if (!gebruikt.has(rol)) continue;
-      const labels = new Set(personen.map((p) => p.dim[dim]).filter(Boolean));
-      if (labels.size > MAX_GROEPEN || (personen.length >= 20 && labels.size > personen.length / 2)) {
-        meldingen.push(`De kolom "${ROLLEN[rol].label}" heeft zoveel verschillende waarden dat het geen indeling in groepen lijkt; die wordt niet gebruikt.`);
+      const perWaarde = new Map();
+      for (const p of personen) if (p.dim[dim]) perWaarde.set(p.dim[dim], (perWaarde.get(p.dim[dim]) || 0) + 1);
+      const labels = new Set(perWaarde.keys());
+      // Geslacht en leidinggeven hebben vaste waarden; bij de andere kolommen: niet als bijna iedereen een eigen waarde
+      // heeft (een kolom met namen of nummers), hoe klein het bestand ook is.
+      const vrij = dim !== 'geslacht' && dim !== 'leidinggevend';
+      if (vrij && lijktPersoonsKolom({ n: personen.length, groepen: labels.size, eenpersoons: [...perWaarde.values()].filter((x) => x === 1).length })) {
+        meldingen.push(`De kolom "${ROLLEN[rol].label}" heeft zoveel verschillende waarden dat het geen indeling in groepen lijkt (misschien staan er namen of nummers in); die wordt niet gebruikt.`);
         continue;
       }
       const vast = dim === 'geslacht' ? ['Man', 'Vrouw', 'Anders'] : dim === 'leidinggevend' ? ['Ja', 'Nee'] : null;
@@ -904,6 +930,16 @@ export function personeelKpis(aggregaat, { d = DREMPEL } = {}) {
   geslacht.forEach((x, i) => { if (x.verborgen) verborgenGeslacht.set(x.label, geslachtAantallen[i]); });
   const verborgenLeiding = verborgenGroepen(aggregaat, 'leidinggevend', d);
   const deelVeilig = (verborgen, label) => !splitstVerborgen(verborgen, (l) => l === label) && !splitstVerborgen(verborgen, bekend);
+  // Deeltijd (minder dan 1 fte) is precies "minder uren dan uren_per_fte": de klassen van de arbeidsuren onder die grens.
+  // Instroom: wie in de periode kwam en er op de peildatum nog is, staat in de diensttijdklassen onder de lengte van de
+  // periode (in maanden). Beide aandelen mogen de verborgen klassen dus net zo min splitsen als 55+ de leeftijdsklassen.
+  const klassenVan = (dim) => new Map((aggregaat.dimensies?.[dim]?.klassen || []).map((c) => [c.label, c]));
+  const klasseVeilig = (dim, grens) => {
+    if (!aggregaat.dimensies?.[dim]) return true;
+    const verborgen = verborgenGroepen(aggregaat, dim, d);
+    return !splitstVerborgen(verborgen, vanafGrens(klassenVan(dim), grens)) && !splitstVerborgen(verborgen, bekend);
+  };
+  const periodeMaanden = maandNr(periode?.tot) - maandNr(periode?.van) + 1;
   const totaal = {
     medewerkers: t.medewerkers,
     fte: zeker(t.fte, kan('fte')),
@@ -912,7 +948,7 @@ export function personeelKpis(aggregaat, { d = DREMPEL } = {}) {
     pct_60plus: zeker(k.pct_60plus, veiligAandeel(t.n_60plus, t.leeftijd_n, d) && leeftijdVeilig(60)),
     pct_vrouw: zeker(k.pct_vrouw, kan('pct_vrouw') && veiligAandeel(t.geslacht.Vrouw, geslachtN, d) && !geslacht[1]?.verborgen && deelVeilig(verborgenGeslacht, 'Vrouw')),
     gem_diensttijd_jaar: zeker(k.gem_diensttijd_jaar, t.diensttijd_n >= d),
-    pct_deeltijd: zeker(k.pct_deeltijd, veiligAandeel(t.n_deeltijd, t.deeltijd_n, d)),
+    pct_deeltijd: zeker(k.pct_deeltijd, veiligAandeel(t.n_deeltijd, t.deeltijd_n, d) && klasseVeilig('uren', Number(aggregaat.uren_per_fte))),
     pct_leidinggevend: zeker(k.pct_leidinggevend, veiligAandeel(t.n_leidinggevend, t.leidinggevend_n, d) && deelVeilig(verborgenLeiding, 'Ja')),
     verzuim_pct: zeker(k.verzuim_pct, !!v),
     meldingsfrequentie: zeker(k.meldingsfrequentie, !!v),
@@ -920,7 +956,7 @@ export function personeelKpis(aggregaat, { d = DREMPEL } = {}) {
     nulverzuim_pct: zeker(k.nulverzuim_pct, !!v && veiligAandeel(v.n_nulverzuim, v.n_hele_periode, d)),
     verloop_pct: zeker(k.verloop_pct, kan('verloop_pct') && veiligAandeel(t.uitstroom, t.in_periode, d)),
     verloop_vrijwillig_pct: zeker(k.verloop_vrijwillig_pct, eigenVerzoekZichtbaar && veiligAandeel(t.uitstroom_reden.eigen_verzoek, t.in_periode, d)),
-    instroom_pct: zeker(k.instroom_pct, kan('instroom_pct') && veiligAandeel(t.instroom, t.in_periode, d)),
+    instroom_pct: zeker(k.instroom_pct, kan('instroom_pct') && veiligAandeel(t.instroom, t.in_periode, d) && Number.isInteger(periodeMaanden) && klasseVeilig('diensttijd', periodeMaanden)),
     pct_eerste_jaar: zeker(k.pct_eerste_jaar, kan('pct_eerste_jaar') && veiligAandeel(t.uitstroom_eerste_jaar, t.uitstroom, d)),
     gem_aantal: zeker(k.gem_aantal, t.begin >= d),
     geslacht,

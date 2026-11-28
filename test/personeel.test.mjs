@@ -5,6 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as P from '../public/js/beheer/personeel-regels.js';
 import { KENMERKVRAGEN, KLASSEGRENZEN, klasseVan } from '../public/js/beheer/kenmerken.js';
+import { controleerPersoneelsaggregaat } from '../src/lib/hr-validatie.js';
 
 const PERIODE = { van: '2025-11', tot: '2026-10' };
 const KOP = ['Naam', 'Personeelsnummer', 'Geboortedatum', 'Afdeling', 'Geslacht', 'Fte', 'Datum in dienst', 'Datum uit dienst',
@@ -545,4 +546,205 @@ test('zwangerschaps- en bevallingsverlof (K S4): alleen met een verzuimkolom, al
   const zonder = P.verwerkPersoneel(['Afdeling'], groep(12).map((x) => [x[3]]), { rollen: { 0: 'afdeling' }, periode: PERIODE, zwangerschapsverlof: 'telt_mee' });
   assert.equal(zonder.aggregaat.zwangerschapsverlof, undefined);
   assert.deepEqual(Object.keys(P.ZWANGERSCHAPSVERLOF).sort(), ['onbekend', 'telt_mee', 'telt_niet']);
+});
+
+// ---------- Review P3: deeltijd en instroom tegenover de klassen, namen in een klein bestand, meldingen ----------
+
+test('aandeel deeltijd splitst de verborgen urenklassen niet (uren per fte 35 is een klassegrens)', () => {
+  const kop = ['Afdeling', 'Uren per week', 'In dienst sinds'];
+  const rollen = { 0: 'afdeling', 1: 'uren', 2: 'datum_in' };
+  const maak = (klein) => [
+    ...Array.from({ length: klein }, () => ['Kantoor', '16', '2020-01']),
+    ...Array.from({ length: 50 }, () => ['Productie', '28', '2019-01']),
+    ...Array.from({ length: 20 }, () => ['Magazijn', '36', '2018-01']),
+  ];
+  // 3 mensen onder de 20 uur: die klasse is verborgen, en daarmee ook "35 uur of meer". Deeltijd = <20 + 20–35, dus
+  // deeltijd × 73 min de getoonde 50 zou de 3 geven.
+  const { aggregaat } = P.verwerkPersoneel(kop, maak(3), { rollen, periode: { van: '2025-01', tot: '2025-12' }, uren_per_fte: 35 });
+  const k = P.personeelKpis(aggregaat);
+  assert.deepEqual(rijenVan(k, 'uren').map((r) => [r.label, r.medewerkers]), [['Minder dan 20 uur', null], ['20 tot 35 uur', 50], ['35 uur of meer', null]]);
+  assert.equal(k.totaal.pct_deeltijd, null);
+  // Zonder verborgen klasse: gewoon te zien.
+  const ruim = P.personeelKpis(P.verwerkPersoneel(kop, maak(6), { rollen, periode: { van: '2025-01', tot: '2025-12' }, uren_per_fte: 35 }).aggregaat);
+  assert.equal(ruim.totaal.pct_deeltijd, (56 / 76) * 100);
+  // Uren per fte 36 valt midden in "35 uur of meer": een verborgen klasse daar zou ook gesplitst worden.
+  const scheef = P.personeelKpis(P.verwerkPersoneel(kop, maak(3), { rollen, periode: { van: '2025-01', tot: '2025-12' }, uren_per_fte: 36 }).aggregaat);
+  assert.equal(scheef.totaal.pct_deeltijd, null);
+});
+
+test('aandeel instroom splitst de verborgen diensttijdklassen niet (een periode van 12 maanden = "Korter dan 1 jaar")', () => {
+  const kop = ['Afdeling', 'In dienst sinds', 'Uit dienst per'];
+  const rollen = { 0: 'afdeling', 1: 'datum_in', 2: 'datum_uit' };
+  const maak = (eenTotVijf) => [
+    ...Array.from({ length: 6 }, () => ['Zorg', '2026-03', '']),
+    ...Array.from({ length: eenTotVijf }, () => ['Zorg', '2023-06', '']),
+    ...Array.from({ length: 30 }, () => ['Zorg', '2019-01', '']),
+    ...Array.from({ length: 40 }, () => ['Staf', '2010-01', '']),
+  ];
+  const k = P.personeelKpis(P.verwerkPersoneel(kop, maak(3), { rollen, periode: PERIODE }).aggregaat);
+  assert.deepEqual(rijenVan(k, 'diensttijd').map((r) => r.medewerkers), [null, null, 30, 40]);
+  assert.equal(k.totaal.instroom_pct, null, 'instroom 6 = "Korter dan 1 jaar"; de verborgen 9 min 6 zou "1 tot 5 jaar" geven');
+  const ruim = P.personeelKpis(P.verwerkPersoneel(kop, maak(8), { rollen, periode: PERIODE }).aggregaat);
+  assert.deepEqual(rijenVan(ruim, 'diensttijd').map((r) => r.medewerkers), [6, 8, 30, 40]);
+  assert.equal(ruim.totaal.instroom_pct, (6 / ((78 + 84) / 2)) * 100);
+});
+
+/**
+ * Eigenschap: een aandeel van de organisatie, maal zijn noemer, min de getoonde groepen, mag nooit een deel van de
+ * verborgen groepen opleveren. Voor elk aandeel dat bij een indeling hoort (55+ en 60+ bij leeftijd, vrouw bij geslacht,
+ * leidinggevend, deeltijd bij arbeidsuren, instroom bij diensttijd) en elk willekeurig bestand: wat na aftrek overblijft
+ * is 0 of alles wat verborgen is, zowel voor de teller als voor de noemer (iedereen van wie het gegeven bekend is).
+ * Uitgegaan wordt van de slechtste lezer: die kent de noemer, en bij de instroom ook wie in de periode kwam en weer ging.
+ */
+test('eigenschap: aandeel × noemer min de getoonde groepen laat nooit een deel van de verborgen groepen zien', () => {
+  const kop = ['Afdeling', 'Geslacht', 'Leidinggevend', 'Leeftijd', 'Uren', 'In dienst', 'Uit dienst'];
+  const rollen = { 0: 'afdeling', 1: 'geslacht', 2: 'leidinggevend', 3: 'leeftijd', 4: 'uren', 5: 'datum_in', 6: 'datum_uit' };
+  const getoond = {};
+  const gelekt = {}; // zonder afscherming zou dit lekken (bewijst dat de test iets controleert)
+  const r = lcg(2026);
+  const kiesGewogen = (opties) => {
+    const w = opties.map(() => r() ** 3); // scheef: vaak een paar kleine klassen
+    const t = w.reduce((a, b) => a + b, 0);
+    let x = r() * t;
+    for (let i = 0; i < opties.length; i++) { x -= w[i]; if (x <= 0) return () => opties[i]; }
+    return () => opties[opties.length - 1];
+  };
+  const verdeel = (opties) => {
+    const w = opties.map(() => 0.05 + r() ** 3);
+    const t = w.reduce((a, b) => a + b, 0);
+    return () => {
+      let x = r() * t;
+      for (let i = 0; i < opties.length; i++) { x -= w[i]; if (x <= 0) return opties[i]; }
+      return opties[opties.length - 1];
+    };
+  };
+  const mnd = (nr) => `${Math.floor(nr / 12)}-${String((nr % 12) + 1).padStart(2, '0')}`;
+  for (let proef = 0; proef < 400; proef++) {
+    const n = 15 + Math.floor(r() * 80);
+    const L = [12, 12, 12, 6, 18, 24][Math.floor(r() * 6)];
+    const tM = P.maandNr('2025-12');
+    const vM = tM - L + 1;
+    const periode = { van: mnd(vM), tot: mnd(tM) };
+    const upf = [35, 35, 36, 38, 20][Math.floor(r() * 5)];
+    const afd = verdeel(['A', 'B', 'C']);
+    const gesl = verdeel(['M', 'V', 'X', '']);
+    const lg = verdeel(['ja', 'nee', '']);
+    const lft = verdeel([22, 30, 40, 50, 57, 62, '']);
+    const urn = verdeel([16, 28, 35.5, 38, '']);
+    const dienst = verdeel(['nieuw', 'kort', 'midden', 'lang', '']);
+    const rijen = [];
+    let nieuwWeg = 0;
+    for (let i = 0; i < n; i++) {
+      const d = dienst();
+      const inNr = d === 'nieuw' ? vM + Math.floor(r() * L) : d === 'kort' ? tM - 12 - Math.floor(r() * 40) : d === 'midden' ? tM - 70 - Math.floor(r() * 40) : tM - 130 - Math.floor(r() * 60);
+      const weg = r() < 0.12 ? Math.max(vM, inNr) + Math.floor(r() * (tM - Math.max(vM, inNr) + 1)) : null;
+      if (d === 'nieuw' && weg !== null) nieuwWeg++;
+      rijen.push([afd(), gesl(), lg(), lft(), urn(), d === '' ? '' : mnd(inNr), weg === null ? '' : mnd(weg)]);
+    }
+    const { aggregaat } = P.verwerkPersoneel(kop, rijen, { rollen, periode, uren_per_fte: upf });
+    const k = P.personeelKpis(aggregaat);
+    if (k.totaal.verborgen) continue;
+    const t = aggregaat.totaal;
+    const zichtbaar = (dim) => {
+      const m = new Map();
+      for (const x of k.per_groep.find((g) => g.dimensie === dim)?.rijen || []) if (!x.verborgen) m.set(x.label, x.medewerkers);
+      const verdeling = dim === 'leeftijd' ? k.totaal.leeftijd : dim === 'geslacht' ? k.totaal.geslacht : [];
+      for (const x of verdeling) if (!x.verborgen && x.n !== null) m.set(x.label, x.n);
+      return m;
+    };
+    const klasse = (dim, grens, onder) => (label) => {
+      const c = (aggregaat.dimensies[dim]?.klassen || []).find((x) => x.label === label);
+      if (!c) return false;
+      if (onder) return c.tot !== null && c.tot <= grens ? true : c.van !== null && c.van >= grens ? false : null;
+      return c.van !== null && c.van >= grens ? true : c.tot !== null && c.tot <= grens ? false : null;
+    };
+    const aandelen = [
+      ['pct_55plus', 'leeftijd', klasse('leeftijd', 55, false), t.n_55plus, t.leeftijd_n],
+      ['pct_60plus', 'leeftijd', klasse('leeftijd', 60, false), t.n_60plus, t.leeftijd_n],
+      ['pct_vrouw', 'geslacht', (l) => l === 'Vrouw', t.geslacht.Vrouw, t.geslacht.Man + t.geslacht.Vrouw + t.geslacht.Anders],
+      ['pct_leidinggevend', 'leidinggevend', (l) => l === 'Ja', t.n_leidinggevend, t.leidinggevend_n],
+      ['pct_deeltijd', 'uren', klasse('uren', upf, true), t.n_deeltijd, t.deeltijd_n],
+      ['instroom_pct', 'diensttijd', klasse('diensttijd', L, true), t.instroom - nieuwWeg, t.diensttijd_n],
+    ];
+    for (const [sleutel, dim, inS, teller, noemer] of aandelen) {
+      if (!aggregaat.dimensies[dim]) continue;
+      const zicht = zichtbaar(dim);
+      // Staat er een getoonde groep die maar voor een deel in de teller zit, dan kan niemand exact terugrekenen.
+      if ([...zicht].some(([label, x]) => x > 0 && inS(label) === null)) continue;
+      const somZicht = (f) => [...zicht].filter(([label]) => f(label)).reduce((a, [, x]) => a + x, 0);
+      const H = t.medewerkers - somZicht(() => true);
+      const rest = teller - somZicht((l) => inS(l) === true);
+      const restNoemer = noemer - somZicht((l) => l !== P.ONBEKEND);
+      const lekt = !(rest === 0 || rest === H) || !(restNoemer === 0 || restNoemer === H);
+      if (lekt) gelekt[sleutel] = (gelekt[sleutel] || 0) + 1;
+      if (k.totaal[sleutel] === null) continue;
+      getoond[sleutel] = (getoond[sleutel] || 0) + 1;
+      assert.ok(!lekt, `${sleutel} (proef ${proef}): rest ${rest}, noemer-rest ${restNoemer}, verborgen samen ${H}`);
+    }
+  }
+  for (const s of ['pct_55plus', 'pct_60plus', 'pct_vrouw', 'pct_leidinggevend', 'pct_deeltijd', 'instroom_pct']) {
+    assert.ok((getoond[s] || 0) >= 20, `${s} te weinig getoond: ${getoond[s] || 0}`);
+    assert.ok((gelekt[s] || 0) >= 5, `${s}: de test vindt geen enkel geval dat zonder afscherming zou lekken (${gelekt[s] || 0})`);
+  }
+});
+
+test('criterium 4 ook voor een klein bestand: een namenkolom met een onbekende kop ("Collega") gaat nooit mee', () => {
+  const namen = ['Jan de Vries', 'Petra Bakker', 'Ahmed el Amrani', 'Sanne Visser', 'Kees Smit', 'Lotte Mulder', 'Bram de Boer', 'Eva Dekker', 'Tim Bos',
+    'Noor Vos', 'Daan Peters', 'Fleur Hendriks', 'Ruben Dijkstra', 'Iris Jacobs', 'Lars Willems', 'Anouk Kok', 'Sem Brouwer', 'Julia Meijer', 'Luuk de Graaf'];
+  for (const kopnaam of ['Collega', 'Wie', 'Personeelslid', 'Team', 'Afdeling']) {
+    for (const aantal of [6, 12, 15, 19]) {
+      const kop = [kopnaam, 'Verzuimdagen', 'In dienst sinds'];
+      const rijen = namen.slice(0, aantal).map((naam, i) => [naam, String(i % 4), '2020-01']);
+      const { aggregaat, meldingen } = P.verwerkPersoneel(kop, rijen, { rollen: { 0: 'afdeling', 1: 'verzuimdagen', 2: 'datum_in' }, periode: PERIODE });
+      const json = JSON.stringify(aggregaat);
+      for (const naam of namen) assert.ok(!json.includes(naam), `${kopnaam}, ${aantal} rijen: "${naam}" in het aggregaat`);
+      for (const deel of namen.flatMap((x) => x.split(' ')).filter((w) => w.length >= 4)) assert.ok(!json.includes(deel), `${kopnaam}: "${deel}"`);
+      assert.equal(aggregaat.dimensies.afdeling, undefined);
+      assert.ok(meldingen.some((m) => m.includes('"Afdeling"') && m.includes('niet gebruikt')), meldingen.join(' | '));
+    }
+  }
+  // Een echte kleine organisatie (8 medewerkers, één afdeling van 5 en drie van 1) houdt haar indeling.
+  const klein = P.verwerkPersoneel(['Afdeling'], [...Array(5).fill(['Zorg']), ['Staf'], ['ICT'], ['Keuken']], { rollen: { 0: 'afdeling' }, periode: PERIODE });
+  assert.deepEqual(klein.aggregaat.dimensies.afdeling.groepen.map((g) => g.label), ['ICT', 'Keuken', 'Staf', 'Zorg']);
+  assert.ok(controleerPersoneelsaggregaat(klein.aggregaat));
+  // Ook als de browser het niet tegenhoudt (een vervalst aggregaat), weigert de server groepen van één persoon per naam.
+  const vals = structuredClone(klein.aggregaat);
+  vals.dimensies.afdeling.groepen = Array.from({ length: 8 }, (_, i) => ({ label: namen[i], medewerkers: 1, in_periode: 1, klein: true, verzuim: null }));
+  assert.throws(() => controleerPersoneelsaggregaat(vals), /eigen groep/);
+  assert.equal(P.lijktPersoonsKolom({ n: 8, groepen: 4, eenpersoons: 3 }), false);
+  assert.equal(P.lijktPersoonsKolom({ n: 8, groepen: 5, eenpersoons: 4 }), true);
+  assert.equal(P.lijktPersoonsKolom({ n: 40, groepen: 11, eenpersoons: 10 }), false);
+  assert.equal(P.lijktPersoonsKolom({ n: 3, groepen: 3, eenpersoons: 3 }), true);
+  // Geslacht en leidinggeven: alleen de vaste namen.
+  const g = P.verwerkPersoneel(['Geslacht'], [...Array(6).fill(['V']), ...Array(6).fill(['M'])], { rollen: { 0: 'geslacht' }, periode: PERIODE }).aggregaat;
+  assert.ok(controleerPersoneelsaggregaat(g));
+  const g2 = structuredClone(g);
+  g2.dimensies.geslacht.groepen[0].label = 'Jan de Vries';
+  assert.throws(() => controleerPersoneelsaggregaat(g2), /onbekende groep bij Geslacht/);
+});
+
+test('verzuim: ook de ziekmeldingen mogen niet vooral van één persoon zijn (alleen meldingen, en met dagen)', () => {
+  const kop = ['Afdeling', 'Ziekmeldingen', 'In dienst sinds'];
+  const rijen = [
+    ...Array.from({ length: 10 }, (_, i) => ['A', i === 0 ? '9' : '0', '2020-01']),
+    ...Array.from({ length: 30 }, (_, i) => ['B', i < 12 ? '1' : '0', '2019-01']),
+  ];
+  const { aggregaat } = P.verwerkPersoneel(kop, rijen, { rollen: { 0: 'afdeling', 1: 'verzuimmeldingen', 2: 'datum_in' }, periode: PERIODE });
+  assert.deepEqual(dimGroep(aggregaat, 'afdeling', 'A').verzuim, { toonbaar: false, reden: 'dominant' });
+  // A alleen verbergen is niet genoeg (totaal min B); B gaat mee, en in het totaal heeft niemand meer dan de helft (9 van 21).
+  assert.deepEqual(dimGroep(aggregaat, 'afdeling', 'B').verzuim, { toonbaar: false, reden: 'complementair' });
+  assert.equal(aggregaat.totaal.verzuim.toonbaar, true);
+  const k = P.personeelKpis(aggregaat);
+  assert.deepEqual(rijenVan(k, 'afdeling').map((r) => r.meldingsfrequentie), [null, null]);
+  assert.ok(!JSON.stringify(aggregaat.dimensies).includes('"meldingen":9'));
+  // Met dagen én meldingen: de dagen zijn verdeeld, maar één persoon heeft 6 van de 8 meldingen.
+  const beide = [
+    ...groep(12, (i) => ({ afdeling: 'Team', dagen: 4, meldingen: i === 0 ? 6 : i < 3 ? 1 : 0 })),
+    ...groep(30, (i) => ({ afdeling: 'Rest', dagen: i % 5, meldingen: i % 2 })),
+    ...groep(25, (i) => ({ afdeling: 'Ander', dagen: i % 3, meldingen: i % 3 ? 1 : 0 })),
+  ];
+  const b = verwerk(beide).aggregaat;
+  assert.deepEqual(dimGroep(b, 'afdeling', 'Team').verzuim, { toonbaar: false, reden: 'dominant' });
+  assert.equal(dimGroep(b, 'afdeling', 'Rest').verzuim.toonbaar, true);
+  assert.equal(b.totaal.verzuim.toonbaar, true);
 });

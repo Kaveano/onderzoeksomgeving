@@ -291,6 +291,12 @@ export async function personeelToevoegen(ctx, { data = null } = {}) {
           const regel = `${aantal(a.totaal.medewerkers, 'medewerker', 'medewerkers')} op de peildatum (${aantal(a.totaal.in_periode, 'medewerker', 'medewerkers')} in de periode) en ${aantal(kolommen, 'kolom', 'kolommen')} worden gebruikt.${omzetten.length ? ` ${omzetten.join(' en ')}.` : ''}`;
           const dims = Object.keys(a.dimensies);
           const verzuim = a.totaal.verzuim;
+          // De groepsnamen gaan mee naar de server: laat ze zien, zodat je ziet dat er geen namen van medewerkers tussen staan.
+          const NAMEN_MAX = 30;
+          const groepsnamen = dims.filter((x) => !a.dimensies[x].klassen && x !== 'geslacht' && x !== 'leidinggevend').map((x) => {
+            const ls = a.dimensies[x].groepen.map((g) => g.label);
+            return h('li', {}, `${KENMERKEN[x]?.naam || x}: ${ls.slice(0, NAMEN_MAX).join(', ')}${ls.length > NAMEN_MAX ? ` en nog ${ls.length - NAMEN_MAX}` : ''}`);
+          });
           return {
             items: a.totaal.in_periode > 0 ? [a] : [],
             problemen: uniek,
@@ -299,6 +305,7 @@ export async function personeelToevoegen(ctx, { data = null } = {}) {
               melding(BEWAAR_ZIN, 'succes'),
               h('ul', { class: 'pk-lijst' },
                 dims.length ? h('li', {}, `Groepen per ${dims.map((x) => (KENMERKEN[x]?.naam || x).toLowerCase()).join(', ')}.`) : null,
+                groepsnamen.length ? h('li', {}, 'Deze groepsnamen worden bewaard (er mogen geen namen van medewerkers tussen staan):', h('ul', { class: 'pk-lijst' }, groepsnamen)) : null,
                 verzuim ? h('li', {}, verzuim.toonbaar ? 'Verzuim: voor de hele organisatie en voor groepen van minstens 10 medewerkers (niet als het vooral over één persoon gaat).' : 'Verzuim: niet bewaard; de organisatie is te klein of het cijfer zou vooral over één persoon gaan.') : null,
                 a.totaal.medewerkers < 5 ? h('li', {}, 'Minder dan 5 medewerkers op de peildatum: alleen de aantallen worden bewaard.') : null,
                 h('li', {}, `Periode ${a.periode.van} tot en met ${a.periode.tot} (hooguit ${MAX_MAANDEN} maanden), peildatum ${a.peildatum}.`))),
