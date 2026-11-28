@@ -828,6 +828,21 @@ test('open vragenlijst: Excel en "Neem op in stuk" zeggen dat de lijst nog opens
   assert.match(R.kerncijferTekst(metP, { metPersoneel: true }), /Personeel: \d+ medewerkers, verzuim [\d,]+%/);
 });
 
+test('label "staat nog open": ook als een gesloten lijst gekozen is en een andere lijst in de Ontwikkeling openstaat', () => {
+  const data = standaardExport({ n: 40, metas: 2, status: 'open' });
+  // De laatste lijst (Tussenmeting) staat open; gekozen is de eerste (Nulmeting, gesloten).
+  const gesloten = kern(data, { vragenlijstId: 1 });
+  assert.equal(gesloten.lijst.status, 'gesloten');
+  const oz = R.openZin(gesloten);
+  assert.match(oz, /^De vragenlijst "Medewerkersonderzoek Tussenmeting" staat nog open/);
+  assert.deepEqual(R.openLabel(gesloten), { tekst: 'een andere vragenlijst staat nog open', uitleg: oz });
+  // Excel zegt hetzelfde (de zin bovenaan elk blad).
+  assert.ok(R.kerncijferBladen(gesloten).find((b) => b.naam === 'Deelname').rijen.some((r) => r[0] === oz));
+  const open = kern(data, { vragenlijstId: 2 });
+  assert.deepEqual(R.openLabel(open), { tekst: 'vragenlijst staat nog open', uitleg: R.openZin(open) });
+  assert.equal(R.openLabel(kern(standaardExport({ n: 40, metas: 2 }), { vragenlijstId: 1 })), null);
+});
+
 test('personeelscijfers in Word en Excel: geen × voor een kolom die het bestand niet had, verzuimnoot alleen met verzuim', () => {
   const kop = ['Afdeling', 'Uren per week'];
   const rijen = [...Array.from({ length: 50 }, () => ['Productie', '36']), ...Array.from({ length: 3 }, () => ['Kantoor', '20']), ...Array.from({ length: 20 }, () => ['Magazijn', '30'])];

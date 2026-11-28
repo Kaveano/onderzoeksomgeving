@@ -358,6 +358,8 @@ export async function toon(container, ctx) {
 
   function tekenKnoppen() {
     const metCijfers = !!k?.lijst && !k.lijst.verborgen && k.lijst.n > 0;
+    // Ook als alleen een andere vragenlijst (in de Ontwikkeling) openstaat: dan staat de zin ook in de bestanden.
+    const open = k ? R.openLabel(k) : null;
     const knop = (tekst, fn, uit = false) => {
       const b = h('button', { type: 'button', class: 'knop knop-klein', disabled: uit }, tekst);
       b.addEventListener('click', async () => {
@@ -377,7 +379,7 @@ export async function toon(container, ctx) {
         knop('Excel', naarExcel, !metCijfers && !k?.personeel),
         knop('Word', naarWord, !metCijfers && !k?.personeel),
         h('span', { class: 'label label-succes', title: 'Uitkomsten van minder dan 5 respondenten staan er niet in.' }, 'geschikt om te delen'),
-        k?.lijst?.status === 'open' ? h('span', { class: 'label label-waarschuwing', title: 'De uitkomsten kunnen nog veranderen. Deel geen twee versies met een klein verschil in aantal.' }, 'vragenlijst staat nog open') : null,
+        open ? h('span', { class: 'label label-waarschuwing', title: open.uitleg, 'aria-label': `${open.tekst}. ${open.uitleg}` }, open.tekst) : null,
         knop('Neem op in stuk', naarStuk, !k?.lijst),
         knop('Instellingen', () => instellingen())));
   }
@@ -842,7 +844,9 @@ export async function toon(container, ctx) {
       tabel(['', ...mm.map((m) => m.naam)], rijen, { bijschrift: 'Ontwikkeling per meetmoment' }),
       rijen.some((r) => r.includes(VERBORGEN)) ? noot(VERBORGEN_UITLEG) : null,
       zinnen.length ? [h('h3', { class: 'hr-subkop' }, 'Is het verschil groot genoeg?'), h('ul', { class: 'hr-zinnenlijst' }, zinnen.map((z) => h('li', {}, z)))] : null,
-      zinnen.length ? noot('Statistisch significant betekent: zo\'n verschil is niet goed door toeval te verklaren (p kleiner dan 0,05). Vergeleken worden het eerste en het laatste meetmoment.') : null);
+      zinnen.length ? noot('Statistisch significant betekent: zo\'n verschil is niet goed door toeval te verklaren (p kleiner dan 0,05). Vergeleken worden het eerste en het laatste meetmoment.') : null,
+      // Staat alleen een andere vragenlijst open (niet de gekozen), dan zegt deze zin welke (ook zonder het label aan te wijzen).
+      k.lijst?.status !== 'open' && R.openZin(k) ? noot(R.openZin(k)) : null);
   }
 
   // ---------- 10. Kwaliteit van de gegevens ----------

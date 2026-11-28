@@ -167,6 +167,16 @@ export function openZin(k) {
   return `${wie} nog open${k?.peildatum ? ` (peildatum ${nlDatum(k.peildatum)})` : ''}: de uitkomsten kunnen nog veranderen. Deel geen twee versies met een klein verschil in aantal ingevulde vragenlijsten.`;
 }
 
+/**
+ * Het label naast "geschikt om te delen" als er een vragenlijst openstaat (dezelfde regel als openZin, dus ook als de
+ * open lijst alleen in de Ontwikkeling meetelt): { tekst, uitleg } of null. De uitleg is de zin uit de bestanden.
+ */
+export function openLabel(k) {
+  const zin = openZin(k);
+  if (!zin) return null;
+  return { tekst: k?.lijst?.status === 'open' ? 'vragenlijst staat nog open' : 'een andere vragenlijst staat nog open', uitleg: zin };
+}
+
 /** "Bij 62 van de 130 medewerkers is de foutmarge ongeveer ±9 procentpunt (95%)." */
 export function foutmargeZin(n, N, marge) {
   if (!eindig(marge) || !eindig(n) || !eindig(N)) return null;
