@@ -108,6 +108,7 @@ Bovenin staat naast **Onderzoeken** en **Sjablonen** de **Bibliotheek**: één v
 - Bovenaan staan de bronnen waar je woord in de titel of de samenvatting staat. Bronnen die het woord alleen in hun onderwerp hebben, komen daarna.
 - Zet woorden tussen aanhalingstekens om ze precies zo samen te vinden: *"nieuwe medewerkers"*.
 - Eerst zie je bronnen met al je woorden. Zijn die er niet, dan zie je bronnen met een deel van de woorden (dat staat er dan bij).
+- Een auteur vind je op de naam uit de literatuurlijst en op de naam uit je tekst: *Ancona*, *d'Ancona*, *Vroome* en *De Vroome* vinden allemaal de goede bron.
 - Met de **filters** kies je onderwerp, soort bron, jaar, taal, collectie, betrouwbaarheid en bronnen met eigen notities. Op een telefoon klap je de filters open met **Filters**.
 - **Sorteren op**: Best passend, Nieuwste eerst, Oudste eerst, Titel, Auteur of Laatst toegevoegd.
 

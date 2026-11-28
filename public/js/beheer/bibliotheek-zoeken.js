@@ -6,6 +6,7 @@
 // - normaliseren: kleine letters, zonder accenten (zie bibliotheek-regels.js normaliseer);
 // - een lichte Nederlandse stemmer (stam): medewerkers → medewerker, processen → proces;
 // - samengestelde woorden: "verzuim" vindt "ziekteverzuim";
+// - auteurs ook op de naam zoals in de tekst: "d'Ancona" en "De Vroome" vinden "Ancona, J. d'." en "Vroome, E. M. M. de.";
 // - het begin van een woord pas vanaf MIN_BEGIN (4) letters: "werk" vindt "werkdruk", maar "WOR" vindt niet "work";
 // - vaste synoniemen voor HR-onderwerpen, ook Nederlands ~ Engels (verloop ~ turnover, diversiteit ~ diversity);
 // - een treffer in de naam van een onderwerp telt minder dan een treffer in de titel of de samenvatting: een
@@ -15,7 +16,7 @@
 // - filters en facetten (per facet de aantallen met alle andere filters aan);
 // - markeringen: waar de treffers in de oorspronkelijke tekst staan.
 
-import { normaliseer, normaliseerMetKaart, ONDERWERPEN, BETROUWBAARHEID_RANG, vergelijkBronnen, auteursRegel } from './bibliotheek-regels.js';
+import { normaliseer, normaliseerMetKaart, ONDERWERPEN, BETROUWBAARHEID_RANG, vergelijkBronnen, auteursRegel, namenInTekst } from './bibliotheek-regels.js';
 
 export { normaliseer, normaliseerMetKaart };
 
@@ -113,7 +114,8 @@ function veldTekst(bron, veld) {
     case 'titel': return bron.titel || '';
     case 'trefwoorden': return (bron.trefwoorden || []).join(' · ');
     case 'onderwerpen': return (bron.onderwerpen || []).map((k) => ONDERWERPEN[k]?.naam || k).join(' · ');
-    case 'auteurs': return [auteursRegel(bron), bron.organisatie, bron.afkorting].filter(Boolean).join(' · ');
+    // Ook de namen zoals in de tekst: "d'Ancona" (genormaliseerd 'dancona') staat in de lijst als "Ancona, J. d'".
+    case 'auteurs': return [auteursRegel(bron), ...namenInTekst(bron), bron.organisatie, bron.afkorting].filter(Boolean).join(' · ');
     case 'kernpunten': return (bron.kernpunten || []).join(' · ');
     case 'samenvatting': return bron.samenvatting || '';
     case 'details': return [d.tijdschrift, d.boektitel, d.sitenaam].filter(Boolean).join(' · ');

@@ -381,6 +381,14 @@ export function auteursRegel(bron) {
   return zonderSterren(bron?.organisatie);
 }
 
+/**
+ * De namen van de auteurs zoals ze in de tekst staan: ["d'Ancona", 'De Vroome', 'Van der Meulen-de Vries']. Voor het
+ * zoeken: wie "d'Ancona" uit Citeer overneemt, vindt "Ancona, J. d'." (bibliotheek-zoeken.js).
+ */
+export function namenInTekst(bron) {
+  return personenVan(bron).map(tekstNaam);
+}
+
 /** '2024' · 'z.d.' · '2024a' · 'z.d.-a' */
 function jaarTekst(bron, suffix = '') {
   if (Number.isInteger(bron?.jaar)) return `${bron.jaar}${suffix}`;

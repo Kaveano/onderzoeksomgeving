@@ -207,6 +207,25 @@ test('een treffer in de naam van een onderwerp telt minder dan een treffer in de
   assert.deepEqual(zoekBijOnderzoek([hoeverre], { onderzoeksvraag: 'Hoe tevreden zijn medewerkers?' }).treffers, []);
 });
 
+test('auteurs ook op de naam zoals in de tekst: "d\'Ancona" uit Citeer vindt "Ancona, J. d\'."', () => {
+  const p = (achternaam, voorletters, tussenvoegsel = '') => ({ achternaam, tussenvoegsel, voorletters });
+  const ancona = bron({ titel: 'Werk en welzijn', auteurs: [p('Ancona', 'J.', "d'")] });
+  const vroome = bron({ titel: 'Arbobalans', auteurs: [p('Heuvel', 'S. G.', 'van den'), p('Vroome', 'E. M. M.', 'de')] });
+  const witte = bron({ titel: 'Burnout', auteurs: [p('De Witte', 'H.')] });
+  const andere = bron({ titel: 'Dancing at work', auteurs: [p('Dekker', 'F.')] });
+  const alle = [ancona, vroome, witte, andere];
+  const ids = (tekst) => zoek(alle, { tekst }).treffers.map((t) => t.id);
+  for (const q of ["d'Ancona", 'd’Ancona', "D'Ancona", 'dAncona', 'Ancona', "d'ancona 2022"]) {
+    assert.deepEqual(ids(q).slice(0, 1), [ancona.id], q);
+  }
+  assert.deepEqual(ids("d'Ancona"), [ancona.id]);
+  assert.deepEqual(ids('De Vroome'), [vroome.id]);
+  assert.deepEqual(ids('Van den Heuvel'), [vroome.id]);
+  assert.deepEqual(ids('De Witte'), [witte.id]);
+  // De markering staat op de regel uit de lijst ("Ancona, J. d'"); daar staat de naam
+  assert.deepEqual(markeringen(ancona, 'Ancona').auteurs, [[0, 6]]);
+});
+
 test('criterium 3: 1.000 bronnen van ongeveer 2 KB, mediaan van zoek onder 15 ms', () => {
   // Vast zaad (LCG), zodat de bronnen elke keer hetzelfde zijn.
   let zaad = 20261127;
