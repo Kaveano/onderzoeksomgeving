@@ -1,2 +1,217 @@
 /* Scherm Dashboard · Overzicht (HR-analytics): kerncijfers, samenstelling en verschillen tussen groepen.
-   Gebruikt de variabelen uit app.css. Voorvoegsel: hr-. Wordt gevuld in pakket P3. */
+   Ook de dialogen Instellingen van HR-analytics (hri-) en Personeelsbestand toevoegen (pk-).
+   Alle kleuren komen uit de variabelen in app.css (Atelier, licht en donker). Voorvoegsel: hr-. */
+
+.hr .knop-klein { min-height: 36px; }
+.hr-kop { margin-bottom: var(--ruimte-3); }
+.hr-kop h2 { margin-bottom: var(--ruimte-1); }
+.hr-intro { max-width: 75ch; margin: 0; }
+
+/* Filterbalk en knoppen */
+.hr-balk {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--ruimte-3) var(--ruimte-4);
+  margin-bottom: var(--ruimte-4);
+}
+.hr-filter { display: flex; flex-wrap: wrap; gap: var(--ruimte-2) var(--ruimte-4); min-width: 0; flex: 1 1 28rem; }
+.hr-filter:empty { display: none; }
+.hr-veld { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 0 1 22rem; margin-bottom: var(--ruimte-2); }
+.hr-veld label { font-weight: 600; font-size: 0.9rem; }
+.hr-veld select { width: 100%; max-width: 100%; min-width: 0; }
+.hr-kaart .hr-veld { max-width: 32rem; }
+.hr-acties .knoppen { gap: var(--ruimte-2); }
+
+/* Tijdens opnieuw rekenen de vorige weergave gedimd laten staan. */
+.hr-inhoud { transition: opacity 0.15s ease; }
+.hr-bezig { opacity: 0.55; pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { .hr-inhoud { transition: none; } }
+
+.hr-snelnaar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ruimte-1);
+  margin-bottom: var(--ruimte-4);
+}
+.hr-snelnaar-label { font-weight: 600; margin-right: var(--ruimte-1); }
+
+.hr-kaart { scroll-margin-top: 84px; }
+.hr-kaart h2[tabindex='-1']:focus:not(:focus-visible) { outline: none; }
+.hr-uitleg { color: var(--tekst-zacht); max-width: 75ch; margin-top: calc(-1 * var(--ruimte-1)); }
+.hr-subkop { font-size: 1.05rem; margin: var(--ruimte-5) 0 var(--ruimte-2); }
+.hr-kaart > .hr-subkop:first-of-type { margin-top: var(--ruimte-3); }
+.hr-noot { color: var(--tekst-zacht); font-size: 0.875rem; max-width: 80ch; margin: var(--ruimte-2) 0; }
+.hr-oordeel { max-width: 80ch; margin: var(--ruimte-2) 0; }
+.hr-zinnen p { max-width: 80ch; }
+.hr-leeg-blok { border-left: 3px solid var(--oker); padding: var(--ruimte-1) 0 var(--ruimte-1) var(--ruimte-3); }
+.hr-leeg-blok p { margin-bottom: var(--ruimte-2); max-width: 75ch; }
+
+/* Een knop die eruitziet als een link (in een zin of lijst). */
+.hr-link {
+  background: none;
+  border: 0;
+  padding: 0;
+  margin-left: var(--ruimte-2);
+  color: var(--primair);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  font: inherit;
+  cursor: pointer;
+  min-height: 32px;
+}
+.hr-link:hover { color: var(--primair-hover); }
+
+/* Tegels: op een laptop naast elkaar, op een telefoon onder elkaar */
+.hr-tegels {
+  display: grid;
+  gap: var(--ruimte-3);
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  margin-bottom: var(--ruimte-3);
+}
+.hr-tegel { background: var(--vlak-licht); border: 1px solid var(--rand); min-width: 0; }
+.hr-tegel-waarde { font-size: 1.7rem; overflow-wrap: anywhere; }
+.hr-tegel-label { font-weight: 600; color: var(--tekst); }
+.hr-tegel-onder { font-size: 0.8rem; color: var(--tekst-zacht); margin-top: 2px; overflow-wrap: anywhere; }
+.hr-tegels-klein .hr-tegel-waarde { font-size: 1.35rem; }
+
+/* Figuren: het vak bepaalt de breedte; de SVG wordt op die breedte getekend */
+.hr-figuur { margin: var(--ruimte-3) 0 var(--ruimte-4); min-width: 0; }
+.hr-figuur-titel { font-weight: 600; margin-bottom: var(--ruimte-2); color: var(--kop); }
+.hr-figuur-vak { width: 100%; min-width: 0; overflow: hidden; }
+
+/* Tabellen */
+.hr .tabel-wrapper { position: relative; margin-bottom: var(--ruimte-2); }
+.hr .tabel th.rechts, .hr .tabel td.rechts { text-align: right; }
+.hr .tabel tbody th { background: transparent; color: var(--tekst); font-size: 0.9rem; font-weight: 600; }
+.hr-th-sub { display: block; font-size: 0.75rem; font-weight: 400; color: var(--tekst-zacht); white-space: normal; }
+
+/* Thema's per groep (heatmap): scrolt binnen de kaart; de eerste kolom blijft staan */
+.hr-heatmap-wrapper { max-width: 100%; }
+.hr-heatmap { width: auto; min-width: 100%; }
+.hr-heatmap th, .hr-heatmap td { white-space: nowrap; }
+.hr-heatmap thead th { white-space: normal; min-width: 5.5rem; vertical-align: bottom; }
+.hr-heatmap tbody th[scope='row'],
+.hr-heatmap thead th:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--vlak);
+  white-space: normal;
+  min-width: 9rem;
+  max-width: 16rem;
+}
+.hr-heatmap thead th:first-child { background: var(--vlak-2); }
+.hr-heatmap .hm-aantal td, .hr-heatmap .hm-aantal th { color: var(--tekst-zacht); font-weight: 400; }
+.hr-heatmap td.hm-totaal { font-weight: 600; border-left: 1px solid var(--rand-sterk); }
+.hr-heatmap td.hm-hoger { background: color-mix(in srgb, var(--schaal-5) 22%, transparent); }
+.hr-heatmap td.hm-lager { background: color-mix(in srgb, var(--schaal-1) 22%, transparent); }
+.hr-heatmap td.hm-verborgen { color: var(--tekst-zacht); }
+.hr-legenda { font-size: 0.875rem; color: var(--tekst-zacht); display: flex; flex-wrap: wrap; align-items: center; gap: var(--ruimte-1); }
+.hm-voorbeeld { display: inline-block; width: 14px; height: 14px; border-radius: 2px; border: 1px solid var(--rand-sterk); }
+.hm-voorbeeld.hm-hoger { background: color-mix(in srgb, var(--schaal-5) 40%, transparent); }
+.hm-voorbeeld.hm-lager { background: color-mix(in srgb, var(--schaal-1) 40%, transparent); margin-right: var(--ruimte-1); }
+
+/* Wie deden mee */
+.hr-kenmerk + .hr-kenmerk { border-top: 1px solid var(--rand); margin-top: var(--ruimte-4); }
+.hr-suggesties { margin-top: var(--ruimte-4); }
+
+/* Sterkste en zwakste punten */
+.hr-punten { padding-left: 1.4rem; margin: 0; }
+.hr-punten li { margin-bottom: var(--ruimte-2); }
+.hr-punt-tekst { display: block; }
+.hr-punt-meta { display: block; font-size: 0.85rem; color: var(--tekst-zacht); }
+
+/* Signalen en zinnen */
+.hr-signalen, .hr-zinnenlijst, .hr-vergelijk, .hr-definities { padding-left: 1.2rem; margin: var(--ruimte-2) 0; max-width: 85ch; }
+.hr-signalen li, .hr-zinnenlijst li, .hr-definities li { margin-bottom: var(--ruimte-2); }
+.hr-vergelijk-zin { color: var(--tekst-zacht); }
+.hr-uitklap { margin-top: var(--ruimte-3); }
+.hr-uitklap > summary { cursor: pointer; font-weight: 600; color: var(--primair); min-height: 36px; display: flex; align-items: center; }
+
+/* ---------- Dialoog: Instellingen van HR-analytics ---------- */
+
+dialog.hri-dialoog { width: min(760px, calc(100vw - 24px)); }
+.hri-tabs { display: flex; flex-wrap: wrap; gap: var(--ruimte-1); border-bottom: 1px solid var(--rand); margin-bottom: var(--ruimte-3); }
+.hri-tab {
+  background: none;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  padding: var(--ruimte-2) var(--ruimte-2);
+  min-height: 40px;
+  font: inherit;
+  font-weight: 600;
+  color: var(--tekst-zacht);
+  cursor: pointer;
+}
+.hri-tab[aria-selected='true'] { color: var(--primair); border-bottom-color: var(--primair); }
+.hri-paneel:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.hri-regels { list-style: none; padding: 0; margin: 0 0 var(--ruimte-3); }
+.hri-regel { border: 1px solid var(--rand); border-radius: var(--radius); padding: var(--ruimte-3); margin-bottom: var(--ruimte-3); background: var(--vlak-licht); }
+.hri-regel-kop { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--ruimte-2); margin-bottom: var(--ruimte-2); overflow-wrap: anywhere; }
+.hri-keuzes { border: 0; padding: 0; margin: 0 0 var(--ruimte-2); display: flex; flex-wrap: wrap; gap: var(--ruimte-1) var(--ruimte-3); }
+.hri-keuzes legend { font-weight: 600; font-size: 0.9rem; margin-bottom: var(--ruimte-1); }
+.hri-grens input { max-width: 8rem; }
+.hri-toevoegen { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--ruimte-2); }
+.hri-toevoegen .veld { flex: 1 1 18rem; margin-bottom: 0; min-width: 0; }
+.hri-voorstellen { margin: var(--ruimte-3) 0; }
+.hri-voorstellen h3 { font-size: 1rem; }
+.hri-populatie { border: 1px solid var(--rand); border-radius: var(--radius); padding: var(--ruimte-3); margin: 0 0 var(--ruimte-3); }
+.hri-populatie legend { font-weight: 600; padding: 0 var(--ruimte-1); overflow-wrap: anywhere; }
+.hri-populatie-rij { display: grid; grid-template-columns: minmax(0, 1fr) 7rem; gap: var(--ruimte-1) var(--ruimte-2); align-items: center; padding: var(--ruimte-1) 0; }
+.hri-populatie-rij label { overflow-wrap: anywhere; }
+.hri-hulp { grid-column: 1 / -1; font-size: 0.8rem; color: var(--tekst-zacht); }
+.hri-bestand .keuze { align-items: flex-start; }
+.hri-bewaren { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ruimte-2); margin-top: var(--ruimte-2); }
+.hri-bewaren input { width: auto; }
+.hri-bronregel { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ruimte-2); margin-bottom: var(--ruimte-2); }
+.hri-bron { overflow-wrap: anywhere; }
+
+/* ---------- Dialoog: Personeelsbestand toevoegen ---------- */
+
+.pk-kolommen { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr)); gap: var(--ruimte-2) var(--ruimte-3); margin-bottom: var(--ruimte-3); }
+.pk-kolom { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.pk-kolomnaam { font-weight: 600; overflow-wrap: anywhere; }
+.pk-kolomvoorbeeld { display: block; font-weight: 400; font-size: 0.8rem; color: var(--tekst-zacht); }
+.pk-zwanger, .pk-koppel { border: 1px solid var(--rand); border-radius: var(--radius); padding: var(--ruimte-3); margin: var(--ruimte-3) 0; }
+.pk-zwanger legend, .pk-koppel legend { font-weight: 600; padding: 0 var(--ruimte-1); }
+.pk-zwanger .keuze { margin-bottom: var(--ruimte-1); }
+.pk-koppel-rij { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--ruimte-2); align-items: center; padding: 2px 0; }
+.pk-koppel-rij label { overflow-wrap: anywhere; }
+.pk-koppel-rij select { min-width: 0; width: 100%; }
+.pk-voorbeeld .melding { margin: var(--ruimte-2) 0; }
+.pk-lijst { padding-left: 1.2rem; margin: 0; }
+
+/* ---------- Telefoon ---------- */
+
+@media (max-width: 640px) {
+  .hr-balk { flex-direction: column; align-items: stretch; }
+  .hr-veld { flex: 1 1 100%; }
+  /* Tegels onder elkaar, compact: getal en naam naast elkaar */
+  .hr-tegels { grid-template-columns: minmax(0, 1fr); gap: var(--ruimte-2); }
+  .hr-tegel { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: var(--ruimte-3); align-items: baseline; padding: var(--ruimte-2) var(--ruimte-3); }
+  .hr-tegel-waarde { font-size: 1.4rem; grid-row: span 2; min-width: 4.5rem; }
+  .hr-tegel-label, .hr-tegel-onder { grid-column: 2; }
+  .hr-heatmap tbody th[scope='row'], .hr-heatmap thead th:first-child { min-width: 7.5rem; max-width: 9.5rem; }
+  .pk-koppel-rij { grid-template-columns: minmax(0, 1fr); }
+  .hri-populatie-rij { grid-template-columns: minmax(0, 1fr) 6rem; }
+}
+
+/* ---------- Afdrukken ---------- */
+
+@media print {
+  .hr-balk, .hr-snelnaar, .hr-suggesties, .hr-link { display: none !important; }
+  .hr-kaart { break-inside: auto; }
+  .hr-figuur, .hr-tegels, .hr-heatmap-wrapper { break-inside: avoid; }
+  .hr-tegel { background: #fff; border-color: #bbb; }
+  .hr .tabel-wrapper { overflow: visible; }
+  .hr-heatmap tbody th[scope='row'], .hr-heatmap thead th:first-child { position: static; }
+  .hr-heatmap td.hm-hoger, .hr-heatmap td.hm-lager { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+
+@media (forced-colors: active) {
+  .hr-heatmap td.hm-hoger, .hr-heatmap td.hm-lager { border: 2px solid CanvasText; }
+  .hri-tab[aria-selected='true'] { border-bottom-color: Highlight; }
+}
