@@ -201,9 +201,72 @@ Voeg je achtergrondvragen toe aan een vragenlijst die al is ingevuld, dan hebben
 
 De vragen over afdeling en diensttijd in de standaardsjablonen (en de vraag of je leiding geeft) hebben hun kenmerk al. Bestaande vragenlijsten met die vragen hebben het kenmerk bij de update automatisch gekregen.
 
-## 4. Resultaten volgen: het dashboard
+## 4. Dashboard: Overzicht (HR-analytics) en Alle resultaten
 
-Het tabblad **Dashboard** toont:
+Het tabblad **Dashboard** heeft twee delen:
+
+- **Overzicht**: de pagina **HR-analytics**. Die opent als eerste. De belangrijkste cijfers van één vragenlijst op één pagina, met de verschillen tussen groepen en, als je een personeelsbestand hebt toegevoegd, verzuim en verloop.
+- **Alle resultaten**: alle cijfers per vraag, de verdelingen, het verloop en de uitsplitsing. Zie verderop in dit hoofdstuk.
+
+Het Overzicht is alleen voor jou. Een meelezer met een deellink krijgt het niet te zien; deel HR-analytics met een rapport.
+
+### Overzicht (HR-analytics)
+
+Bovenaan kies je de **Vragenlijst** (standaard de laatste met antwoorden) en bij **Vergelijk groepen op** de achtergrondvraag waarop je groepen vergelijkt (standaard de afdeling). Daarnaast staan de knoppen:
+
+- **Excel** en **Word**: de cijfers van het Overzicht als bestand, met het label **geschikt om te delen**. Er staan geen uitkomsten van minder dan 5 respondenten in; een verborgen getal is ×. Het Word-bestand heeft de figuren, met een beschrijving voor wie een schermlezer gebruikt. Heb je een personeelsbestand, dan vraagt de app eerst of de personeelscijfers mee moeten. Dat zijn gegevens over de gezondheid van medewerkers: neem ze alleen mee als dat met de opdrachtgever is afgesproken.
+- **Neem op in stuk**: de cijfers als tekst in een van je stukken.
+- **Instellingen**: zie hieronder.
+
+Met **Ga naar** spring je naar een onderdeel. De onderdelen staan altijd in deze volgorde. Een getal dat op minder dan 5 respondenten berust, of dat verborgen is zodat een klein aantal niet terug te rekenen is, zie je als **×**.
+
+1. **In één oogopslag.** Tegels met de respons, de eNPS, het rapportcijfer, het hoogste en laagste thema, het aantal signalen en, met een personeelsbestand, het aantal medewerkers, verzuim en verloop. Op een telefoon staan de tegels onder elkaar.
+2. **Deelname.** Per vragenlijst het aantal uitgenodigden, het aantal ingevulde vragenlijsten, de respons en de **foutmarge**. Daaronder hoe het invullen per dag opliep, en de respons per groep (bijvoorbeeld per afdeling).
+   - De foutmarge zegt hoeveel een percentage door toeval kan afwijken van wat je zou vinden als iedereen had meegedaan, bijvoorbeeld: *"Bij 62 van de 130 medewerkers is de foutmarge ongeveer ±9 procentpunt (95%)."* Hoe meer mensen meedoen, hoe kleiner de foutmarge.
+   - *"Dit gaat uit van toeval; als vooral tevreden of juist ontevreden mensen meededen, zegt de foutmarge daar niets over."*
+   - De foutmarge en de respons per groep staan er alleen als bekend is hoeveel mensen er zijn: het aantal uitgenodigden bij de vragenlijst, het personeelsbestand of de aantallen bij **Instellingen**.
+3. **Wie deden mee?** Per achtergrondvraag (met uitsplitsing aan) hoeveel respondenten er in elke groep zitten, naast de organisatie als die aantallen bekend zijn. Het verschil staat er altijd bij, in procentpunten.
+   - **Representativiteit**: met een chi-kwadraattoets wordt gekeken of de respondenten naar die groepen afwijken van de organisatie. *"Er is geen duidelijke aanwijzing …"* betekent **niet** dat de groepen gelijk zijn: bij weinig respondenten vind je een verschil minder snel. *"… wijkt de groep respondenten af …"* betekent dat het verschil niet goed door toeval te verklaren is; per groep staat dan of die onder- of oververtegenwoordigd is.
+   - "Niet ingevuld" en "Dat zeg ik liever niet" doen niet mee in de vergelijking. Groepen die samen staan bij **Overige groepen samen** worden als één groep vergeleken.
+   - Lijkt een vraag een achtergrondvraag die nog geen kenmerk heeft (bijvoorbeeld "Op welke afdeling werk je?"), dan zie je een knop zoals **Markeren als kenmerk Afdeling**.
+4. **Kernscores.** Per thema het gemiddelde (1 tot 5) en welk deel gunstig (4 of 5), neutraal (3) en ongunstig (1 of 2) antwoordde, als figuur en als tabel. Daarna de cijfervragen:
+   - **eNPS** (*employee Net Promoter Score*): het percentage promotors (een 9 of 10) min het percentage criticasters (0 tot en met 6). Een eNPS loopt van −100 tot +100; boven 0 zijn er meer promotors dan criticasters. Het 95%-interval laat zien hoe zeker het getal is.
+   - **Rapportcijfer** (1 tot 10): het gemiddelde met een 95%-interval, het deel onvoldoendes (5 of lager) en de verdeling.
+   - Een cijfervraag telt nooit mee in een themascore.
+5. **Sterkste en zwakste punten.** De vragen met het hoogste en het laagste gemiddelde.
+6. **Thema's per groep.** Een tabel met het gemiddelde per thema (en de eNPS en het rapportcijfer) per groep. Groen is minstens 0,3 hoger dan iedereen samen, rood minstens 0,3 lager (bij de eNPS 10 punten, bij een rapportcijfer 0,5). Het zijn **dezelfde getallen als bij Alle resultaten**, met dezelfde regels voor kleine groepen. Op een telefoon schuif je de tabel binnen het vak opzij.
+7. **Wat hangt samen met …?** Welke thema's het sterkst samenhangen met een uitkomst, zoals de eNPS of het rapportcijfer (kies die met **Uitkomst**). De samenhang *r* loopt van −1 tot +1; hoe verder van 0, hoe sterker.
+   - De **prioriteitenmatrix** zet elk thema neer naar zijn score (rechts is hoog) en zijn samenhang met de uitkomst (boven is sterk). Linksboven staan de verbeterpunten: thema's die laag scoren maar sterk samenhangen met de uitkomst. Het gaat om thema's, nooit om personen.
+   - **Samenhang is geen oorzaak.** Een sterke samenhang betekent dat mensen die dit thema hoog scoren, ook de uitkomst hoger scoren. Het zegt niet dat het ene het andere veroorzaakt.
+   - Staat er *niet getoond: te weinig volledig ingevulde antwoorden om dit veilig naast het dashboard te tonen*, dan vielen er 1 tot 4 mensen weg die niet alle vragen van dat thema invulden. Anders zouden hun antwoorden terug te rekenen zijn.
+8. **Signalen.** Vaste regels voor de hele groep, bijvoorbeeld: minstens 30% antwoordt ongunstig op een vraag over werkdruk. Een negatieve eNPS en een onvoldoende als gemiddeld rapportcijfer zijn altijd een signaal. Er zijn geen signalen per afdeling of andere groep. De grenzen stel je in bij **Instellingen**; bij vragen uit de standaardsjablonen staan voorstellen klaar.
+9. **Ontwikkeling.** Bij twee of meer meetmomenten: de scores, de eNPS en de respons per meetmoment, en of het verschil tussen het eerste en het laatste meetmoment statistisch significant is (niet goed door toeval te verklaren).
+10. **Kwaliteit van de gegevens.** Welk deel van de vragen gemiddeld werd beantwoord, hoeveel mensen op alle schaalvragen hetzelfde antwoord gaven (een "rechte lijn") en per vraag hoe vaak die werd overgeslagen of met "weet niet" beantwoord. In de Werkbank kun je de rechte lijnen weglaten met een selectie.
+11. **Personeelscijfers.** Met een personeelsbestand (zie hoofdstuk 6) zie je tegels, een tabel per groep (kies bij **Per**: afdeling, leeftijd, geslacht …), de leeftijdsopbouw, de soort dienstverband en de redenen van vertrek. Onder **Hoe zijn deze cijfers berekend?** staan de definities:
+    - **Verzuimpercentage**: de verzuimdagen gedeeld door de dagen dat medewerkers in dienst waren, in kalenderdagen en gewogen naar de deeltijdfactor (fte). Volgens de gangbare norm van de NVA (Nederlandse Vereniging voor Arbeids- en Bedrijfsgeneeskunde) tel je verzuim zo, en zonder zwangerschaps- en bevallingsverlof. Bij het inlezen geef je aan of dat verlof in je bestand meetelt; dat staat bij het cijfer.
+    - **Meldingsfrequentie**: het aantal ziekmeldingen per medewerker per jaar.
+    - **Gemiddelde duur per melding**: verzuimdagen gedeeld door het aantal meldingen (een benadering).
+    - **Nulverzuim**: het deel van de medewerkers dat de hele periode in dienst was en zich niet ziek meldde.
+    - **Verloop** en **instroom**: vertrekkers en nieuwe medewerkers in de periode, gedeeld door het gemiddelde aantal medewerkers (begin plus einde, gedeeld door twee). **Vrijwillig verloop** telt alleen vertrek op eigen verzoek; **Vertrek in het eerste jaar** is het deel van de vertrekkers dat korter dan een jaar in dienst was.
+    - Verzuim staat er alleen bij groepen van minstens **10 medewerkers**, en niet als het cijfer vooral over één persoon zou gaan: *"Verzuim van deze groep niet getoond: te klein, of het cijfer zou vooral over één persoon gaan."* Andere aantallen en percentages staan er alleen bij minstens 5 medewerkers. Redenen van vertrek zie je alleen voor de hele organisatie, nooit per groep.
+    - Een aandeel zoals "55 jaar of ouder" staat er niet als je daarmee een verborgen groep uit de tabel zou kunnen terugrekenen; dan zie je ×.
+12. **Eigen cijfers.** De laatste waarde van elke reeks die je bij **Eigen invoer** hebt ingevoerd, met de vorige waarde.
+
+Zolang een vragenlijst nog geen 5 ingevulde vragenlijsten heeft, zie je alleen de deelname (en de personeelscijfers en eigen cijfers). Zonder vragenlijst of personeelsbestand vertelt elk onderdeel wat je kunt toevoegen.
+
+**Vergelijkingscijfers (benchmarks)**
+Bij **Instellingen › Vergelijkingscijfers** kun je een cijfer van buiten naast je eigen cijfer zetten, bijvoorbeeld het landelijk verzuim. Je vult het getal zelf in en kiest de bron uit de **Bibliotheek**. In het Overzicht en in rapporten staat het als *"Ter vergelijking: 5,0% (CBS, 2025)"*. Een vergelijkingscijfer wordt nooit automatisch ingevuld: controleer zelf of het over hetzelfde gaat (zelfde jaar, zelfde soort organisatie, zelfde manier van tellen).
+
+**Instellingen van HR-analytics**
+- **Uitkomst**: waarmee "Wat hangt samen met …?" rekent. Zonder keuze is dat de eNPS, anders het rapportcijfer, anders de vraag over algemene tevredenheid.
+- **Signalen**: per vraag of thema welke antwoorden ongunstig zijn en vanaf welk percentage dat een signaal is. Voorstellen bij vragen uit de standaardsjablonen neem je met **Overnemen** over.
+- **Aantallen medewerkers**: per achtergrondvraag het aantal medewerkers per groep. Laat je een vakje leeg, dan wordt het aantal uit het personeelsbestand gebruikt (als dat er is en het veilig kan).
+- **Personeelsbestand**: welk bestand het Overzicht gebruikt, tot wanneer het bewaard mag worden, en verwijderen.
+- **Vergelijkingscijfers**: zie hierboven.
+
+### Alle resultaten
+
+**Alle resultaten** toont:
 
 - de **respons** per vragenlijst, ook per dag;
 - de **gemiddelde score per thema** en per meetpunt (1 = laag, 5 = hoog);
@@ -399,7 +462,7 @@ Op het tabblad **Eigen invoer** leg je vast wat je buiten de vragenlijst te wete
 
 ### Inlezen uit Excel of CSV
 
-Onderaan het tabblad **Eigen invoer** staat **Inlezen uit Excel of CSV**. Gegevens die al in een bestand staan, hoef je dan niet over te typen. Er zijn vier mogelijkheden:
+Onderaan het tabblad **Eigen invoer** staat **Inlezen uit Excel of CSV**. Gegevens die al in een bestand staan, hoef je dan niet over te typen. Er zijn vijf mogelijkheden:
 
 | Wat | Waarvoor | Wat er moet in het bestand |
 |---|---|---|
@@ -407,6 +470,7 @@ Onderaan het tabblad **Eigen invoer** staat **Inlezen uit Excel of CSV**. Gegeve
 | **Antwoorden op een vragenlijst** | Papieren formulieren of antwoorden uit een ander programma | Per rij één respondent, per kolom één vraag. Schaalvragen als cijfer 1 tot 5, ja/nee als *ja* of *nee*, meerkeuze als de tekst van het antwoord. |
 | **Vragen voor een vragenlijst** | Een vragenlijst die je al in Excel hebt | Per rij één vraag, met thema, soort (*schaal*, *ja/nee*, *meerkeuze* of *open*) en bij meerkeuze de mogelijkheden gescheiden door een puntkomma. |
 | **Eigen dataset voor Analyse** | Gegevens die je wilt onderzoeken | Zie hoofdstuk 5, onderdeel 6. |
+| **Personeelsbestand voor HR-analytics** | Verzuim, verloop en de opbouw van de organisatie bij Dashboard › Overzicht | Per rij één medewerker. Zie hieronder. |
 
 Zo werkt het:
 
@@ -426,6 +490,27 @@ Goed om te weten:
 - Een regel onderaan zoals **Totaal** of **Gemiddelde** wordt overgeslagen als dat woord in de eerste kolom staat. De **Controle** meldt welke regel dat was.
 - Lijkt een kolom op persoonsgegevens (namen, e-mailadressen, telefoonnummers), dan krijg je een waarschuwing.
 - Een oud Excel-bestand (.xls) eerst in Excel opslaan als .xlsx.
+
+### Personeelsbestand voor HR-analytics
+
+Met een personeelsbestand zie je bij **Dashboard › Overzicht** de kerncijfers van de hele organisatie: aantal medewerkers, fte, leeftijdsopbouw, verzuim en verloop. Ook zie je of de groep die de vragenlijst invulde, lijkt op de organisatie. Je voegt het toe bij **Eigen invoer › Inlezen uit Excel of CSV › Personeelsbestand voor HR-analytics**, of in het Overzicht.
+
+**Alleen groepscijfers worden bewaard.** Het bestand wordt in je eigen browser verwerkt. Naar de onderzoeksomgeving gaan alleen aantallen en totalen per groep (zoals: afdeling Zorg, 171 medewerkers, 120,4 fte, samen zoveel verzuimdagen). Namen, personeelsnummers, geboortedatums en rijen per medewerker verlaten je computer nooit. In de dialoog staat: *"Er worden alleen groepscijfers bewaard (aantallen en totalen per groep), geen gegevens per medewerker."*
+
+Zo werkt het:
+1. Eén rij per medewerker, in de eerste rij de namen van de kolommen. Laat namen, personeelsnummers en adressen het liefst al weg. Met **Download een voorbeeldbestand** zie je hoe het eruit kan zien.
+2. Kies per kolom **wat erin staat**: afdeling, locatie, functieniveau, soort dienstverband, opleiding, geslacht, leidinggevend, leeftijd, geboortedatum of geboortejaar, datum in dienst, datum uit dienst, reden uit dienst, fte of uren, verzuimdagen, verzuimpercentage en ziekmeldingen. Een kolom met **— niet bewaren —** wordt niet gebruikt. Een kolom met namen of nummers kan geen rol krijgen.
+3. Vul de **periode** in (standaard de 12 maanden tot en met vorige maand). De laatste maand is ook de peildatum voor het aantal medewerkers. Vul de **uren per fte** in (staat meestal in de cao).
+4. **Bewaren tot**: standaard 6 maanden na vandaag, hooguit 3 jaar. Daarna krijg je bij het Overzicht en bij Afronden een melding.
+5. Heb je een kolom met verzuim, beantwoord dan de vraag *"Tellen zwangerschapsverlof en bevallingsverlof mee? Volgens de gangbare norm niet."*
+6. **Koppelen aan de vragenlijst**: per indeling (afdeling, locatie …) kies je welk antwoord van de vragenlijst bij elke waarde in het bestand hoort, bijvoorbeeld *Keukenteam* → *Keuken*. Zo kun je de respondenten vergelijken met de organisatie. Bij de reden uit dienst kies je per waarde een vaste reden: eigen verzoek, initiatief werkgever, einde tijdelijk contract, pensioen of overig.
+7. Lees de **Controle** en klik op **Groepscijfers bewaren**.
+
+Goed om te weten:
+- **Verzuim is een gegeven over de gezondheid** van medewerkers. Gebruik alleen aantallen (dagen en meldingen), nooit redenen of diagnoses, en alleen als dat met de opdrachtgever is afgesproken. Verzuimcijfers worden al bij het inlezen afgeschermd: alleen voor groepen van minstens 10 medewerkers en niet als het cijfer vooral over één persoon zou gaan.
+- Leeftijden en diensttijd worden in klassen bewaard (zoals 35 tot 45 jaar); geboortedatums en datums worden omgezet naar leeftijd en maanden.
+- Een onderzoek kan hooguit 5 personeelsbestanden hebben. Het nieuwste bestand wordt meteen gebruikt; bij **Instellingen › Personeelsbestand** kies je een ander, pas je de bewaartermijn aan of verwijder je het.
+- **Verwijder het personeelsbestand als het rapport klaar is.** Rapporten waarin de cijfers al zijn vastgelegd, houden hun cijfers.
 
 ## 7. Stukken
 
@@ -540,8 +625,9 @@ Ga naar het tabblad **Afronden**.
    - Daarna kun je alles nog inzien en exporteren, maar niets meer wijzigen.
    - Open vragenlijsten worden gesloten; de links werken niet meer.
    - Deellinks blijven werken tot hun einddatum, zodat de opdrachtgever het eindrapport nog kan lezen. Trek ze in bij **Delen** als dat niet meer nodig is.
-3. **Nieuw onderzoek.** Klik op **Nieuw onderzoek starten** en begin leeg bij het volgende bedrijf.
-4. **Definitief verwijderen** (optioneel). Een gearchiveerd onderzoek kun je bij Afronden definitief verwijderen. Bewaar onderzoeksgegevens niet langer dan nodig (AVG).
+3. **Personeelsbestand.** Heb je een personeelsbestand toegevoegd (hoofdstuk 6), dan staat het hier met de datum tot wanneer je het mag bewaren. **Verwijder het personeelsbestand als het rapport klaar is.** Is de bewaartermijn verstreken, dan zie je een melding, hier en bij het Overzicht. Verwijderen kan ook na archiveren. Rapporten waarin de cijfers al zijn vastgelegd, houden hun cijfers.
+4. **Nieuw onderzoek.** Klik op **Nieuw onderzoek starten** en begin leeg bij het volgende bedrijf.
+5. **Definitief verwijderen** (optioneel). Een gearchiveerd onderzoek kun je bij Afronden definitief verwijderen. Bewaar onderzoeksgegevens niet langer dan nodig (AVG).
 
 ## 12. Samenwerken met Excel, Word, Outlook en SPSS
 
@@ -579,6 +665,8 @@ Goed om te weten:
 - Van **meelezers** met een deellink wordt niets bewaard, behalve de datum waarop de link het laatst is bekeken. Van de toegangscode wordt alleen een onleesbare versie (hash) bewaard.
 - **E-mailadressen** worden nergens bewaard. Uitnodigingen verstuur je vanuit je eigen e-mailprogramma.
 - Bestanden die je **inleest** worden in je eigen browser gelezen; alleen de gegevens die je kiest, worden opgeslagen.
+- **Personeelsbestand**: alleen groepscijfers (aantallen en totalen per groep) gaan naar de onderzoeksomgeving, nooit namen, nummers, geboortedatums of rijen per medewerker. Verzuim staat er alleen bij groepen van minstens 10 medewerkers en niet als het vooral over één persoon gaat; andere cijfers vanaf 5 medewerkers, en een percentage alleen als beide delen minstens 5 zijn. Redenen van vertrek alleen voor de hele organisatie. Elk personeelsbestand heeft een datum tot wanneer je het mag bewaren. In een rapport komen personeelscijfers alleen in het hoofdstuk **HR-kengetallen**.
+- Het **Overzicht** (HR-analytics) en de bestanden die je daar maakt (**Excel**, **Word**) tonen geen uitkomsten van minder dan 5 respondenten. Ook de samenstelling (wie deden mee) en de vergelijking met de organisatie werken alleen met groepen van minstens 5; de toets op representativiteit gebruikt nooit verborgen aantallen.
 - De **werkbank** bewaart alleen hoe je eigen variabelen, selecties en analyses gemaakt zijn, nooit waarden per persoon. Uitkomsten van minder dan 5 mensen komen niet in beeld, ook niet per groep als percentage (bij ja/nee of twee waarden geldt de regel van de kruistabel), en een selectie of indeling die maar een paar mensen verschilt van een andere, wordt geweigerd.
 - **Coderen**: codes en citaten zie alleen jij. In het rapport staan aantallen per code alleen bij vragen met minstens 5 antwoorden, en aantallen van 1 tot 4 zie je als ×. Een citaat komt pas in het rapport als je hebt aangevinkt dat het niemand herkenbaar maakt.
 - **Bibliotheek**: alleen jij kunt de bibliotheek zien. Een meelezer krijgt van een bron hooguit de verwijzing (auteur, jaar, titel, vindplaats) als die in een gedeeld rapport wordt genoemd. Je eigen notities bij een bron en bij een koppeling komen nooit in een rapport, een deellink of een RIS-bestand (tenzij je dat bij exporteren zelf aanzet).

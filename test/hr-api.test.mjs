@@ -74,7 +74,7 @@ before(async () => {
   const zaad = join(map, 'zaad.sql');
   writeFileSync(zaad, ZAAD);
   execFileSync('npx', ['wrangler', 'd1', 'execute', 'DB', '--local', '--persist-to', map, '--file', zaad], { stdio: 'ignore', env: WRANGLER_ENV });
-  server = spawn('npx', ['wrangler', 'dev', '--port', String(POORT), '--ip', '127.0.0.1', '--persist-to', map,
+  server = spawn('npx', ['wrangler', 'dev', '--port', String(POORT), '--inspector-port', String(POORT + 1000), '--ip', '127.0.0.1', '--persist-to', map,
     '--var', `BEHEER_WACHTWOORD:${WACHTWOORD}`, '--show-interactive-dev-session=false'],
   { stdio: 'ignore', env: { ...process.env, WRANGLER_SEND_METRICS: 'false' }, detached: true });
   for (let i = 0; i < 60; i++) {
