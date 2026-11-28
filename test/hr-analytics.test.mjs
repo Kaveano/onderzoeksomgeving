@@ -906,3 +906,67 @@ test('Word: "Thema\'s per groep" met korte rijnamen (eNPS, Rapportcijfer), de vr
   assert.equal(breed.reduce((t, b) => t + b.kop.length - 2, 0), 12);
   for (const t of breed) assert.ok(t.breedtes.reduce((a, b) => a + b, 0) <= 9070 + 1e-9);
 });
+
+// ---------- Besluit R18: verloop en instroom van een kleine organisatie ----------
+
+test('R18: kleine organisatie (30 medewerkers, 3 vertrekkers van wie 2 vrijwillig, 2 nieuw) in Word, Excel, Neem op in stuk en bij de meelezer', () => {
+  const kop = ['Afdeling', 'Geslacht', 'In dienst', 'Uit dienst', 'Reden uit dienst'];
+  const rijen = [
+    ...Array.from({ length: 16 }, (_, i) => ['Zorg', i % 2 ? 'M' : 'V', '2016-01', '', '']),
+    ...Array.from({ length: 12 }, (_, i) => ['Staf', i % 3 ? 'V' : 'M', '2012-06', '', '']),
+    ['Zorg', 'V', '2018-03', '2026-02', 'Eigen verzoek'], ['Staf', 'M', '2019-09', '2026-04', 'Eigen verzoek'], ['Zorg', 'V', '2014-01', '2026-07', 'Reorganisatie'],
+    ['Zorg', 'M', '2026-03', '', ''], ['Staf', 'V', '2026-06', '', ''],
+  ];
+  const { aggregaat } = verwerkPersoneel(kop, rijen, { rollen: { 0: 'afdeling', 1: 'geslacht', 2: 'datum_in', 3: 'datum_uit', 4: 'reden_uit' }, periode: { van: '2025-11', tot: '2026-10' } });
+  const data = standaardExport({ n: 40, hr: { versie: 1, benchmarks: [{ sleutel: 'verloop_pct', waarde: 15, omschrijving: 'Verloop in de branche', citeersleutel: '' }] } });
+  const k = kern(data, {}, aggregaat);
+  const t = k.personeel.totaal;
+  assert.equal(t.medewerkers, 30);
+  assert.equal(t.uitstroom, 3);
+  assert.equal(t.instroom, 2);
+  assert.equal(t.verloop_pct, (3 / ((31 + 30) / 2)) * 100);
+  assert.equal(t.instroom_pct, (2 / ((31 + 30) / 2)) * 100);
+  assert.equal(t.verloop_vrijwillig_pct, null, '2 op eigen verzoek: een uitsplitsing naar reden, onder de 5');
+  assert.ok(k.personeel.uitstroom_redenen.every((r) => r.aantal === null));
+  assert.ok(k.personeel.per_groep.every((g) => g.rijen.every((r) => r.verloop_pct === null)));
+  assert.equal(k.benchmarks[0].eigen_waarde, t.verloop_pct, 'het vergelijkingscijfer heeft nu ook een eigen waarde');
+  assert.equal(R.controleerKerncijfers(k), true);
+  // Word (hoofdstuk HR-kengetallen): aantal en percentage, de noot, en × alleen bij de uitsplitsingen.
+  const blokken = R.kerncijferBlokken(k, 'personeel');
+  const kpi = blokken.find((b) => b.soort === 'tabel' && b.bijschrift === 'HR-kengetallen van de organisatie').rijen;
+  const w = (naam) => kpi.find((r) => r[0] === naam)[1];
+  assert.equal(w('Vertrekkers in de periode'), '3');
+  assert.equal(w('Nieuwe medewerkers in de periode'), '2');
+  assert.match(w('Verloop'), /^\d+%$/);
+  assert.match(w('Instroom'), /^\d+%$/);
+  assert.equal(w('Vrijwillig verloop (eigen verzoek)'), VERBORGEN);
+  const alineas = blokken.filter((b) => b.soort === 'alinea').map((b) => b.tekst);
+  assert.ok(alineas.includes(`*${R.KLEIN_VERLOOP_UITLEG}*`));
+  assert.ok(alineas.includes(`*${R.PERSONEEL_VERBORGEN}*`));
+  assert.ok(alineas.some((a) => a.startsWith('Ter vergelijking: 15,0%')));
+  const redenen = blokken.find((b) => b.soort === 'tabel' && b.bijschrift === 'Redenen van vertrek (hele organisatie)');
+  assert.ok(redenen.rijen.every((r) => r[1] === VERBORGEN));
+  // Excel.
+  const blad = R.kerncijferBladen(k).find((b) => b.naam === 'Personeel').rijen;
+  assert.deepEqual(blad.find((r) => r[0] === 'Vertrekkers in de periode'), ['Vertrekkers in de periode', 3]);
+  assert.deepEqual(blad.find((r) => r[0] === 'Nieuwe medewerkers in de periode'), ['Nieuwe medewerkers in de periode', 2]);
+  assert.equal(blad.find((r) => r[0] === 'Verloop')[1], Math.round(t.verloop_pct * 10) / 10);
+  assert.ok(blad.some((r) => r[0] === R.KLEIN_VERLOOP_UITLEG));
+  const benchBlad = R.kerncijferBladen(k).find((b) => b.naam === 'Benchmarks').rijen;
+  assert.equal(benchBlad[1][1], Math.round(t.verloop_pct * 10) / 10);
+  // Neem op in stuk: alleen met de personeelscijfers.
+  assert.match(R.kerncijferTekst(k, { metPersoneel: true }), /Personeel: 30 medewerkers, verloop \d+% \(3 vertrekkers\), instroom \d+% \(2 nieuwe medewerkers\)\./);
+  assert.ok(!R.kerncijferTekst(k).includes('vertrekkers'));
+  // Meelezer: met het hoofdstuk HR-kengetallen hetzelfde (en de server-controle neemt het aan), zonder niets.
+  const met = R.kerncijfersVoorKijker(k, { metPersoneel: true });
+  assert.equal(met.personeel.totaal.uitstroom, 3);
+  assert.equal(met.personeel.totaal.instroom, 2);
+  assert.equal(R.controleerKerncijfers(met), true);
+  const zonder = R.kerncijfersVoorKijker(k, { metPersoneel: false });
+  assert.equal(zonder.personeel, null);
+  assert.equal(zonder.benchmarks[0].eigen_waarde, null);
+  assert.ok(!JSON.stringify(R.kerncijferBlokken(zonder, 'alles')).includes('Vertrekkers in de periode'));
+  // Eén vertrekker in een kleine organisatie: ook het enkelvoud klopt.
+  assert.equal(R.aantalTekst(1, 'vertrekker', 'vertrekkers'), '1 vertrekker');
+  assert.equal(R.aantalTekst(0, 'nieuwe medewerker', 'nieuwe medewerkers'), '0 nieuwe medewerkers');
+});

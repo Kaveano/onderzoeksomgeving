@@ -511,7 +511,7 @@ export async function toon(container, ctx) {
     if (p && !p.verborgen) {
       tegels.push(tegel('Medewerkers', n0(p.medewerkers), `peildatum ${nlDatum(k.personeel.peildatum)}`));
       if (!k.personeel.ontbreekt.includes('verzuim_pct')) tegels.push(tegel('Verzuim', eindig(p.verzuim_pct) ? `${nlGetal(p.verzuim_pct, 1)}%` : VERBORGEN, ...verg('verzuim_pct')));
-      if (!k.personeel.ontbreekt.includes('verloop_pct')) tegels.push(tegel('Verloop', pc(p.verloop_pct), ...verg('verloop_pct')));
+      if (!k.personeel.ontbreekt.includes('verloop_pct')) tegels.push(tegel('Verloop', pc(p.verloop_pct), eindig(p.uitstroom) ? R.aantalTekst(p.uitstroom, 'vertrekker', 'vertrekkers') : null, ...verg('verloop_pct')));
     }
     const verborgen = tegels.some((t) => t.textContent.includes(VERBORGEN));
     return h('section', { class: 'kaart hr-kaart', id: 'hr-oogopslag', 'aria-labelledby': 'hr-oogopslag-kop', dataset: { kort: 'In één oogopslag' } },
@@ -914,9 +914,10 @@ export async function toon(container, ctx) {
       kpi('meldingsfrequentie', 'Meldingsfrequentie', 'ziekmeldingen per medewerker per jaar'),
       kpi('gem_duur_per_melding', 'Gemiddelde duur per melding', 'kalenderdagen (benadering)'),
       kpi('nulverzuim_pct', 'Nulverzuim', 'heel de periode in dienst, nooit ziek gemeld'),
-      kpi('verloop_pct', 'Verloop', ...verg('verloop_pct')),
+      // Verloop en instroom van de hele organisatie staan er altijd, ook bij 1 tot 4 (besluit R18), met het aantal.
+      kpi('verloop_pct', 'Verloop', eindig(t.uitstroom) ? R.aantalTekst(t.uitstroom, 'vertrekker', 'vertrekkers') : null, ...verg('verloop_pct')),
       kpi('verloop_vrijwillig_pct', 'Vrijwillig verloop', 'op eigen verzoek'),
-      kpi('instroom_pct', 'Instroom'),
+      kpi('instroom_pct', 'Instroom', eindig(t.instroom) ? R.aantalTekst(t.instroom, 'nieuwe medewerker', 'nieuwe medewerkers') : null),
       kpi('pct_eerste_jaar', 'Vertrek in het eerste jaar', 'van de vertrekkers'),
     ].filter(Boolean);
     const tegelsVerborgen = tegels.some((x) => x.textContent.includes(VERBORGEN));
@@ -944,6 +945,7 @@ export async function toon(container, ctx) {
     return kaart('hr-personeel', 'Personeelscijfers', 'Personeel', {},
       kopEl,
       h('div', { class: 'hr-tegels' }, tegels),
+      R.kleinVerloop(p) ? noot(R.KLEIN_VERLOOP_UITLEG) : null,
       tegelsVerborgen ? noot(R.PERSONEEL_VERBORGEN) : null,
       t.verzuim_reden ? noot(R.VERZUIM_VERBORGEN_ORGANISATIE) : null,
       kan('verzuim_pct') && eindig(t.verzuim_pct) ? noot(`${R.DAGEN_UITLEG}${zwanger ? ` ${zwanger}` : ''}`) : null,
@@ -965,6 +967,7 @@ export async function toon(container, ctx) {
           h('li', {}, 'Gemiddelde duur per melding: de verzuimdagen gedeeld door het aantal meldingen. Dit is een benadering: een melding die over de grens van de periode loopt, telt maar voor een deel mee.'),
           h('li', {}, 'Nulverzuim: het deel van de medewerkers dat de hele periode in dienst was en zich niet ziek meldde.'),
           h('li', {}, 'Verloop en instroom: het aantal vertrekkers en nieuwe medewerkers in de periode, gedeeld door het gemiddelde aantal medewerkers (begin plus einde, gedeeld door twee).'),
+          h('li', {}, `Verloop en instroom van de hele organisatie staan er altijd, ook bij minder dan ${k.drempel} vertrekkers of nieuwe medewerkers: wie dat zijn, weet iedereen in de organisatie al. Vrijwillig verloop, de redenen van vertrek en het verloop per groep staan er pas vanaf ${k.drempel} vertrekkers.`),
           h('li', {}, 'Volgens de gangbare norm voor verzuimregistratie (de NVS-standaard van het CBS) tel je verzuim in kalenderdagen, gewogen naar de deeltijdfactor, en zonder zwangerschaps- en bevallingsverlof.'),
           zwanger ? h('li', {}, `In dit bestand: ${zwanger.charAt(0).toLowerCase()}${zwanger.slice(1)}`) : null,
           h('li', {}, `Verzuim staat er alleen bij groepen van minstens ${R.MIN_VERZUIM} medewerkers, en niet als het cijfer vooral over één persoon zou gaan (bij de verzuimdagen of bij de ziekmeldingen).`))));
