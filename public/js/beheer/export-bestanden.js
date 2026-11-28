@@ -4,6 +4,7 @@
 import { maakXlsx, maakZip, maakSpssSyntax, maakIcs, maakDocx, spssNaam } from './bestanden.js';
 import { bouwModel, schaalScore } from './analyse-model.js';
 import { slug } from './export.js';
+import { isLieverNiet } from './kenmerken.js';
 
 const WEET_NIET = 'weet_niet';
 const SPSS_WEET_NIET = 99;
@@ -263,7 +264,8 @@ export function spssVariabeleNamen(data) {
  * meetmomenten en groepen kunt vergelijken. Dezelfde vraag op verschillende meetmomenten (een gekopieerde
  * vragenlijst) komt in dezelfde kolom. Geeft { variabelen, rijen }.
  * - schaalvraag: 1 tot 5, 99 = weet niet (ingesteld als ontbrekende waarde);
- * - ja/nee: 1 = ja, 0 = nee;  meerkeuze met één antwoord: 1, 2, 3 … met labels;
+ * - ja/nee: 1 = ja, 0 = nee;  meerkeuze met één antwoord: 1, 2, 3 … met labels (NOMINAL; een geordend
+ *   achtergrondkenmerk zoals leeftijd ORDINAL, met "Dat zeg ik liever niet" als ontbrekende waarde);
  * - meerkeuze met meerdere antwoorden: per antwoordmogelijkheid een kolom met 1 (gekozen) of 0;
  * - cijfervraag: het cijfer (SCALE), 99 = weet niet; bij 0 tot 10 ook vNN_enps (1 = criticaster, 2 = passief,
  *   3 = promotor; ORDINAL);
@@ -390,7 +392,15 @@ export function spssGegevens(data) {
           });
         }
       } else {
-        voeg({ naam, soort: 'getal', decimalen: 0, label, waardelabels: Object.fromEntries(mogelijk.map((m, k) => [k + 1, m.label])), meetniveau: 'NOMINAL' }, (l, a) => {
+        // Een geordend achtergrondkenmerk (leeftijd, diensttijd …) is ORDINAL, net als in de werkbank (J8). Daar is
+        // "Dat zeg ik liever niet" een ontbrekende waarde: het hoort niet als hoogste klasse mee te tellen (J2).
+        const kenmerk = [...s.perLijst.values()].map((x) => ruweVraag.get(x.id)?.kenmerk || x.kenmerk).find(Boolean) || '';
+        const geordend = !!data.lijsten?.kenmerken?.[kenmerk]?.geordend;
+        const lieverNiet = geordend ? mogelijk.map((m, k) => (m.labels.some(isLieverNiet) ? k + 1 : null)).filter((x) => x !== null) : [];
+        voeg({
+          naam, soort: 'getal', decimalen: 0, label, waardelabels: Object.fromEntries(mogelijk.map((m, k) => [k + 1, m.label])),
+          ...(lieverNiet.length ? { ontbrekend: lieverNiet } : {}), meetniveau: geordend ? 'ORDINAL' : 'NOMINAL',
+        }, (l, a) => {
           const g = gekozen(l, a);
           if (!g || g.length !== 1) return null;
           return mogelijk.findIndex((m) => m.ids.has(g[0])) + 1 || null;
@@ -460,6 +470,7 @@ export function spssPakket(data) {
     '- Bij schaalvragen en cijfervragen is 99 "weet niet / n.v.t."; die waarde telt SPSS niet mee in gemiddelden.',
     '- Achtergrondvragen heten naar hun kenmerk (bijvoorbeeld afdeling of leeftijd). Bij een cijfervraag van 0 tot 10 (aanbevelen) staat de eNPS-groep in een eigen variabele die eindigt op _enps: 1 = criticaster (0–6), 2 = passief (7–8), 3 = promotor (9–10).',
     '- Een cijfervraag telt niet mee in de themascores.',
+    '- Achtergrondkenmerken met een vaste volgorde (zoals leeftijd en diensttijd) zijn ordinaal. Daar is "Dat zeg ik liever niet" een ontbrekende waarde: SPSS telt die niet mee in gemiddelden en correlaties, en toont hem bij Frequencies onder Missing. Wil je die groep toch in een kruistabel, zet de ontbrekende waarde dan uit, bijvoorbeeld met MISSING VALUES leeftijd ().',
     '- De variabelen thema01, thema02 … zijn de gemiddelde score per thema per respondent (alleen als minstens de helft van de vragen is beantwoord).',
     '- Dit bestand bevat losse antwoorden, ook van kleine groepen. Bewaar het veilig en deel het niet zomaar.',
     '',
