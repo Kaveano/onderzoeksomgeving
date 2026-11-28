@@ -6,7 +6,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { performance } from 'node:perf_hooks';
 
-import { normaliseer, normaliseerMetKaart, stam, SYNONIEMEN, zoek, markeringen, zoekBijOnderzoek, leesZoekvraag } from '../public/js/beheer/bibliotheek-zoeken.js';
+import { normaliseer, normaliseerMetKaart, stam, SYNONIEMEN, MIN_BEGIN, zoek, markeringen, zoekBijOnderzoek, leesZoekvraag } from '../public/js/beheer/bibliotheek-zoeken.js';
+import { OPMAAK } from '../public/js/beheer/bibliotheek-regels.js';
 
 let teller = 0;
 const bron = (velden) => ({
@@ -146,6 +147,100 @@ test('passende bronnen bij een onderzoek (thema\'s en onderzoeksvraag)', () => {
   assert.ok(r.tekst.includes('werkdruk'));
   assert.deepEqual(r.treffers.map((t) => t.bron.titel), ['Werkdruk in de zorg', 'Onboarding']);
   assert.equal(zoekBijOnderzoek(bronnen, {}).treffers.length, 0);
+});
+
+// ---------- Bevindingen van de review van P7 (zoeken in de echte startcollectie; de rangorde daar staat in bibliotheek-start.test.mjs) ----------
+
+test('het begin van een woord telt pas vanaf 4 letters: "WOR" vindt niet "work"', () => {
+  assert.equal(MIN_BEGIN, 4);
+  const engels = bron({ titel: 'Work and workers in Europe' });
+  const wor = bron({ titel: 'Medezeggenschap', samenvatting: 'De WOR regelt de rechten van de ondernemingsraad.' });
+  const werkdruk = bron({ titel: 'Werkdruk in de zorg' });
+  const ids = (tekst) => zoek([engels, wor, werkdruk], { tekst }).treffers.map((t) => t.id);
+  assert.deepEqual(ids('WOR'), [wor.id]);
+  assert.deepEqual(ids('wor'), [wor.id], 'ook in kleine letters: alleen het hele woord');
+  assert.deepEqual(ids('werk'), [werkdruk.id], 'vanaf 4 letters wel het begin van een woord');
+  assert.deepEqual(ids('werkd'), [werkdruk.id]);
+  assert.deepEqual(markeringen(wor, 'WOR').samenvatting, [[3, 6]]);
+  assert.deepEqual(markeringen(engels, 'wor').titel, [], 'geen markering in "Work"');
+  // Een synoniem met een korte stam ("lonen" → "lon") zoekt ook alleen het hele woord: niet "longitudinal"
+  const lang = bron({ titel: 'A longitudinal study of nurses' });
+  const cao = bron({ titel: 'Cao-lonen stijgen in 2025 met 5,0 procent' });
+  assert.deepEqual(zoek([lang, cao], { tekst: 'salaris' }).treffers.map((t) => t.id), [cao.id]);
+});
+
+test('synoniemen: wetgeving ~ regelgeving (onderwerp "Wet- en regelgeving"), loon ~ lonen ~ cao, diversiteit ~ diversity', () => {
+  const avg = bron({ titel: 'De AVG in het kort', onderwerpen: ['wetgeving'] });
+  const wetenschap = bron({ titel: 'Wetenschappelijk onderzoek naar wettelijke regels' });
+  const lijst = [avg, wetenschap];
+  for (const tekst of ['wetgeving', 'Wetgeving', 'regelgeving', 'wet- en regelgeving', '"wet- en regelgeving"']) {
+    assert.deepEqual(zoek(lijst, { tekst }).treffers.map((t) => t.id), [avg.id], tekst);
+  }
+  assert.ok(SYNONIEMEN.some((g) => g.includes('wetgeving') && g.includes('regelgeving') && g.includes('wet en regelgeving')));
+  assert.ok(!SYNONIEMEN.some((g) => g.includes('wet') || g.includes('wetten')), 'de stam "wet" is ook het begin van "wetenschap"');
+  const cao = bron({ titel: 'Cao-lonen stijgen in 2025 met 5,0 procent' });
+  const pay = bron({ titel: 'A meta-analysis of pay level satisfaction' });
+  for (const tekst of ['loon', 'lonen', 'salaris', 'beloning']) {
+    assert.deepEqual(zoek([cao, pay, wetenschap], { tekst }).treffers.map((t) => t.id).sort(), [cao.id, pay.id].sort(), tekst);
+  }
+  const div = bron({ titel: 'Work group diversity and group performance' });
+  const inc = bron({ titel: 'Inclusion in work groups' });
+  assert.deepEqual(zoek([div, inc, cao], { tekst: 'diversiteit' }).treffers.map((t) => t.id).sort(), [div.id, inc.id].sort());
+});
+
+test('een treffer in de naam van een onderwerp telt minder dan een treffer in de titel of de samenvatting', () => {
+  // Het onderwerp "Sociale veiligheid, diversiteit en inclusie" bevat het woord, maar de bron gaat over iets anders
+  const psa = bron({ titel: 'Psychosociale arbeidsbelasting', onderwerpen: ['sociale-veiligheid'] });
+  const titel = bron({ titel: 'Work group diversity and group performance' });
+  const samenvatting = bron({ titel: 'Teams', samenvatting: 'Over diversiteit in teams.' });
+  const r = zoek([psa, titel, samenvatting], { tekst: 'diversiteit' });
+  assert.deepEqual(r.treffers.map((t) => t.id), [titel.id, samenvatting.id, psa.id], 'synoniem in de titel, precies in de samenvatting, dan het onderwerp');
+  // Alleen het onderwerp: de bron wordt nog steeds gevonden
+  assert.deepEqual(zoek([psa], { tekst: 'inclusie' }).treffers.map((t) => t.id), [psa.id]);
+  assert.deepEqual(zoek([bron({ titel: 'X', onderwerpen: ['verzuim'] })], { tekst: 'vitaliteit' }).totaal, 1);
+  // Bij "Passende bronnen" komt de zoekvraag uit de thema's: daar telt het onderwerp wel zwaar (gewicht 4, D3 §2.7)
+  const metOnderwerp = bron({ titel: 'Psychosociale arbeidsbelasting', onderwerpen: ['werkdruk'] });
+  const inSamenvatting = bron({ titel: 'Teams', samenvatting: 'Over werkdruk in teams.' });
+  assert.deepEqual(zoek([inSamenvatting, metOnderwerp], { tekst: 'werkdruk' }).treffers.map((t) => t.id), [inSamenvatting.id, metOnderwerp.id]);
+  assert.deepEqual(zoekBijOnderzoek([inSamenvatting, metOnderwerp], { themas: ['Werkdruk'] }).treffers.map((t) => t.id), [metOnderwerp.id, inSamenvatting.id]);
+  // Een kort woord uit de onderzoeksvraag ("hoe") is niet meer het begin van "hoeverre"
+  const hoeverre = bron({ titel: 'In hoeverre draagt een hoge werkdruk bij?' });
+  assert.deepEqual(zoekBijOnderzoek([hoeverre], { onderzoeksvraag: 'Hoe tevreden zijn medewerkers?' }).treffers, []);
+});
+
+test('auteurs ook op de naam zoals in de tekst: "d\'Ancona" uit Citeer vindt "Ancona, J. d\'."', () => {
+  const p = (achternaam, voorletters, tussenvoegsel = '') => ({ achternaam, tussenvoegsel, voorletters });
+  const ancona = bron({ titel: 'Werk en welzijn', auteurs: [p('Ancona', 'J.', "d'")] });
+  const vroome = bron({ titel: 'Arbobalans', auteurs: [p('Heuvel', 'S. G.', 'van den'), p('Vroome', 'E. M. M.', 'de')] });
+  const witte = bron({ titel: 'Burnout', auteurs: [p('De Witte', 'H.')] });
+  const andere = bron({ titel: 'Dancing at work', auteurs: [p('Dekker', 'F.')] });
+  const alle = [ancona, vroome, witte, andere];
+  const ids = (tekst) => zoek(alle, { tekst }).treffers.map((t) => t.id);
+  for (const q of ["d'Ancona", 'd’Ancona', "D'Ancona", 'dAncona', 'Ancona', "d'ancona 2022"]) {
+    assert.deepEqual(ids(q).slice(0, 1), [ancona.id], q);
+  }
+  assert.deepEqual(ids("d'Ancona"), [ancona.id]);
+  assert.deepEqual(ids('De Vroome'), [vroome.id]);
+  assert.deepEqual(ids('Van den Heuvel'), [vroome.id]);
+  assert.deepEqual(ids('De Witte'), [witte.id]);
+  // De markering staat op de regel uit de lijst ("Ancona, J. d'"); daar staat de naam
+  assert.deepEqual(markeringen(ancona, 'Ancona').auteurs, [[0, 6]]);
+  // Met de naam uit de tekst ("d'Ancona") krijgen beide delen een markering: "Ancona" en "d'"
+  for (const q of ["d'Ancona", 'd’Ancona', "D'Ancona", 'dAncona', "d'ancona 2022"]) {
+    assert.deepEqual(markeringen(ancona, q).auteurs, [[0, 6], [11, 13]], q);
+  }
+  assert.deepEqual(markeringen(bron({ auteurs: [p('Smit', 'A.'), p('Ancona', 'J.', "d'"), p('Dekker', 'F.')] }), "d'Ancona").auteurs, [[10, 16], [21, 23]],
+    '"Smit, A., Ancona, J. d\', & Dekker, F.": alleen de tweede persoon');
+  assert.deepEqual(markeringen(bron({ auteurs: [p('Ancona', '', "d'")] }), "d'Ancona").auteurs, [[0, 6], [8, 10]], 'zonder voorletters: "Ancona, d\'"');
+  // Andere tussenvoegsels blijven zoals ze waren: "De Vroome" markeert alleen "Vroome"
+  assert.deepEqual(markeringen(vroome, 'De Vroome').auteurs, [[25, 31]]);
+  // Met het tussenvoegsel vooraan ('voor') staat "d'Ancona" al als één woord in de regel
+  OPMAAK.tussenvoegsel = 'voor';
+  try {
+    assert.deepEqual(markeringen(ancona, "d'Ancona").auteurs, [[0, 8]]);
+  } finally {
+    OPMAAK.tussenvoegsel = 'achter';
+  }
 });
 
 test('criterium 3: 1.000 bronnen van ongeveer 2 KB, mediaan van zoek onder 15 ms', () => {

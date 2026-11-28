@@ -8,10 +8,11 @@ import { performance } from 'node:perf_hooks';
 
 import {
   OPMAAK, apaVerwijzing, apaInTekst, apaKort, sorteerLiteratuur, citeersleutelBasis, vrijeCiteersleutel, leesAuteur, voorletters,
-  leesApaVerwijzing, normaliseerStartbron, normaliseer, paginaTekst, dubbeleVan, nlDatumKort, auteursRegel, CITEERSLEUTEL,
+  leesApaVerwijzing, normaliseerStartbron, leesStartDetails, normaliseer, paginaTekst, dubbeleVan, nlDatumKort, auteursRegel, CITEERSLEUTEL,
   BRONSOORTEN, DETAILVELDEN, ONDERWERPEN, onderwerpUitTekst, leesTijdschriftDeel, dubbelZoeker, reeksDelen, MAX_PER_REEKS, MAX_REEKS_BYTES, MAX_REEKS_VERZOEK, kaleDoi,
+  LIMIETEN,
 } from '../public/js/beheer/bibliotheek-regels.js';
-import { planReeks, insertWaarden } from '../src/lib/bibliotheek.js';
+import { planReeks, insertWaarden, controleerBron } from '../src/lib/bibliotheek.js';
 
 import { A, GOUDEN } from './fixtures/bibliotheek-gouden.mjs';
 
@@ -28,8 +29,8 @@ test('criterium 1: gouden verwijzingen in de literatuurlijst', () => {
   assert.equal(apaVerwijzing(GOUDEN.smit),
     'Smit, A. (2021). Onboarding als proces. In B. Kok & C. van den Berg (Red.), *Handboek HRM* (pp. 45–67). Noordhoff.');
   assert.ok(apaVerwijzing(GOUDEN.smit).includes('In B. Kok & C. van den Berg (Red.), *Handboek HRM* (pp. 45–67). Noordhoff.'));
-  // D3 §8.1 gevallen 4, 6 en 7 ongewijzigd
-  assert.equal(apaVerwijzing(GOUDEN.vries), 'Vries, J. de (z.d.). *Praktisch HR-onderzoek* (3e dr.). Boom.');
+  // D3 §8.1 gevallen 6 en 7 ongewijzigd; geval 4 met een punt na het tussenvoegsel (besluit 6b van het onderzoeksteam, P7)
+  assert.equal(apaVerwijzing(GOUDEN.vries), 'Vries, J. de. (z.d.). *Praktisch HR-onderzoek* (3e dr.). Boom.');
   assert.equal(apaVerwijzing(GOUDEN.arboportaal),
     'Arboportaal. (2024, 5 maart). *Werkdruk*. Geraadpleegd op 20 november 2026, van https://www.arboportaal.nl/onderwerpen/werkdruk');
   assert.equal(apaVerwijzing(GOUDEN.arbowet), 'Arbeidsomstandighedenwet. (1998). https://wetten.overheid.nl/BWBR0010346');
@@ -64,7 +65,7 @@ test('criterium 1: [@cbs2024b; @bakker2017, p. 12] met a/b uit de literatuurlijs
   );
   // Dezelfde suffixen in de lijst
   assert.equal(apaVerwijzing(cbsA, { suffix: 'a' }), 'Centraal Bureau voor de Statistiek. (2024a). *Arbeid in cijfers*. https://www.cbs.nl/voorbeeld');
-  assert.equal(apaVerwijzing({ ...GOUDEN.vries }, { suffix: 'b' }).slice(0, 26), 'Vries, J. de (z.d.-b). *Pr');
+  assert.equal(apaVerwijzing({ ...GOUDEN.vries }, { suffix: 'b' }).slice(0, 27), 'Vries, J. de. (z.d.-b). *Pr');
 });
 
 test('tussenvoegsel vooraan ("voor") geeft De Vries, J.', () => {
@@ -106,7 +107,8 @@ test('leesAuteur: alle vormen uit D3 §2.8', () => {
   assert.deepEqual(leesAuteur('Bakker, A. B.'), p('Bakker', '', 'A. B.'));
   assert.deepEqual(leesAuteur('Bakker, Arnold B.'), p('Bakker', '', 'A. B.'));
   assert.deepEqual(leesAuteur('de Vries, J.'), p('Vries', 'de', 'J.'));
-  assert.deepEqual(leesAuteur('De Vries, J.'), p('Vries', 'de', 'J.'));
+  // Besluit 6a (P7): met een hoofdletter hoort het voorvoegsel bij de achternaam (Vlaamse of buitenlandse naam)
+  assert.deepEqual(leesAuteur('De Vries, J.'), p('De Vries', '', 'J.'));
   assert.deepEqual(leesAuteur('Vries, J. de'), p('Vries', 'de', 'J.'));
   assert.deepEqual(leesAuteur('Jan de Vries'), p('Vries', 'de', 'J.'));
   assert.deepEqual(leesAuteur('van der Berg, K.'), p('Berg', 'van der', 'K.'));
@@ -118,6 +120,190 @@ test('leesAuteur: alle vormen uit D3 §2.8', () => {
   assert.deepEqual(leesAuteur('Jan de Raad'), p('Raad', 'de', 'J.'));
   assert.deepEqual(leesAuteur('Raad voor Werk en Inkomen'), { organisatie: 'Raad voor Werk en Inkomen' });
   assert.equal(leesAuteur('  '), null);
+});
+
+test('besluit 6a (P7): een voorvoegsel met een hoofdletter hoort bij de achternaam, met een kleine letter is het een tussenvoegsel', () => {
+  const p = (achternaam, tussenvoegsel, vl) => ({ achternaam, tussenvoegsel, voorletters: vl });
+  // Vlaamse en buitenlandse namen zoals het onderzoeksteam ze schrijft
+  assert.deepEqual(leesAuteur('De Witte, H.'), p('De Witte', '', 'H.'));
+  assert.deepEqual(leesAuteur('De Dreu, C. K. W.'), p('De Dreu', '', 'C. K. W.'));
+  assert.deepEqual(leesAuteur('Van Dyne, L.'), p('Van Dyne', '', 'L.'));
+  assert.deepEqual(leesAuteur("D'Ancona, J."), p("D'Ancona", '', 'J.'));
+  assert.deepEqual(leesAuteur('Hans De Witte'), p('De Witte', '', 'H.'));
+  assert.deepEqual(leesAuteur('De Witte H.'), p('De Witte', '', 'H.'));
+  // Nederlandse namen: het tussenvoegsel klein, vooraan of achter de voorletters
+  assert.deepEqual(leesAuteur('de Vroome, E. M. M.'), p('Vroome', 'de', 'E. M. M.'));
+  assert.deepEqual(leesAuteur('Vroome, E. M. M. de'), p('Vroome', 'de', 'E. M. M.'));
+  assert.deepEqual(leesAuteur('Vroome, E. M. M. de.'), p('Vroome', 'de', 'E. M. M.'), 'met de punt uit de literatuurlijst');
+  assert.deepEqual(leesAuteur('van der Meulen-de Vries, G. H.'), p('Meulen-de Vries', 'van der', 'G. H.'));
+  assert.deepEqual(leesAuteur('Meulen-de Vries, G. H. van der.'), p('Meulen-de Vries', 'van der', 'G. H.'));
+  assert.deepEqual(leesAuteur("d'Ancona, J."), p('Ancona', "d'", 'J.'));
+  assert.deepEqual(leesAuteur("Ancona, J. d'."), p('Ancona', "d'", 'J.'));
+  assert.deepEqual(leesAuteur("'t Hart, J."), p('Hart', "'t", 'J.'));
+  assert.deepEqual(leesAuteur('Hans de Witte'), p('Witte', 'de', 'H.'));
+  assert.deepEqual(leesAuteur('de Witte H.'), p('Witte', 'de', 'H.'));
+});
+
+test('besluiten 6a en 6b (P7): de voorbeelden van de Radboud-gids in de lijst en in de tekst', () => {
+  const boek = (auteurs, jaar = 2022, titel = 'Titel') => ({ soort: 'boek', titel, jaar, auteurs, details: { uitgever: 'Uitgever' } });
+  const meulen = boek([A('Meulen-de Vries', 'G. H.', 'van der')]);
+  const ancona = boek([A('Ancona', 'J.', "d'")]);
+  const vroome = boek([A('Vroome', 'E. M. M.', 'de')], 2025);
+  const witte = boek([A('De Witte', 'H.')], 2020);
+  // 6b: een punt na een tussenvoegsel aan het eind van de auteurs
+  assert.equal(apaVerwijzing(meulen), 'Meulen-de Vries, G. H. van der. (2022). *Titel*. Uitgever.');
+  assert.equal(apaVerwijzing(ancona), "Ancona, J. d'. (2022). *Titel*. Uitgever.");
+  assert.equal(apaVerwijzing(vroome), 'Vroome, E. M. M. de. (2025). *Titel*. Uitgever.');
+  assert.equal(apaVerwijzing(boek([A('Heuvel', 'S. G.', 'van den'), A('Bouwens', 'L.'), A('Vroome', 'E. M. M.', 'de')], 2025)),
+    'Heuvel, S. G. van den, Bouwens, L., & Vroome, E. M. M. de. (2025). *Titel*. Uitgever.');
+  assert.equal(apaVerwijzing(boek([A('Knippenberg', 'D.', 'van'), A('De Dreu', 'C. K. W.'), A('Homan', 'A. C.')], 2004)),
+    'Knippenberg, D. van, De Dreu, C. K. W., & Homan, A. C. (2004). *Titel*. Uitgever.', 'midden in de lijst geen extra punt');
+  // 6a: een voorvoegsel dat bij de achternaam hoort, staat vooraan
+  assert.equal(apaVerwijzing(witte), 'De Witte, H. (2020). *Titel*. Uitgever.');
+  assert.equal(apaVerwijzing(boek([A('Schaufeli', 'W. B.'), A('Desart', 'S.'), A('De Witte', 'H.')], 2020)),
+    'Schaufeli, W. B., Desart, S., & De Witte, H. (2020). *Titel*. Uitgever.');
+  // In de tekst altijd met een hoofdletter, behalve d' (klein en vast aan de naam)
+  assert.equal(apaInTekst([{ bron: meulen }]), '(Van der Meulen-de Vries, 2022)');
+  assert.equal(apaInTekst([{ bron: meulen }], { verhalend: true }), 'Van der Meulen-de Vries (2022)');
+  assert.equal(apaInTekst([{ bron: vroome }], { verhalend: true }), 'De Vroome (2025)');
+  assert.equal(apaInTekst([{ bron: ancona }]), "(d'Ancona, 2022)");
+  assert.equal(apaInTekst([{ bron: ancona }], { verhalend: true }), "d'Ancona (2022)");
+  assert.equal(apaInTekst([{ bron: witte }]), '(De Witte, 2020)');
+  assert.equal(apaInTekst([{ bron: boek([A('Bakker', 'A. B.'), A('Dijk', 'P.', 'van')], 2021) }], { verhalend: true }), 'Bakker en Van Dijk (2021)');
+  assert.equal(apaInTekst([{ bron: boek([A('van Dijk', 'P.')], 2021) }]), '(Van Dijk, 2021)', 'ook een achternaam die met een kleine letter is ingevuld');
+  assert.equal(apaKort(vroome), '(De Vroome, 2025)');
+  // Redacteuren: voorletters, tussenvoegsel en naam; d' vast aan de naam
+  const hoofdstuk = { soort: 'hoofdstuk', titel: 'H', jaar: 2021, auteurs: [A('Smit', 'A.')],
+    details: { boektitel: 'Boek', redacteuren: [A('Ancona', 'J.', "d'"), A('Berg', 'C.', 'van den')], uitgever: 'U' } };
+  assert.equal(apaVerwijzing(hoofdstuk), "Smit, A. (2021). H. In J. d'Ancona & C. van den Berg (Red.), *Boek*. U.");
+  // Volgorde: een Nederlandse naam op de hoofdnaam, een Vlaamse of buitenlandse onder D of V
+  const bronnen = [vroome, witte, meulen, ancona, boek([A('Dijk', 'P.')], 2020), boek([A('Vos', 'K.')], 2020)].map((b, i) => ({ ...b, citeersleutel: `b${i}` }));
+  const lijst = sorteerLiteratuur(bronnen).map((l) => l.bron.auteurs[0].achternaam);
+  assert.deepEqual(lijst, ['Ancona', 'De Witte', 'Dijk', 'Meulen-de Vries', 'Vos', 'Vroome']);
+  // Bij 'voor' staat het tussenvoegsel vooraan, met d' vast aan de naam
+  OPMAAK.tussenvoegsel = 'voor';
+  try {
+    assert.equal(apaVerwijzing(ancona), "d'Ancona, J. (2022). *Titel*. Uitgever.");
+    assert.equal(apaVerwijzing(meulen), 'Van der Meulen-de Vries, G. H. (2022). *Titel*. Uitgever.');
+  } finally {
+    OPMAAK.tussenvoegsel = 'achter';
+  }
+});
+
+test('APA 7 §9.44: letter voor letter sorteren (DeBase en Dekker voor De Vries), spaties en apostrofs tellen niet mee', () => {
+  const boek = (achternaam, vl, jaar, titel, tv = '') => ({ soort: 'boek', titel, jaar, auteurs: [A(achternaam, vl, tv)], citeersleutel: titel.toLowerCase() });
+  const bronnen = [boek('De Witte', 'H.', 2020, 'Een'), boek('Dekker', 'F.', 2019, 'Twee'), boek('De Vries', 'R. E.', 2012, 'Drie'),
+    boek('DeBase', 'A.', 2018, 'Vier'), boek('MacNeil', 'K.', 2010, 'Vijf'), boek("M'Carthy", 'L.', 2010, 'Zes'), boek('Devos', 'P.', 2011, 'Zeven')];
+  assert.deepEqual(sorteerLiteratuur(bronnen).map((l) => l.bron.auteurs[0].achternaam),
+    ['DeBase', 'Dekker', 'Devos', 'De Vries', 'De Witte', 'MacNeil', "M'Carthy"]);
+  // "Nothing precedes something" blijft: Brown voor Browning, en dezelfde naam met minder voorletters eerst
+  assert.deepEqual(sorteerLiteratuur([boek('Browning', 'A. R.', 2010, 'A'), boek('Brown', 'J. R.', 2010, 'B'), boek('Brown', 'J.', 2010, 'C')])
+    .map((l) => `${l.bron.auteurs[0].achternaam} ${l.bron.auteurs[0].voorletters}`), ['Brown J.', 'Brown J. R.', 'Browning A. R.']);
+});
+
+test('besluit van het onderzoeksteam (P7, record 37): een buitenlandse naam die de auteur zelf klein schrijft, als object', () => {
+  // Y.-A. de Montjoye (Belg) schrijft "de" klein; het hoort bij de achternaam (APA 7: zoals de auteur het schrijft)
+  const montjoye = { achternaam: 'de Montjoye', tussenvoegsel: '', voorletters: 'Y.-A.' };
+  const record = (auteurs) => ({ titel: 'Estimating', auteurs, jaar: 2019, soort: 'wetenschappelijk artikel', taal: 'en', doi: '10.1038/s41467-019-10933-3', onderwerpen: ['privacy-ethiek'] });
+  let r = normaliseerStartbron(record(['Rocher, L.', 'Hendrickx, J. M.', montjoye]));
+  assert.deepEqual(r.fouten, []);
+  assert.deepEqual(r.bron.auteurs[2], montjoye);
+  assert.equal(apaVerwijzing(r.bron), 'Rocher, L., Hendrickx, J. M., & de Montjoye, Y.-A. (2019). Estimating. https://doi.org/10.1038/s41467-019-10933-3');
+  assert.equal(apaInTekst([{ bron: r.bron }]), '(Rocher et al., 2019)');
+  // Als tekst blijft het een Nederlands tussenvoegsel: aan een tekst zie je niet wie het is. Nederlandse namen veranderen niet.
+  r = normaliseerStartbron(record(['Rocher, L.', 'Hendrickx, J. M.', 'de Montjoye, Y.-A.']));
+  assert.deepEqual(r.bron.auteurs[2], { achternaam: 'Montjoye', tussenvoegsel: 'de', voorletters: 'Y.-A.' });
+  assert.equal(normaliseerStartbron(record(['de Vroome, E. M. M.'])).bron.auteurs[0].tussenvoegsel, 'de');
+  assert.deepEqual(normaliseerStartbron(record([{ achternaam: 'Vroome', tussenvoegsel: 'de', voorletters: 'E. M. M.' }])).bron.auteurs[0],
+    { achternaam: 'Vroome', tussenvoegsel: 'de', voorletters: 'E. M. M.' }, 'een Nederlandse naam als object kan ook');
+  // Letter voor letter op "deMontjoye" (APA 7 §9.44): na Dekker, voor Devos; een Nederlandse "Montjoye, P. de." onder de M
+  const boek = (a, titel) => ({ soort: 'boek', titel, jaar: 2019, auteurs: [a], citeersleutel: titel, details: { uitgever: 'U' } });
+  const lijst = sorteerLiteratuur([boek(A('Mol', 'A.'), 'a'), boek(A('Montjoye', 'P.', 'de'), 'b'), boek(A('De Vries', 'R.'), 'c'), boek(A('Devos', 'P.'), 'd'),
+    boek(montjoye, 'e'), boek(A('Dekker', 'F.'), 'f')]);
+  assert.deepEqual(lijst.map((l) => apaVerwijzing(l.bron).split(' (')[0]), ['Dekker, F.', 'de Montjoye, Y.-A.', 'Devos, P.', 'De Vries, R.', 'Mol, A.', 'Montjoye, P. de.']);
+  // Als eerste auteur: de citeersleutel en, volgens de regel voor de tekst (altijd een hoofdletter vooraan), "De Montjoye"
+  assert.equal(citeersleutelBasis(boek(montjoye, 'e')), 'demontjoye2019');
+  assert.equal(apaVerwijzing(boek(montjoye, 'e')), 'de Montjoye, Y.-A. (2019). *e*. U.');
+  assert.equal(apaInTekst([{ bron: boek(montjoye, 'e') }], { verhalend: true }), 'De Montjoye (2019)');
+});
+
+test('APA 7 §8.12: meerdere bronnen tussen haakjes in de volgorde van de literatuurlijst', () => {
+  const boek = (auteurs, jaar, titel) => ({ soort: 'boek', titel, jaar, auteurs, citeersleutel: titel.toLowerCase(), details: { uitgever: 'U' } });
+  const dierendonck = boek([A('Dierendonck', 'D.', 'van')], 2011, 'Dienend');
+  const heuvel = boek([A('Heuvel', 'S. G.', 'van den'), A('Bouwens', 'L.'), A('Vroome', 'E. M. M.', 'de')], 2025, 'Arbobalans');
+  const schaufeli = boek([A('Schaufeli', 'W. B.'), A('Desart', 'S.'), A('De Witte', 'H.')], 2020, 'BAT');
+  assert.equal(apaInTekst([{ bron: schaufeli }, { bron: heuvel }, { bron: dierendonck }]),
+    '(Van Dierendonck, 2011; Van den Heuvel et al., 2025; Schaufeli et al., 2020)');
+  assert.deepEqual(sorteerLiteratuur([schaufeli, heuvel, dierendonck]).map((l) => l.bron), [dierendonck, heuvel, schaufeli]);
+  const abbing = boek([A('Abbing', 'J.')], 2020, 'Een');
+  const vroome = boek([A('Vroome', 'E. M. M.', 'de')], 2025, 'Twee');
+  const witte = boek([A('De Witte', 'H.')], 2020, 'Drie');
+  const smit = boek([A('Smit', 'P.')], 2020, 'Vier');
+  assert.equal(apaInTekst([vroome, witte, smit, abbing].map((bron) => ({ bron }))), '(Abbing, 2020; De Witte, 2020; Smit, 2020; De Vroome, 2025)');
+  // Een organisatie op de volle naam, ook als de tekst de afkorting gebruikt; dezelfde auteur blijft samengevoegd
+  const cbs = { soort: 'rapport', titel: 'Cijfers', jaar: 2024, organisatie: 'Centraal Bureau voor de Statistiek', afkorting: 'CBS', citeersleutel: 'cbs2024' };
+  const bakker = boek([A('Bakker', 'A. B.')], 2019, 'Werk');
+  const bakker2 = boek([A('Bakker', 'A. B.')], 2017, 'Druk');
+  const dekker = boek([A('Dekker', 'F.')], 2019, 'Dekker');
+  assert.equal(apaInTekst([{ bron: dekker }, { bron: cbs }, { bron: bakker }, { bron: bakker2 }], { eersteKeer: new Set(['cbs2024']) }),
+    '(Bakker, 2017, 2019; CBS, 2024; Dekker, 2019)');
+  // In de zin blijft de volgorde waarin je ze noemt
+  assert.equal(apaInTekst([{ bron: schaufeli }, { bron: dierendonck }], { verhalend: true }), 'Schaufeli et al. (2020) en Van Dierendonck (2011)');
+});
+
+test('APA 7 §9.47 en §8.20: a en b alleen bij dezelfde mensen; dezelfde naam in de tekst bij twee mensen krijgt voorletters', () => {
+  const boek = (auteurs, jaar, titel) => ({ soort: 'boek', titel, jaar, auteurs, citeersleutel: titel.toLowerCase().replace(/\W/g, ''), details: { uitgever: 'U' } });
+  const hWitte = boek([A('De Witte', 'H.')], 2020, 'Drie');
+  const jWitte = boek([A('Witte', 'J.', 'de')], 2020, 'Vijf');
+  const vriesBe = boek([A('De Vries', 'R. E.')], 2012, 'Acht');
+  const vriesNl = boek([A('Vries', 'R. E.', 'de')], 2012, 'Negen');
+  const hWitte2 = boek([A('De Witte', 'H.')], 2020, 'Een ander boek');
+  const lijst = sorteerLiteratuur([jWitte, hWitte, vriesNl, vriesBe, hWitte2]);
+  assert.deepEqual(lijst.map((l) => [l.bron.titel, l.suffix, l.voorletters]), [
+    ['Acht', '', true], ['Drie', 'a', true], ['Een ander boek', 'b', true], ['Negen', '', true], ['Vijf', '', true]]);
+  assert.deepEqual(lijst.map((l) => apaVerwijzing(l.bron, { suffix: l.suffix }).split(' *')[0]), [
+    'De Vries, R. E. (2012).', 'De Witte, H. (2020a).', 'De Witte, H. (2020b).', 'Vries, R. E. de. (2012).', 'Witte, J. de. (2020).']);
+  // In de tekst met de voorletters uit de lijst: "H. De Witte" en "J. de Witte" (tussenvoegsel klein na de voorletters)
+  const item = (bron) => { const l = lijst.find((x) => x.bron === bron); return { bron, suffix: l.suffix, voorletters: l.voorletters }; };
+  assert.equal(apaInTekst([item(jWitte), item(hWitte)]), '(H. De Witte, 2020a; J. de Witte, 2020)');
+  assert.equal(apaInTekst([item(jWitte)], { verhalend: true }), 'J. de Witte (2020)');
+  assert.equal(apaInTekst([item(hWitte), item(hWitte2)]), '(H. De Witte, 2020a, 2020b)', 'dezelfde mens: samengevoegd');
+  // Zonder voorletters (zoals in Citeer voor één bron) worden twee mensen met dezelfde naam niet samengevoegd
+  assert.equal(apaInTekst([{ bron: jWitte }, { bron: hWitte }]), '(De Witte, 2020; De Witte, 2020)');
+  // Voorletters alleen bij de eerste auteur; d' vast aan de naam
+  const anconaJ = boek([A('Ancona', 'J.', "d'"), A('Smit', 'P.')], 2022, 'Elf');
+  const anconaM = boek([A('Ancona', 'M.', "d'")], 2021, 'Twaalf');
+  const l2 = sorteerLiteratuur([anconaJ, anconaM]);
+  assert.deepEqual(l2.map((l) => l.voorletters), [true, true]);
+  assert.equal(apaInTekst(l2.map(({ bron, suffix, voorletters }) => ({ bron, suffix, voorletters }))), "(J. d'Ancona & Smit, 2022; M. d'Ancona, 2021)");
+  // Dezelfde eerste auteur met "et al." en andere medeauteurs in hetzelfde jaar: a en b (anders is de tekst dubbelzinnig)
+  const s1 = boek([A('Schaufeli', 'W. B.'), A('Bakker', 'A. B.'), A('Taris', 'T.')], 2020, 'Een');
+  const s2 = boek([A('Schaufeli', 'W. B.'), A('Desart', 'S.'), A('De Witte', 'H.')], 2020, 'Twee');
+  const s3 = boek([A('Schaufeli', 'W. B.')], 2020, 'Drie');
+  assert.deepEqual(sorteerLiteratuur([s1, s2, s3]).map((l) => [l.bron.titel, l.suffix, l.voorletters]), [['Drie', '', false], ['Een', 'a', false], ['Twee', 'b', false]]);
+  // Eén mens, één naam: geen voorletters
+  assert.deepEqual(sorteerLiteratuur([GOUDEN.bakker, GOUDEN.cbs]).map((l) => l.voorletters), [false, false]);
+});
+
+test('besluiten 6a en 6b (P7): "Plak een verwijzing" leest de nieuwe vorm terug', () => {
+  let r = leesApaVerwijzing('Heuvel, S. G. van den, Bouwens, L., & Vroome, E. M. M. de. (2025). Arbobalans 2024 (Rapportnr. TNO 2025 R11108). TNO. https://monitorarbeid.tno.nl/publicaties/arbobalans-2024/');
+  assert.deepEqual(r.bron.auteurs, [A('Heuvel', 'S. G.', 'van den'), A('Bouwens', 'L.'), A('Vroome', 'E. M. M.', 'de')]);
+  assert.equal(r.bron.jaar, 2025);
+  assert.equal(r.bron.titel, 'Arbobalans 2024');
+  assert.equal(apaVerwijzing(r.bron),
+    'Heuvel, S. G. van den, Bouwens, L., & Vroome, E. M. M. de. (2025). *Arbobalans 2024* (Rapportnr. TNO 2025 R11108). TNO. https://monitorarbeid.tno.nl/publicaties/arbobalans-2024/');
+  r = leesApaVerwijzing('Schaufeli, W. B., Desart, S., & De Witte, H. (2020). Burnout Assessment Tool (BAT)—Development, Validity, and Reliability. International Journal of Environmental Research and Public Health, 17(24), 9495. https://doi.org/10.3390/ijerph17249495');
+  assert.deepEqual(r.bron.auteurs, [A('Schaufeli', 'W. B.'), A('Desart', 'S.'), A('De Witte', 'H.')], 'een geplakte "De Witte, H." blijft "De Witte, H."');
+  assert.equal(r.bron.soort, 'artikel');
+  r = leesApaVerwijzing('Meulen-de Vries, G. H. van der. (2022). Werken in de zorg. Boom.');
+  assert.deepEqual(r.bron.auteurs, [A('Meulen-de Vries', 'G. H.', 'van der')]);
+  assert.equal(r.bron.titel, 'Werken in de zorg');
+  r = leesApaVerwijzing("Ancona, J. d'. (2022). Werken in de zorg. Boom.");
+  assert.deepEqual(r.bron.auteurs, [A('Ancona', 'J.', "d'")]);
+  assert.equal(apaVerwijzing(r.bron), "Ancona, J. d'. (2022). *Werken in de zorg*. Boom.");
+  // De oude vorm zonder punt wordt ook nog gelezen
+  r = leesApaVerwijzing('Rocher, L., Hendrickx, J. M., & Montjoye, Y.-A. de (2019). Estimating the success of re-identifications. Nature Communications, 10(1), 3069.');
+  assert.deepEqual(r.bron.auteurs, [A('Rocher', 'L.'), A('Hendrickx', 'J. M.'), A('Montjoye', 'Y.-A.', 'de')]);
 });
 
 test('voorletters', () => {
@@ -172,7 +358,7 @@ test('criterium 2: "Plak een verwijzing" herkent de zes gouden invoeren', () => 
   });
   assert.equal(r.bron.details.druk, '3');
   assert.equal(r.bron.details.uitgever, 'Boom');
-  assert.equal(apaVerwijzing(r.bron), 'Vries, J. de (2019). *Praktisch HR-onderzoek* (3e dr.). Boom.');
+  assert.equal(apaVerwijzing(r.bron), 'Vries, J. de. (2019). *Praktisch HR-onderzoek* (3e dr.). Boom.');
   // 4. DOI als link
   r = leesApaVerwijzing('Schaufeli, W. B., & Bakker, A. B. (2004). Job demands, job resources, and their relationship with burnout and engagement: A multi-sample study. Journal of Organizational Behavior, 25(3), 293–315. https://doi.org/10.1002/job.248');
   assert.deepEqual(velden(r), {
@@ -276,14 +462,16 @@ test('startcollectie: de onderwerp-sleutels en bron_details van het onderzoekste
     bron_details: 'Human Relations, 75(8), 1560–1584',
   }));
   assert.deepEqual(r.fouten, []);
-  assert.deepEqual(r.bron.onderwerpen, ['methode', 'privacy', 'tevredenheid', 'vertrek', 'sociale-veiligheid', 'werkdruk']);
-  assert.deepEqual(r.bron.trefwoorden, ['wet-regelgeving'], 'geen vast onderwerp: trefwoord met een melding (P7 stap 3)');
-  assert.ok(r.meldingen.some((m) => m.includes('"wet-regelgeving"')));
+  // wet-regelgeving is sinds P7 een vast onderwerp (besluit van het onderzoeksteam): geen trefwoord meer
+  assert.deepEqual(r.bron.onderwerpen, ['methode', 'privacy', 'tevredenheid', 'vertrek', 'sociale-veiligheid', 'wetgeving', 'werkdruk']);
+  assert.deepEqual(r.bron.trefwoorden, []);
+  assert.ok(!r.meldingen.some((m) => m.includes('"wet-regelgeving"')));
+  assert.ok(!r.meldingen.some((m) => m.includes('geraadpleegd')), 'geraadpleegd valt bij een artikel stil weg');
   assert.deepEqual(r.bron.details, { tijdschrift: 'Human Relations', jaargang: '75', nummer: '8', paginas: '1560–1584' });
   assert.equal(apaVerwijzing(r.bron),
     'Holtom, B., & Baruch, Y. (2022). Survey response rates: Trends and a validity assessment framework. *Human Relations, 75*(8), 1560–1584. https://doi.org/10.1177/00187267211070769');
   // Een record met alleen een onbekend onderwerp blijft een harde fout (vraag het onderzoeksteam)
-  r = normaliseerStartbron(record({ onderwerpen: ['wet-regelgeving'], bron_details: 'Human Relations, 75(8), 1560–1584' }));
+  r = normaliseerStartbron(record({ onderwerpen: ['astrologie'], bron_details: 'Human Relations, 75(8), 1560–1584' }));
   assert.deepEqual(r.fouten, ['Geen onderwerp uit de vaste lijst.']);
   // Een toelichting na het tijdschriftdeel wordt gemeld, niet overgenomen
   r = normaliseerStartbron(record({ onderwerpen: ['statistiek'], bron_details: 'International Review of Social Psychology, 30(1), 92–101. In 2022 is een correctie verschenen.' }));
@@ -301,14 +489,19 @@ test('startcollectie: de onderwerp-sleutels en bron_details van het onderzoekste
   r = normaliseerStartbron({ titel: 'Cao-lonen 2025', organisatie: 'CBS', jaar: 2025, soort: 'website', url: 'https://www.cbs.nl/x', onderwerpen: ['arbeidsvoorwaarden'], bron_details: 'CBS-nieuwsbericht, 31-12-2025.' });
   assert.deepEqual(r.fouten, []);
   assert.equal(r.bron.details.tijdschrift, undefined);
-  assert.ok(r.meldingen.some((m) => m.startsWith('Veld "bron_details" is niet overgenomen')));
+  // Sinds P7: bij een webpagina wordt alleen de ondubbelzinnige datum gelezen (zie de tests van leesStartDetails)
+  assert.equal(r.bron.details.datum, '2025-12-31');
+  assert.ok(r.meldingen.some((m) => m.startsWith('Uit bron_details overgenomen: datum "2025-12-31"')));
   r = normaliseerStartbron(record({ onderwerpen: ['methode'], bron_details: 'Zonder jaargang' }));
   assert.deepEqual(r.bron.details, {});
   assert.ok(r.meldingen.some((m) => m.includes('geen tijdschrift met jaargang')));
   // Andere namen; niets raden
   assert.equal(onderwerpUitTekst('Onderzoeksmethode'), 'methode');
   assert.equal(onderwerpUitTekst('Tevredenheid en betrokkenheid'), 'tevredenheid');
-  assert.equal(onderwerpUitTekst('wet-regelgeving'), null);
+  assert.equal(onderwerpUitTekst('wet-regelgeving'), 'wetgeving');
+  assert.equal(onderwerpUitTekst('Wet- en regelgeving'), 'wetgeving');
+  assert.equal(onderwerpUitTekst('regelgeving'), 'wetgeving');
+  assert.equal(onderwerpUitTekst('wet'), null, 'te algemeen: niet raden');
   assert.equal(onderwerpUitTekst('toString'), null);
 });
 
@@ -321,6 +514,268 @@ test('leesTijdschriftDeel: pagina\'s, artikelnummers en geen tijdschrift', () =>
   assert.deepEqual(leesTijdschriftDeel('Behavioral Sciences, 13(3), 244'), { tijdschrift: 'Behavioral Sciences', jaargang: '13', nummer: '3', paginas: '244' });
   assert.equal(leesTijdschriftDeel('Boom'), null);
   assert.equal(leesTijdschriftDeel(''), null);
+});
+
+// ---------- Besluiten van het onderzoeksteam bij de startcollectie (BOUWPLAN P7, besluiten a–d) ----------
+
+const startWebpagina = (extra) => ({
+  titel: 'Cao-lonen stijgen in 2025 met 5,0 procent', auteurs: [], organisatie: 'Centraal Bureau voor de Statistiek (CBS)', jaar: 2025,
+  soort: 'website', taal: 'nl', url: 'https://www.cbs.nl/nl-nl/nieuws/2026/01/cao-lonen-stijgen-in-2025-met-5-0-procent', doi: '',
+  onderwerpen: ['arbeidsvoorwaarden'], betrouwbaarheid: 'overheid', geraadpleegd: '2026-11-27',
+  bron_details: 'CBS-nieuwsbericht, 31-12-2025. Cao-lonen per uur inclusief bijzondere beloningen.', relevantie: 'x', open_access: true, ...extra,
+});
+
+test('startcollectie (b): de betrouwbaarheid van het onderzoeksteam wordt een niveau', () => {
+  const art = { titel: 'T', auteurs: ['Bakker, A. B.'], jaar: 2017, soort: 'wetenschappelijk artikel', doi: '10.1037/ocp0000056', onderwerpen: ['werkdruk'] };
+  let r = normaliseerStartbron({ ...art, betrouwbaarheid: 'peer-reviewed' });
+  assert.equal(r.bron.betrouwbaarheid, 'hoog');
+  assert.match(r.bron.betrouwbaarheid_toelichting, /peer review/);
+  // overheid: het CBS is officiële statistiek (hoog), andere overheid redelijk
+  r = normaliseerStartbron(startWebpagina());
+  assert.equal(r.bron.betrouwbaarheid, 'hoog');
+  assert.equal(r.bron.betrouwbaarheid_toelichting, 'Officiële statistiek van het CBS.');
+  r = normaliseerStartbron(startWebpagina({ organisatie: 'Centraal Bureau voor de Statistiek' }));
+  assert.equal(r.bron.betrouwbaarheid, 'hoog', 'ook zonder afkorting');
+  for (const organisatie of ['Autoriteit Persoonsgegevens', 'Sociaal-Economische Raad (SER)', 'Nederlandse Arbeidsinspectie',
+    'Ministerie van Sociale Zaken en Werkgelegenheid (Arboportaal)', 'TNO en CBS']) {
+    r = normaliseerStartbron(startWebpagina({ organisatie }));
+    assert.equal(r.bron.betrouwbaarheid, 'redelijk', organisatie);
+    assert.equal(r.bron.betrouwbaarheid_toelichting, 'Informatie van een overheidsorganisatie.');
+  }
+  r = normaliseerStartbron(startWebpagina({ organisatie: 'TNO', betrouwbaarheid: 'Kennisinstituut' }));
+  assert.equal(r.bron.betrouwbaarheid, 'redelijk');
+  assert.equal(r.bron.betrouwbaarheid_toelichting, 'Publicatie van een kennisinstituut.');
+  r = normaliseerStartbron(startWebpagina({ organisatie: 'TNO en CBS', betrouwbaarheid: 'kennisinstituut' }));
+  assert.equal(r.bron.betrouwbaarheid, 'redelijk', 'kennisinstituut blijft redelijk, ook samen met het CBS');
+  // Een eigen toelichting in het record gaat voor; de oude vormen werken nog
+  r = normaliseerStartbron({ ...art, betrouwbaarheid: 'peer-reviewed', betrouwbaarheid_toelichting: 'Meta-analyse.' });
+  assert.equal(r.bron.betrouwbaarheid_toelichting, 'Meta-analyse.');
+  assert.equal(normaliseerStartbron({ ...art, betrouwbaarheid: 'hoog' }).bron.betrouwbaarheid, 'hoog');
+  r = normaliseerStartbron({ ...art, betrouwbaarheid: 'blog' });
+  assert.equal(r.bron.betrouwbaarheid, 'onbekend');
+  assert.equal(r.bron.betrouwbaarheid_toelichting, 'blog');
+});
+
+test('startcollectie: een afkorting tussen haakjes achter de organisatie wordt de afkorting (APA)', () => {
+  const { bron, fouten } = normaliseerStartbron(startWebpagina());
+  assert.deepEqual(fouten, []);
+  assert.equal(bron.organisatie, 'Centraal Bureau voor de Statistiek');
+  assert.equal(bron.afkorting, 'CBS');
+  assert.equal(citeersleutelBasis(bron), 'cbs2025');
+  const eerste = new Set();
+  assert.equal(apaInTekst([{ bron: { ...bron, citeersleutel: 'cbs2025' } }], { eersteKeer: eerste }), '(Centraal Bureau voor de Statistiek [CBS], 2025)');
+  assert.equal(apaInTekst([{ bron: { ...bron, citeersleutel: 'cbs2025' } }], { eersteKeer: eerste }), '(CBS, 2025)');
+  assert.equal(apaKort(bron), '(CBS, 2025)', 'zoals bij een vergelijkingswaarde: "Ter vergelijking: 5,0% (CBS, 2025)"');
+  assert.equal(normaliseerStartbron(startWebpagina({ organisatie: 'Sociaal-Economische Raad (SER)' })).bron.afkorting, 'SER');
+  // Een andere afkorting in het record: niets splitsen, wel melden
+  let r = normaliseerStartbron(startWebpagina({ afkorting: 'KCV' }));
+  assert.equal(r.bron.organisatie, 'Centraal Bureau voor de Statistiek (CBS)');
+  assert.equal(r.bron.afkorting, 'KCV');
+  assert.ok(r.meldingen.some((m) => m.includes('niet als afkorting of website is herkend')));
+  // Geen afkorting (kleine letters) en geen website met die naam: zo laten, met een melding
+  r = normaliseerStartbron(startWebpagina({ organisatie: 'Stichting Voorbeeld (Utrecht)', bron_details: '' }));
+  assert.equal(r.bron.organisatie, 'Stichting Voorbeeld (Utrecht)');
+  assert.equal(r.bron.afkorting, '');
+  assert.ok(r.meldingen.some((m) => m.includes('"Stichting Voorbeeld (Utrecht)"')));
+  // De naam van de website tussen haakjes, en bron_details noemt dezelfde website: auteur + website (APA)
+  r = normaliseerStartbron(startWebpagina({
+    titel: 'Psychosociale arbeidsbelasting (PSA)', organisatie: 'Ministerie van Sociale Zaken en Werkgelegenheid (Arboportaal)', jaar: 2026,
+    url: 'https://www.arboportaal.nl/onderwerpen/psychosociale-arbeidsbelasting',
+    bron_details: 'Themapagina op Arboportaal, de arbosite van het Ministerie van SZW. Laatst gewijzigd 12 augustus 2026 volgens de paginametadata (geen zichtbare datum).',
+  }));
+  assert.equal(r.bron.organisatie, 'Ministerie van Sociale Zaken en Werkgelegenheid');
+  assert.deepEqual(r.bron.details, { sitenaam: 'Arboportaal', geraadpleegd: '2026-11-27' });
+  // Besluit 7: de datum staat alleen in de metadata, dus z.d. met de raadpleegdatum
+  assert.equal(r.bron.jaar, null);
+  assert.equal(apaVerwijzing(r.bron), 'Ministerie van Sociale Zaken en Werkgelegenheid. (z.d.). *Psychosociale arbeidsbelasting (PSA)*. Arboportaal. '
+    + 'Geraadpleegd op 27 november 2026, van https://www.arboportaal.nl/onderwerpen/psychosociale-arbeidsbelasting');
+  assert.ok(r.meldingen.some((m) => m.includes('alleen in de metadata')), 'een datum uit de metadata wordt niet gebruikt');
+});
+
+test('startcollectie (c): leesStartDetails leest alleen wat ondubbelzinnig in bron_details staat', () => {
+  const web = (tekst, jaar = 2025, organisatie = 'Centraal Bureau voor de Statistiek') => leesStartDetails(tekst, { soort: 'website', jaar, organisatie });
+  assert.deepEqual(web('CBS-nieuwsbericht, 31-12-2025. Cao-lonen per uur.').velden, { datum: '2025-12-31' });
+  assert.deepEqual(web('CBS-nieuwsbericht, 10-2-2026, op basis van de publicatie X.', 2026).velden, { datum: '2026-02-10' });
+  assert.deepEqual(web('Nieuwsbericht op TNO Monitor Arbeid, 22 januari 2024, over het rapport (publicatiepagina 13 december 2023).', 2024, 'TNO').velden,
+    { datum: '2024-01-22', sitenaam: 'TNO Monitor Arbeid' }, 'de eerste datum, direct na het nieuwsbericht');
+  assert.deepEqual(web('Webpagina van de Autoriteit Persoonsgegevens, thema Basis AVG. Pagina bijgewerkt op 16 september 2026. Artikel 4 AVG.', 2026, 'Autoriteit Persoonsgegevens').velden,
+    { datum: '2026-09-16' });
+  // Niet: een datum die alleen in de metadata staat, een datum in een ander jaar, een datum die niet bestaat, geen datum
+  let r = web('Webpagina van de Nederlandse Arbeidsinspectie. Laatst gewijzigd 9 september 2026 volgens de paginametadata (geen zichtbare datum op de pagina).', 2026);
+  assert.deepEqual(r.velden, {});
+  assert.ok(r.meldingen.some((m) => m.includes('alleen in de metadata')));
+  assert.equal(r.zonderDatum, true, 'besluit 7: de bron krijgt z.d.');
+  r = web('CBS-nieuwsbericht, 31-12-2025.', 2026);
+  assert.deepEqual(r.velden, {});
+  assert.ok(r.meldingen.some((m) => m.includes('past niet bij het jaar 2026')));
+  assert.deepEqual(web('CBS-nieuwsbericht, 31-2-2025.').velden, {});
+  assert.deepEqual(web('CBS-nieuwsbericht, 1-1-20251.').velden, {}, 'geen half getal');
+  r = web('Webpagina van de SER, thema Medezeggenschap. Geen publicatiedatum vermeld (z.d.; geraadpleegd 27-11-2026).', null, 'Sociaal-Economische Raad');
+  assert.deepEqual(r.velden, {});
+  assert.ok(r.meldingen.some((m) => m.startsWith('Uit bron_details is niets overgenomen')));
+  assert.deepEqual(web('Webpagina op Arboportaal (Ministerie van SZW), onderdeel RI&E.', 2026, 'Ministerie').velden, { sitenaam: 'Arboportaal' });
+  assert.deepEqual(web('Nieuwsbericht op CBS, 14-8-2025.', 2025, 'CBS').velden, { datum: '2025-08-14' }, 'website = auteur: geen aparte naam');
+  // Rapporten: alleen het rapportnummer
+  const rapport = (tekst) => leesStartDetails(tekst, { soort: 'rapport', jaar: 2021, organisatie: 'TNO' }).velden;
+  assert.deepEqual(rapport('TNO-rapport TNO 2021 R11794 (publicatiepagina 29 november 2021), 156 pagina\'s.'), { rapportnummer: 'TNO 2021 R11794' });
+  assert.deepEqual(rapport('TNO-rapport TNO 2025 R11108, mei 2025 (publicatiepagina 28 mei 2025), Leiden.'), { rapportnummer: 'TNO 2025 R11108' });
+  assert.deepEqual(rapport('SER-advies 22/03, maart 2022, aan de minister van Sociale Zaken en Werkgelegenheid, Den Haag.'), { rapportnummer: '22/03' });
+  assert.deepEqual(rapport('Rapport 2023-R101, juni 2023.'), { rapportnummer: '2023-R101' });
+  assert.deepEqual(rapport('Rapport 2021-07, juni 2021.'), {}, 'kan ook jaar en maand zijn: niet raden (review P7)');
+  assert.deepEqual(rapport('TNO-rapport over werkdruk in 2021, juni.'), {}, 'geen nummer: niets raden');
+  assert.deepEqual(rapport('TNO-factsheet bij de Week van de werkstress 2026 (publicatiepagina 9 november 2026), 3 pagina\'s.'), {});
+  assert.deepEqual(rapport('TNO en CBS, april 2026 (publicatiepagina 15 april 2026), Leiden/Heerlen.'), {});
+  assert.deepEqual(rapport('Statistische Trends, CBS, publicatiedatum 21-10-2025 (online longread).'), {}, 'geen datum bij een rapport');
+  // Andere soorten: niets
+  r = leesStartDetails('CBS StatLine-tabel 80072NED, gewijzigd op 17-11-2026.', { soort: 'cijfers', jaar: 2026 });
+  assert.deepEqual(r.velden, {});
+  assert.equal(r.meldingen.length, 1);
+  assert.deepEqual(leesStartDetails('', { soort: 'website' }), { velden: {}, meldingen: [] });
+});
+
+test('startcollectie (c): geen jaartal of datum als rapportnummer en geen webadres als naam van de website (review P7)', () => {
+  const rapport = (tekst) => leesStartDetails(tekst, { soort: 'rapport', jaar: 2021, organisatie: 'TNO' });
+  for (const tekst of [
+    'Rapport 2023, Den Haag.', 'SER-advies 2022, maart 2022.', 'TNO-rapport 2021 (publicatiepagina 29 november 2021).',
+    'Advies 3 november 2020, aan de minister.', 'Rapport 10-11-2026, Den Haag.', 'Rapport 10/11/2026, Den Haag.', 'Advies Maart 2022, SER.',
+    'Rapport Den Haag 2023, intern.', 'TNO-rapport COVID-19, juni 2021.',
+  ]) {
+    const r = rapport(tekst);
+    assert.deepEqual(r.velden, {}, tekst);
+    assert.ok(r.meldingen.some((m) => m.includes('geen rapportnummer; niet overgenomen')), tekst);
+    assert.ok(r.meldingen.some((m) => m.startsWith('Uit bron_details is niets overgenomen')), tekst);
+  }
+  assert.deepEqual(rapport('TNO-rapport 2e druk, 2021.').velden, {});
+  // Wel: een letter direct voor de cijfers of één schuine streep (zoals in de startcollectie)
+  assert.deepEqual(rapport('TNO-rapport TNO 2021 R11794 (publicatiepagina 29 november 2021).').velden, { rapportnummer: 'TNO 2021 R11794' });
+  assert.deepEqual(rapport('SER-advies 22/03, maart 2022.').velden, { rapportnummer: '22/03' });
+  // De naam van de website: geen webadres, geen "www", geen gewone woorden; niet als die gelijk is aan de auteur of de afkorting
+  const web = (tekst, opties = {}) => leesStartDetails(tekst, { soort: 'website', jaar: 2026, organisatie: 'Ministerie van SZW', ...opties });
+  for (const tekst of ['Webpagina op www.arboportaal.nl, onderdeel RI&E.', 'Webpagina op arboportaal.nl (Ministerie van SZW).',
+    'Nieuwsbericht op www.cbs.nl, 3-4-2026.', 'Webpagina op de website van het ministerie, onderdeel RI&E.']) {
+    const r = web(tekst);
+    assert.equal(r.velden.sitenaam, undefined, tekst);
+    assert.ok(r.meldingen.some((m) => m.includes('lijkt geen naam van een website')), tekst);
+  }
+  assert.deepEqual(web('Nieuwsbericht op www.cbs.nl, 3-4-2026.').velden, { datum: '2026-04-03' }, 'de datum blijft wel');
+  assert.deepEqual(web('Webpagina op Arboportaal. Laatst gewijzigd volgens de paginametadata.').velden, { sitenaam: 'Arboportaal' }, 'een punt aan het eind van de zin');
+  const cbs = { organisatie: 'Centraal Bureau voor de Statistiek', afkorting: 'CBS' };
+  let r = web('Nieuwsbericht op CBS, 3-4-2026.', cbs);
+  assert.deepEqual(r.velden, { datum: '2026-04-03' }, 'website = afkorting van de auteur: geen aparte naam');
+  assert.ok(!r.meldingen.some((m) => m.includes('lijkt geen naam')));
+  assert.deepEqual(web('Nieuwsbericht op Centraal Bureau voor de Statistiek, 3-4-2026.', cbs).velden, { datum: '2026-04-03' });
+  // In de omgezette bron: de afkorting tussen haakjes telt mee, en APA noemt de website dan niet nog een keer
+  r = normaliseerStartbron(startWebpagina({ jaar: 2026, bron_details: 'Nieuwsbericht op CBS, 3-4-2026.' }));
+  assert.deepEqual(r.bron.details, { datum: '2026-04-03' }, 'besluit 7: een gedateerd nieuwsbericht zonder raadpleegdatum');
+  assert.ok(apaVerwijzing(r.bron).startsWith('Centraal Bureau voor de Statistiek. (2026, 3 april). *Cao-lonen stijgen in 2025 met 5,0 procent*. https://'));
+});
+
+test('alle vaste onderwerpen samen mogen (LIMIETEN.onderwerpen volgt ONDERWERPEN; review P7)', () => {
+  const alle = Object.keys(ONDERWERPEN);
+  assert.equal(LIMIETEN.onderwerpen, alle.length);
+  assert.equal(alle.length, 17);
+  const bron = controleerBron({ soort: 'website', titel: 'Test', url: 'https://example.org', onderwerpen: alle });
+  assert.deepEqual(bron.onderwerpen, alle);
+  assert.throws(() => controleerBron({ soort: 'website', titel: 'Test', url: 'https://example.org', onderwerpen: [...alle, 'verzuim'] }),
+    (e) => e.status === 400 && e.message === 'Kies onderwerpen uit de lijst.', 'meer dan er zijn kan niet');
+  assert.throws(() => controleerBron({ soort: 'website', titel: 'Test', url: 'https://example.org', onderwerpen: ['astrologie'] }), (e) => e.status === 400);
+  // Ook een startbron met alle onderwerpen houdt ze allemaal (niets stil ingekort)
+  const r = normaliseerStartbron(startWebpagina({ onderwerpen: alle }));
+  assert.deepEqual(r.bron.onderwerpen, alle);
+  assert.deepEqual(controleerBron(r.bron).onderwerpen, alle);
+});
+
+test('startcollectie (c, d): bron_details en geraadpleegd in de omgezette bron', () => {
+  // Webpagina: de datum van het nieuwsbericht, en dan geen raadpleegdatum (besluit 7, APA 7); de rest van bron_details wordt gemeld
+  let r = normaliseerStartbron(startWebpagina());
+  assert.deepEqual(r.fouten, []);
+  assert.deepEqual(r.bron.details, { datum: '2025-12-31' });
+  assert.equal(apaVerwijzing(r.bron), 'Centraal Bureau voor de Statistiek. (2025, 31 december). *Cao-lonen stijgen in 2025 met 5,0 procent*. '
+    + 'https://www.cbs.nl/nl-nl/nieuws/2026/01/cao-lonen-stijgen-in-2025-met-5-0-procent');
+  assert.ok(r.meldingen.some((m) => m.includes('de rest is niet overgenomen ("CBS-nieuwsbericht, 31-12-2025. Cao-lonen')));
+  // Een datum in het record zelf gaat voor
+  r = normaliseerStartbron(startWebpagina({ datum: '2025-12' }));
+  assert.equal(r.bron.details.datum, '2025-12');
+  // Rapport: rapportnummer; geraadpleegd valt stil weg (er is een jaar en geen veld)
+  r = normaliseerStartbron({
+    titel: 'Arbobalans 2024', auteurs: ['van den Heuvel, S. G.', 'Bouwens, L.', 'de Vroome, E. M. M.'], organisatie: 'TNO', jaar: 2025, soort: 'rapport', taal: 'nl',
+    url: 'https://monitorarbeid.tno.nl/publicaties/arbobalans-2024/', onderwerpen: ['werkdruk-werkstress'], betrouwbaarheid: 'kennisinstituut', geraadpleegd: '2026-11-27',
+    bron_details: 'TNO-rapport TNO 2025 R11108, mei 2025 (publicatiepagina 28 mei 2025), Leiden.',
+  });
+  assert.deepEqual(r.fouten, []);
+  assert.deepEqual(r.bron.details, { rapportnummer: 'TNO 2025 R11108' });
+  assert.ok(!r.meldingen.some((m) => m.includes('geraadpleegd')));
+  assert.equal(apaVerwijzing(r.bron),
+    'Heuvel, S. G. van den, Bouwens, L., & Vroome, E. M. M. de. (2025). *Arbobalans 2024* (Rapportnr. TNO 2025 R11108). TNO. https://monitorarbeid.tno.nl/publicaties/arbobalans-2024/');
+  // Een rapport zonder jaar: geraadpleegd kan nergens heen; dat wordt gemeld
+  r = normaliseerStartbron({ titel: 'R', organisatie: 'TNO', soort: 'rapport', url: 'https://x.nl', onderwerpen: ['methode'], geraadpleegd: '2026-11-27' });
+  assert.ok(r.meldingen.some((m) => m.includes('"geraadpleegd" hoort niet bij de soort "rapport"')));
+  // Cijfers (dataset): geraadpleegd blijft
+  r = normaliseerStartbron(startWebpagina({ soort: 'dataset', titel: 'Ziekteverzuimpercentage', bron_details: 'CBS StatLine-tabel 80072NED, gewijzigd op 17-11-2026.' }));
+  assert.equal(r.bron.soort, 'cijfers');
+  assert.deepEqual(r.bron.details, { geraadpleegd: '2026-11-27' });
+});
+
+test('besluit 7 (P7): een raadpleegdatum alleen bij inhoud die verandert (APA 7)', () => {
+  const geen = (r) => !Object.hasOwn(r.bron.details, 'geraadpleegd');
+  // Gedateerd nieuwsbericht en een pagina met "Pagina bijgewerkt op": de datum, geen raadpleegdatum
+  let r = normaliseerStartbron(startWebpagina());
+  assert.equal(r.bron.jaar, 2025);
+  assert.ok(geen(r));
+  assert.ok(!apaVerwijzing(r.bron).includes('Geraadpleegd'));
+  const ap = { titel: 'De AVG in het kort', organisatie: 'Autoriteit Persoonsgegevens', jaar: 2026, soort: 'website', taal: 'nl',
+    url: 'https://www.autoriteitpersoonsgegevens.nl/themas/basis-avg/avg-algemeen/de-avg-in-het-kort', onderwerpen: ['privacy-ethiek'],
+    betrouwbaarheid: 'overheid', geraadpleegd: '2026-11-27',
+    bron_details: 'Webpagina van de Autoriteit Persoonsgegevens, thema Basis AVG > AVG algemeen. Pagina bijgewerkt op 16 november 2026. Vat artikel 5 AVG samen.' };
+  r = normaliseerStartbron(ap);
+  assert.deepEqual(r.bron.details, { datum: '2026-11-16' });
+  assert.equal(apaVerwijzing(r.bron), 'Autoriteit Persoonsgegevens. (2026, 16 november). *De AVG in het kort*. https://www.autoriteitpersoonsgegevens.nl/themas/basis-avg/avg-algemeen/de-avg-in-het-kort');
+  // Alleen een datum in de metadata (geen zichtbare datum): z.d. en wel een raadpleegdatum
+  const nla = { ...ap, titel: 'Werkdruk', organisatie: 'Nederlandse Arbeidsinspectie', url: 'https://www.nlarbeidsinspectie.nl/onderwerpen/werkdruk',
+    bron_details: 'Webpagina van de Nederlandse Arbeidsinspectie (Ministerie van SZW). Laatst gewijzigd 10 september 2026 volgens de paginametadata (geen zichtbare datum op de pagina).' };
+  r = normaliseerStartbron(nla);
+  assert.equal(r.bron.jaar, null);
+  assert.deepEqual(r.bron.details, { geraadpleegd: '2026-11-27' });
+  assert.equal(apaVerwijzing(r.bron), 'Nederlandse Arbeidsinspectie. (z.d.). *Werkdruk*. Geraadpleegd op 27 november 2026, van https://www.nlarbeidsinspectie.nl/onderwerpen/werkdruk');
+  assert.equal(apaInTekst([{ bron: r.bron }]), '(Nederlandse Arbeidsinspectie, z.d.)');
+  assert.ok(r.meldingen.some((m) => m.includes('krijgt "z.d."')));
+  assert.equal(normaliseerStartbron({ ...nla, bron_details: 'Webpagina op Arboportaal. Geen zichtbare datum.' }).bron.jaar, null, 'ook zonder het woord metadata');
+  // Een datum in het record zelf gaat voor: dan blijft het jaar en is er geen raadpleegdatum
+  r = normaliseerStartbron({ ...nla, datum: '2026-09-10' });
+  assert.equal(r.bron.jaar, 2026);
+  assert.deepEqual(r.bron.details, { datum: '2026-09-10' });
+  // Geen datum vermeld (z.d.) of alleen een jaar: wel een raadpleegdatum
+  r = normaliseerStartbron({ ...nla, jaar: null, bron_details: 'Webpagina van de SER. Geen publicatiedatum vermeld (z.d.; geraadpleegd 27-11-2026).' });
+  assert.equal(r.bron.jaar, null);
+  assert.deepEqual(r.bron.details, { geraadpleegd: '2026-11-27' });
+  r = normaliseerStartbron({ ...nla, bron_details: '' });
+  assert.equal(r.bron.jaar, 2026, 'zonder bron_details raden we niets: het jaar blijft');
+  assert.deepEqual(r.bron.details, { geraadpleegd: '2026-11-27' });
+  // Cijfers (zoals een StatLine-tabel die elk kwartaal wordt bijgewerkt): altijd met raadpleegdatum, ook met een jaar
+  r = normaliseerStartbron({ ...ap, soort: 'dataset', titel: 'Ziekteverzuimpercentage', organisatie: 'Centraal Bureau voor de Statistiek (CBS)',
+    bron_details: 'CBS StatLine-tabel 80072NED, gewijzigd op 17-11-2026. Tabel wordt elk kwartaal bijgewerkt.' });
+  assert.equal(r.bron.soort, 'cijfers');
+  assert.equal(r.bron.jaar, 2026);
+  assert.deepEqual(r.bron.details, { geraadpleegd: '2026-11-27' });
+  assert.ok(apaVerwijzing(r.bron).includes('[Dataset]. Geraadpleegd op 27 november 2026, van https://'));
+  // Wet en richtlijn: de raadpleegdatum uit het record blijft, ook met een eigen datum. Bevestigd door het onderzoeksteam:
+  // wetten.overheid.nl toont de tekst die nu geldt, en die verandert (zoals vóór besluit 7)
+  const wet = { titel: 'Arbeidsomstandighedenwet', soort: 'wet', jaar: 1998, url: 'https://wetten.overheid.nl/BWBR0010346', onderwerpen: ['wet-regelgeving'], geraadpleegd: '2026-11-27' };
+  assert.deepEqual(normaliseerStartbron(wet).bron.details, { geraadpleegd: '2026-11-27' });
+  assert.deepEqual(normaliseerStartbron({ ...wet, datum: '1998-11-01' }).bron.details, { geraadpleegd: '2026-11-27', datum: '1998-11-01' });
+  assert.deepEqual(normaliseerStartbron({ ...wet, soort: 'richtlijn', datum: '2024-03' }).bron.details, { geraadpleegd: '2026-11-27', datum: '2024-03' });
+  assert.equal(apaVerwijzing(normaliseerStartbron({ ...wet, datum: '1998-11-01' }).bron),
+    'Arbeidsomstandighedenwet. (1998, 1 november). Geraadpleegd op 27 november 2026, van https://wetten.overheid.nl/BWBR0010346');
+  const richtlijn = normaliseerStartbron({ ...wet, soort: 'richtlijn', titel: 'Richtlijn Psychische problemen', jaar: 2024, datum: '2024-03',
+    organisatie: 'Nederlandse Vereniging voor Arbeids- en Bedrijfsgeneeskunde (NVAB)', url: 'https://nvab-online.nl/richtlijnen/psychische-problemen' });
+  assert.deepEqual(richtlijn.fouten, []);
+  assert.equal(apaVerwijzing(richtlijn.bron), 'Nederlandse Vereniging voor Arbeids- en Bedrijfsgeneeskunde. (2024, maart). *Richtlijn Psychische problemen*. '
+    + 'Geraadpleegd op 27 november 2026, van https://nvab-online.nl/richtlijnen/psychische-problemen');
+  // Een eigen bron (zonder normaliseerStartbron) doet hetzelfde: datum en raadpleegdatum allebei in de verwijzing
+  assert.equal(apaVerwijzing({ soort: 'wet', titel: 'Wet op de ondernemingsraden', jaar: 1971, auteurs: [], url: 'https://wetten.overheid.nl/BWBR0002747',
+    details: { datum: '1971-01-28', geraadpleegd: '2026-11-27' } }), 'Wet op de ondernemingsraden. (1971, 28 januari). Geraadpleegd op 27 november 2026, van https://wetten.overheid.nl/BWBR0002747');
+  // Alleen bij een webpagina leidt een datum in de metadata tot z.d.
+  assert.equal(leesStartDetails('Rapport, datum volgens de paginametadata.', { soort: 'rapport', jaar: 2021 }).zonderDatum, undefined);
 });
 
 test('Plak een verwijzing: een titel met ? en een ondertitel; "Geraadpleegd op … van" is een webpagina', () => {
@@ -348,7 +803,8 @@ test('Plak een verwijzing: een titel met ? en een ondertitel; "Geraadpleegd op �
 
 test('vaste lijsten', () => {
   assert.equal(Object.keys(BRONSOORTEN).length, 11);
-  assert.equal(Object.keys(ONDERWERPEN).length, 16);
+  assert.equal(Object.keys(ONDERWERPEN).length, 17, '12 sjablonen + 5 vakgebieden (wetgeving sinds P7)');
+  assert.deepEqual(ONDERWERPEN.wetgeving, { naam: 'Wet- en regelgeving', sjablonen: [] });
   for (const soort of Object.keys(BRONSOORTEN)) assert.ok(Array.isArray(DETAILVELDEN[soort]), soort);
 });
 

@@ -33,6 +33,10 @@ const GROOT = 60; // zoveel grote bronnen: samen meer dan één deel van de lijs
 const q = (t) => `'${String(t).replace(/'/g, "''")}'`;
 function zaad() {
   const regels = [
+    // De echte startcollectie (migratie 0016, 89 bronnen) eerst weg: deze test werkt met de drie verzonnen
+    // voorbeeldrecords (test/bibliotheek-start.test.mjs controleert de echte collectie).
+    "DELETE FROM bronnen WHERE collectie = 'start';",
+    "DELETE FROM instellingen WHERE sleutel = 'bibliotheek_start';",
     `INSERT INTO onderzoeken (id, bedrijfsnaam, titel, status, aangemaakt_op, gearchiveerd_op) VALUES
       (500, 'Bedrijf', 'Actief onderzoek', 'actief', '${NU}', NULL), (501, 'Oud', 'Gearchiveerd onderzoek', 'gearchiveerd', '${NU}', '${NU}');`,
     // Een eigen bron die al vóór de startcollectie de citeersleutel kcv2025 had (de startbron wijkt uit naar …st).

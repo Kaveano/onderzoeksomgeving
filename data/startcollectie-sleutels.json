@@ -1,0 +1,629 @@
+{
+  "toelichting": "Vaste sleutels van de startcollectie (scripts/startcollectie.mjs). Niet met de hand wijzigen: rapporten verwijzen naar de citeersleutels.",
+  "samengesteld_op": "2026-11-27",
+  "bronnen": [
+    {
+      "doi": "10.5271/sjweh.4035",
+      "titel_jaar": "combined psychosocial work factors and risk of long term sickness absence in the general working population prospective cohort with register follow up among 69 371 workers|2022",
+      "sleutel": "andersen-2022-psychosociaal-langdurig-verzuim",
+      "citeersleutel": "andersen2022",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.1111/1748-8583.12090",
+      "titel_jaar": "hr and analytics why hr is set to fail the big data challenge|2016",
+      "sleutel": "angrave-et-al-2016-hr-analytics-kritisch",
+      "citeersleutel": "angrave2016",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "",
+      "titel_jaar": "voorwaarden voor controle werknemers|2025",
+      "sleutel": "ap-2025-controle-werknemers",
+      "citeersleutel": "autoriteit2025",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "",
+      "titel_jaar": "de or en personeelsvolgsystemen|2025",
+      "sleutel": "ap-2025-or-personeelsvolgsystemen",
+      "citeersleutel": "autoriteit2025b",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "",
+      "titel_jaar": "gegevens pseudonimiseren|2025",
+      "sleutel": "ap-2025-pseudonimiseren",
+      "citeersleutel": "autoriteit2025c",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "",
+      "titel_jaar": "regels voor werkgevers bij zieke werknemers|2025",
+      "sleutel": "ap-2025-zieke-werknemers",
+      "citeersleutel": "autoriteit2025d",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "",
+      "titel_jaar": "de avg in het kort|2026",
+      "sleutel": "ap-2026-avg-in-het-kort",
+      "citeersleutel": "autoriteit2026c",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "",
+      "titel_jaar": "data protection impact assessment dpia|2026",
+      "sleutel": "ap-2026-dpia",
+      "citeersleutel": "autoriteit2026b",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "",
+      "titel_jaar": "wat zijn persoonsgegevens|2026",
+      "sleutel": "ap-2026-wat-zijn-persoonsgegevens",
+      "citeersleutel": "autoriteit2026",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "",
+      "titel_jaar": "psychosociale arbeidsbelasting psa|zd",
+      "sleutel": "arboportaal-2026-psa",
+      "citeersleutel": "ministeriezd",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "",
+      "titel_jaar": "waaruit bestaat de ri e|zd",
+      "sleutel": "arboportaal-2026-rie",
+      "citeersleutel": "ministeriezdb",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.1037/0021-9010.88.2.234",
+      "titel_jaar": "effectiveness of training in organizations a meta analysis of design and evaluation features|2003",
+      "sleutel": "arthur-2003-effectiviteit-training",
+      "citeersleutel": "arthur2003",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.1108/02683940710733115",
+      "titel_jaar": "the job demands resources model state of the art|2007",
+      "sleutel": "bakker-demerouti-2007-jdr",
+      "citeersleutel": "bakker2007",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.1037/1076-8998.10.2.170",
+      "titel_jaar": "job resources buffer the impact of job demands on burnout|2005",
+      "sleutel": "bakker-demerouti-euwema-2005-buffer",
+      "citeersleutel": "bakker2005",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.1371/journal.pone.0184594",
+      "titel_jaar": "managerial attitudes and perceived barriers regarding evidence based practice an international survey|2017",
+      "sleutel": "barends-et-al-2017-evidence-based-management",
+      "citeersleutel": "barends2017",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.1177/0018726708094863",
+      "titel_jaar": "survey response rate levels and trends in organizational research|2008",
+      "sleutel": "baruch-holtom-2008-responspercentages",
+      "citeersleutel": "baruch2008",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.1037/0021-9010.92.3.707",
+      "titel_jaar": "newcomer adjustment during organizational socialization a meta analytic review of antecedents outcomes and methods|2007",
+      "sleutel": "bauer-2007-nieuwkomers-meta-analyse",
+      "citeersleutel": "bauer2007",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.3390/ijerph17093179",
+      "titel_jaar": "validation of the copenhagen psychosocial questionnaire version iii and establishment of benchmarks for psychosocial risk management in sweden|2020",
+      "sleutel": "berthelsen-westerlund-bergstrom-burr-2020-copsoq-iii-zweden",
+      "citeersleutel": "berthelsen2020",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.3390/bs13030244",
+      "titel_jaar": "exploring the evolution of human resource analytics a bibliometric study|2023",
+      "sleutel": "bonilla-chaves-palos-sanchez-2023-hr-analytics-bibliometrie",
+      "citeersleutel": "bonillachaves2023",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.1186/s12889-015-1894-z",
+      "titel_jaar": "development of a vitality scan related to workers sustainable employability a study assessing its internal consistency and construct validity|2015",
+      "sleutel": "brouwers-2015-vitaliteitsscan",
+      "citeersleutel": "brouwers2015",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.1016/j.shaw.2019.10.002",
+      "titel_jaar": "the third version of the copenhagen psychosocial questionnaire|2019",
+      "sleutel": "burr-et-al-2019-copsoq-iii",
+      "citeersleutel": "burr2019",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "",
+      "titel_jaar": "minder werknemers stappen over naar een andere werkgever|2025",
+      "sleutel": "cbs-2025-baanwisselaars",
+      "citeersleutel": "cbs2025b",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "",
+      "titel_jaar": "cao lonen stijgen in 2025 met 5 0 procent|2025",
+      "sleutel": "cbs-2025-cao-lonen",
+      "citeersleutel": "cbs2025",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "",
+      "titel_jaar": "ziekteverzuimpercentage bedrijfstakken sbi 2008 en bedrijfsgrootte|2026",
+      "sleutel": "cbs-2026-statline-ziekteverzuim",
+      "citeersleutel": "cbs2026b",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "",
+      "titel_jaar": "werken op afstand onveranderd sinds 2022|2026",
+      "sleutel": "cbs-2026-werken-op-afstand",
+      "citeersleutel": "cbs2026",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.3332/ecancer.2017.709",
+      "titel_jaar": "the impact of the eu general data protection regulation on scientific research|2017",
+      "sleutel": "chassang-2017-avg-wetenschappelijk-onderzoek",
+      "citeersleutel": "chassang2017",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.1037/0033-2909.112.1.155",
+      "titel_jaar": "a power primer|1992",
+      "sleutel": "cohen-1992-power-primer",
+      "citeersleutel": "cohen1992",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.1037/0021-9010.86.3.425",
+      "titel_jaar": "justice at the millennium a meta analytic review of 25 years of organizational justice research|2001",
+      "sleutel": "colquitt-2001-organisatierechtvaardigheid",
+      "citeersleutel": "colquitt2001",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.1186/1472-6963-9-160",
+      "titel_jaar": "response rates in postal surveys of healthcare professionals between 1996 and 2005 an observational study|2009",
+      "sleutel": "cook-dickinson-eccles-2009-respons-postenquetes",
+      "citeersleutel": "cook2009",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.1037/a0019364",
+      "titel_jaar": "linking job demands and resources to employee engagement and burnout a theoretical extension and meta analytic test|2010",
+      "sleutel": "crawford-lepine-rich-2010-jdr-meta",
+      "citeersleutel": "crawford2010",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.1007/bf02310555",
+      "titel_jaar": "coefficient alpha and the internal structure of tests|1951",
+      "sleutel": "cronbach-1951-coefficient-alpha",
+      "citeersleutel": "cronbach1951",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.5334/irsp.82",
+      "titel_jaar": "why psychologists should by default use welchs t test instead of students t test|2017",
+      "sleutel": "delacre-lakens-leys-2017-welch-t-toets",
+      "citeersleutel": "delacre2017",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.1037/0021-9010.86.3.499",
+      "titel_jaar": "the job demands resources model of burnout|2001",
+      "sleutel": "demerouti-bakker-nachreiner-schaufeli-2001-jdr-burnout",
+      "citeersleutel": "demerouti2001",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.1111/bjop.12046",
+      "titel_jaar": "from alpha to omega a practical solution to the pervasive problem of internal consistency estimation|2014",
+      "sleutel": "dunn-baguley-brunsden-2014-alpha-omega",
+      "citeersleutel": "dunn2014",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.2307/2666999",
+      "titel_jaar": "psychological safety and learning behavior in work teams|1999",
+      "sleutel": "edmondson-1999-psychological-safety",
+      "citeersleutel": "edmondson1999",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.1037/0021-9010.92.6.1524",
+      "titel_jaar": "the good the bad and the unknown about telecommuting meta analysis of psychological mediators and individual consequences|2007",
+      "sleutel": "gajendran-harrison-2007-telewerken",
+      "citeersleutel": "gajendran2007",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.1177/014920630002600305",
+      "titel_jaar": "a meta analysis of antecedents and correlates of employee turnover update moderator tests and research implications for the next millennium|2000",
+      "sleutel": "griffeth-hom-gaertner-2000-verloop-meta-analyse",
+      "citeersleutel": "griffeth2000",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.1037/0021-9010.87.2.268",
+      "titel_jaar": "business unit level relationship between employee satisfaction employee engagement and business outcomes a meta analysis|2002",
+      "sleutel": "harter-schmidt-hayes-2002-engagement-outcomes",
+      "citeersleutel": "harter2002",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.1037/a0021987",
+      "titel_jaar": "organizational culture and organizational effectiveness a meta analytic investigation of the competing values frameworks theoretical suppositions|2011",
+      "sleutel": "hartnell-ou-kinicki-2011-cultuur-effectiviteit",
+      "citeersleutel": "hartnell2011",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.3390/ijerph16111985",
+      "titel_jaar": "effectiveness of interventions to promote sustainable employability a systematic review|2019",
+      "sleutel": "hazelzet-2019-di-interventies",
+      "citeersleutel": "hazelzet2019",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.1177/0193841x18807719",
+      "titel_jaar": "rethinking response rates new evidence of little relationship between survey response rates and nonresponse bias|2019",
+      "sleutel": "hendra-hill-2019-response-rates",
+      "citeersleutel": "hendra2019",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.1037/0021-9010.87.3.474",
+      "titel_jaar": "commitment to organizational change extension of a three component model|2002",
+      "sleutel": "herscovitch-meyer-2002-commitment-verandering",
+      "citeersleutel": "herscovitch2002",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.1177/00187267211070769",
+      "titel_jaar": "survey response rates trends and a validity assessment framework|2022",
+      "sleutel": "holtom-baruch-aguinis-ballinger-2022-respons-validiteit",
+      "citeersleutel": "holtom2022",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.1037/apl0000103",
+      "titel_jaar": "one hundred years of employee turnover theory and research|2017",
+      "sleutel": "hom-lee-shaw-hausknecht-2017-honderd-jaar-verloop",
+      "citeersleutel": "hom2017",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.5465/amj.2011.0088",
+      "titel_jaar": "how does human resource management influence organizational outcomes a meta analytic investigation of mediating mechanisms|2012",
+      "sleutel": "jiang-lepak-hu-baer-2012-hrm-systemen",
+      "citeersleutel": "jiang2012",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.1037/0021-9010.89.5.755",
+      "titel_jaar": "transformational and transactional leadership a meta analytic test of their relative validity|2004",
+      "sleutel": "judge-piccolo-2004-transformationeel-leiderschap",
+      "citeersleutel": "judge2004",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.1037/0033-2909.127.3.376",
+      "titel_jaar": "the job satisfaction job performance relationship a qualitative and quantitative review|2001",
+      "sleutel": "judge-thoresen-bono-patton-2001-tevredenheid-prestatie",
+      "citeersleutel": "judge2001",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.1037/0021-9010.88.5.779",
+      "titel_jaar": "unwrapping the organizational entry process disentangling multiple antecedents and their pathways to adjustment|2003",
+      "sleutel": "kammeyer-mueller-wanberg-2003-organisatie-entree",
+      "citeersleutel": "kammeyermueller2003",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.2307/2392498",
+      "titel_jaar": "job demands job decision latitude and mental strain implications for job redesign|1979",
+      "sleutel": "karasek-1979-demand-control",
+      "citeersleutel": "karasek1979",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.3389/fpsyg.2013.00863",
+      "titel_jaar": "calculating and reporting effect sizes to facilitate cumulative science a practical primer for t tests and anovas|2013",
+      "sleutel": "lakens-2013-effectgroottes",
+      "citeersleutel": "lakens2013",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.1007/s10551-019-04204-w",
+      "titel_jaar": "the challenges of algorithm based hr decision making for personal integrity|2019",
+      "sleutel": "leicht-deobald-et-al-2019-algoritmische-hr",
+      "citeersleutel": "leichtdeobald2019",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.1146/annurev.psych.52.1.397",
+      "titel_jaar": "job burnout|2001",
+      "sleutel": "maslach-schaufeli-leiter-2001-burnout",
+      "citeersleutel": "maslach2001",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.1093/eurpub/ckac109",
+      "titel_jaar": "impact of hypothetical improvements in the psychosocial work environment on sickness absence rates a simulation study|2022",
+      "sleutel": "mathisen-2022-psychosociaal-verzuim",
+      "citeersleutel": "mathisen2022",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.1097/phh.0000000000000473",
+      "titel_jaar": "a review of statistical disclosure control techniques employed by web based data query systems|2017",
+      "sleutel": "matthews-harel-aseltine-2017-disclosure-control",
+      "citeersleutel": "matthews2017",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.1016/1053-4822(91)90011-z",
+      "titel_jaar": "a three component conceptualization of organizational commitment|1991",
+      "sleutel": "meyer-allen-1991-driecomponenten-commitment",
+      "citeersleutel": "meyer1991",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "",
+      "titel_jaar": "in hoeverre draagt een hoge werkdruk bij aan het vertrek van werknemers|2025",
+      "sleutel": "michiels-2025-werkdruk-vertrek",
+      "citeersleutel": "michiels2025",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.1348/096317909x481256",
+      "titel_jaar": "the impact of methodological moderators on prevalence rates of workplace bullying a meta analysis|2010",
+      "sleutel": "nielsen-matthiesen-einarsen-2010-prevalentie-pesten",
+      "citeersleutel": "nielsen2010",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "",
+      "titel_jaar": "werkdruk|zd",
+      "sleutel": "nla-2026-werkdruk",
+      "citeersleutel": "nederlandsezdb",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "",
+      "titel_jaar": "werkdruk en ongewenst gedrag|zd",
+      "sleutel": "nla-2026-werkdruk-ongewenst-gedrag",
+      "citeersleutel": "nederlandsezd",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.1007/s10459-010-9222-y",
+      "titel_jaar": "likert scales levels of measurement and the laws of statistics|2010",
+      "sleutel": "norman-2010-likert-parametrisch",
+      "citeersleutel": "norman2010",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.1186/s12913-020-4931-2",
+      "titel_jaar": "a systematic review exploring the content and outcomes of interventions to improve psychological safety speaking up and voice behaviour|2020",
+      "sleutel": "odonovan-mcauliffe-2020-psych-safety-interventions",
+      "citeersleutel": "odonovan2020",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.1177/0021886310396550",
+      "titel_jaar": "change recipients reactions to organizational change a 60 year review of quantitative studies|2011",
+      "sleutel": "oreg-vakola-armenakis-2011-reacties-verandering",
+      "citeersleutel": "oreg2011",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.1037/0021-9010.88.5.879",
+      "titel_jaar": "common method biases in behavioral research a critical review of the literature and recommended remedies|2003",
+      "sleutel": "podsakoff-mackenzie-lee-podsakoff-2003-common-method-bias",
+      "citeersleutel": "podsakoff2003",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.1037/0021-9010.87.4.698",
+      "titel_jaar": "perceived organizational support a review of the literature|2002",
+      "sleutel": "rhoades-eisenberger-2002-ervaren-organisatiesteun",
+      "citeersleutel": "rhoades2002",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.1038/s41467-019-10933-3",
+      "titel_jaar": "estimating the success of re identifications in incomplete datasets using generative models|2019",
+      "sleutel": "rocher-hendrickx-demontjoye-2019-heridentificatie",
+      "citeersleutel": "rocher2019",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.2196/jmir.7108",
+      "titel_jaar": "the effect of the general data protection regulation on medical research|2017",
+      "sleutel": "rumbold-pierscionek-2017-avg-onderzoek",
+      "citeersleutel": "rumbold2017",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.1002/job.248",
+      "titel_jaar": "job demands job resources and their relationship with burnout and engagement a multi sample study|2004",
+      "sleutel": "schaufeli-bakker-2004-burnout-bevlogenheid",
+      "citeersleutel": "schaufeli2004",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.1177/0013164405282471",
+      "titel_jaar": "the measurement of work engagement with a short questionnaire a cross national study|2006",
+      "sleutel": "schaufeli-bakker-salanova-2006-uwes9",
+      "citeersleutel": "schaufeli2006",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.3390/ijerph17249495",
+      "titel_jaar": "burnout assessment tool bat development validity and reliability|2020",
+      "sleutel": "schaufeli-desart-dewitte-2020-bat",
+      "citeersleutel": "schaufeli2020",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "",
+      "titel_jaar": "hybride werken|2022",
+      "sleutel": "ser-2022-hybride-werken",
+      "citeersleutel": "ser2022",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "",
+      "titel_jaar": "handreiking psychosociale arbeidsbelasting psa|2026",
+      "sleutel": "ser-2026-handreiking-psa",
+      "citeersleutel": "ser2026",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "",
+      "titel_jaar": "medezeggenschap en arbeidsomstandigheden|zd",
+      "sleutel": "ser-zj-medezeggenschap-arbo",
+      "citeersleutel": "serzdb",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "",
+      "titel_jaar": "medezeggenschap bij privacy van medewerkers|zd",
+      "sleutel": "ser-zj-medezeggenschap-privacy",
+      "citeersleutel": "serzd",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.1177/0149206310385943",
+      "titel_jaar": "inclusion and diversity in work groups a review and model for future research|2011",
+      "sleutel": "shore-2011-inclusie-diversiteit-werkgroepen",
+      "citeersleutel": "shore2011",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.1007/s11336-008-9101-0",
+      "titel_jaar": "on the use the misuse and the very limited usefulness of cronbachs alpha|2009",
+      "sleutel": "sijtsma-2009-alpha",
+      "citeersleutel": "sijtsma2009",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.5116/ijme.4dfb.8dfd",
+      "titel_jaar": "making sense of cronbachs alpha|2011",
+      "sleutel": "tavakol-dennick-2011-cronbachs-alpha",
+      "citeersleutel": "tavakol2011",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "",
+      "titel_jaar": "duurzame inzetbaarheid in nederland 2021 resultaten van de monitor di 2014 2019|2021",
+      "sleutel": "tno-2021-duurzame-inzetbaarheid-nl",
+      "citeersleutel": "heuvel2021",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "",
+      "titel_jaar": "lange termijn effecten van leven lang ontwikkelen|2024",
+      "sleutel": "tno-2024-lange-termijn-llo",
+      "citeersleutel": "tno2024",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "",
+      "titel_jaar": "arbobalans 2024|2025",
+      "sleutel": "tno-2025-arbobalans-2024",
+      "citeersleutel": "heuvel2025",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "",
+      "titel_jaar": "werkstress factsheet week van de werkstress 2026|2026",
+      "sleutel": "tno-2026-factsheet-werkstress",
+      "citeersleutel": "tno2026",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "",
+      "titel_jaar": "nationale enquete arbeidsomstandigheden 2025 resultaten in vogelvlucht|2026",
+      "sleutel": "tno-cbs-2026-nea2025",
+      "citeersleutel": "dam2026",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.1177/0149206310380462",
+      "titel_jaar": "servant leadership a review and synthesis|2011",
+      "sleutel": "van-dierendonck-2011-dienend-leiderschap",
+      "citeersleutel": "dierendonck2011",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.1037/0021-9010.89.6.1008",
+      "titel_jaar": "work group diversity and group performance an integrative model and research agenda|2004",
+      "sleutel": "van-knippenberg-de-dreu-homan-2004-diversiteit-prestatie",
+      "citeersleutel": "knippenberg2004",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.1108/joepp-03-2017-0022",
+      "titel_jaar": "the rise and fall of hr analytics|2017",
+      "sleutel": "vandenheuvel-bondarouk-2017-toekomst-hr-analytics",
+      "citeersleutel": "heuvel2017",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.5271/sjweh.3531",
+      "titel_jaar": "sustainable employability definition conceptualization and implications a perspective based on the capability approach|2016",
+      "sleutel": "vanderklink-2016-duurzame-inzetbaarheid",
+      "citeersleutel": "klink2016",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.1371/journal.pone.0135225",
+      "titel_jaar": "workplace bullying and mental health a meta analysis on cross sectional and longitudinal data|2015",
+      "sleutel": "verkuil-atasayi-molendijk-2015-pesten",
+      "citeersleutel": "verkuil2015",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.1177/0004563221992088",
+      "titel_jaar": "best practice in statistics use the welch t test when testing the difference between two groups|2021",
+      "sleutel": "west-2021-welch-t-toets",
+      "citeersleutel": "west2021",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.1037/0021-9010.91.2.392",
+      "titel_jaar": "a meta analysis of the antecedents and consequences of pay level satisfaction|2006",
+      "sleutel": "williams-mcdaniel-nguyen-2006-salaristevredenheid",
+      "citeersleutel": "williams2006",
+      "toegevoegd_op": "2026-11-27"
+    },
+    {
+      "doi": "10.1007/s11846-022-00574-0",
+      "titel_jaar": "towards a process oriented understanding of hr analytics implementation and application|2023",
+      "sleutel": "wirges-neyer-2023-hr-analytics-proces",
+      "citeersleutel": "wirges2023",
+      "toegevoegd_op": "2026-11-27"
+    }
+  ]
+}

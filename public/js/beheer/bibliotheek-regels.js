@@ -4,8 +4,24 @@
 //
 // De Nederlandse afspraken staan in OPMAAK (BOUWPLAN B20): '&' in de literatuurlijst en tussen haakjes,
 // 'en' in een verwijzing in de lopende zin, een komma voor '&' in de literatuurlijst en het tussenvoegsel
-// achter de voorletters ("Vries, M. de"). Het onderzoeksteam bevestigt het tussenvoegsel nog; omzetten is één
-// regel ('voor' geeft "De Vries, M.").
+// achter de voorletters ("Vries, M. de"); omzetten is één regel ('voor' geeft "De Vries, M.").
+// Namen met een voorvoegsel (besluit 6 van het onderzoeksteam bij P7, volgens de APA 7-gids van de
+// Universiteitsbibliotheek Radboud Universiteit, "APA en Nederlandse conventies"):
+// - alleen bij een Nederlandse naam staat het tussenvoegsel achter de voorletters en sorteert de lijst op de
+//   hoofdnaam ("Meulen-de Vries, G. H. van der."); bij een Vlaamse of buitenlandse naam hoort het voorvoegsel bij
+//   de achternaam en sorteert de lijst onder D of V ("De Witte, H.", "Van Dyne, L.");
+// - zo lees je dat uit een naam (leesAuteur): een voorvoegsel met een hoofdletter vooraan de achternaam ("De Witte")
+//   hoort bij de achternaam; met een kleine letter ("de Vroome", "van der Meulen") is het een tussenvoegsel;
+// - een buitenlandse auteur die zijn voorvoegsel zelf met een kleine letter schrijft, houdt het als deel van de
+//   achternaam, zoals hij het schrijft (APA 7; besluit van het onderzoeksteam bij P7 voor Y.-A. de Montjoye, record 37).
+//   Aan een tekst zie je dat niet, dus zo'n naam komt als object: { achternaam: 'de Montjoye', tussenvoegsel: '',
+//   voorletters: 'Y.-A.' } → in de lijst "de Montjoye, Y.-A.", letter voor letter gesorteerd op "deMontjoye" (onder D).
+//   Een tekst "de Montjoye, Y.-A." blijft een Nederlands tussenvoegsel; Nederlandse namen veranderen dus niet;
+// - na de auteurs staat altijd een punt, ook na een tussenvoegsel aan het eind: "Vroome, E. M. M. de. (2025).",
+//   "Ancona, J. d'. (2022).";
+// - in de tekst begint de naam altijd met een hoofdletter ("De Vroome (2025)", "(Van der Meulen, 2022)"), behalve
+//   d', dat klein blijft en vast aan de naam staat ("d'Ancona (2022)"). Dat geldt nu ook voor een naam als
+//   de Montjoye ("De Montjoye (2019)"); in de startcollectie staat zo'n naam nooit vooraan (record 37: "Rocher et al.").
 //
 // Tekst met *sterretjes* is cursief (zoals overal in de rapporten: rapport-weergave.js inline() en maakDocx).
 
@@ -27,7 +43,9 @@ export const BRONSOORTEN = {
   overig: 'Overig',
 };
 
-// Onderwerpen: de 12 standaardsjablonen plus vier vakgebieden. sjablonen = de ids in src/sjablonen*.js.
+// Onderwerpen: de 12 standaardsjablonen plus vijf vakgebieden. sjablonen = de ids in src/sjablonen*.js.
+// 'wetgeving' is erbij gekomen met de startcollectie (besluit van het onderzoeksteam, BOUWPLAN P7): 17 bronnen gaan
+// over wet- en regelgeving (AVG, Arbowet, WOR).
 export const ONDERWERPEN = {
   tevredenheid: { naam: 'Tevredenheid en betrokkenheid', sjablonen: ['medewerkerstevredenheid'] },
   'hr-processen': { naam: 'HR-processen', sjablonen: ['hr-processen'] },
@@ -45,6 +63,7 @@ export const ONDERWERPEN = {
   statistiek: { naam: 'Statistiek en analyse', sjablonen: [] },
   privacy: { naam: 'Privacy, AVG en ethiek', sjablonen: [] },
   'hr-analytics': { naam: 'HR-analytics en kengetallen', sjablonen: [] },
+  wetgeving: { naam: 'Wet- en regelgeving', sjablonen: [] },
 };
 
 export const TALEN = { nl: 'Nederlands', en: 'Engels', de: 'Duits', fr: 'Frans', anders: 'Andere taal' };
@@ -85,7 +104,8 @@ export const LIMIETEN = {
   doi: 200,
   detail: 300,
   redacteuren: 10,
-  onderwerpen: 16,
+  /** Alle vaste onderwerpen mogen samen (eerst 16; 17 sinds 'wetgeving' erbij kwam met de startcollectie). */
+  onderwerpen: Object.keys(ONDERWERPEN).length,
   trefwoorden: 20,
   trefwoord: 60,
   samenvatting: 4000,
@@ -247,6 +267,12 @@ export function zonderSterren(t) {
 
 const eindPunt = (t) => (/[.?!]$/.test(t) ? t : `${t}.`);
 const hoofdletter = (t) => (t ? t[0].toUpperCase() + t.slice(1) : t);
+/** d' (zoals in d'Ancona) blijft klein en staat vast aan de naam; zie de kop van dit bestand. */
+const isDApostrof = (t) => /^d['’]/.test(t);
+/** Een naam die vooraan staat begint met een hoofdletter ("De Vries", "Van der Meulen"), behalve d' ("d'Ancona"). */
+const vooraan = (t) => (isDApostrof(t) ? t : hoofdletter(t));
+/** Tussenvoegsel en achternaam aan elkaar: "van der Berg", maar "d'Ancona" (zonder spatie). */
+const metTussenvoegsel = (tv, achternaam) => (tv && achternaam ? `${tv}${/['’]$/.test(tv) ? '' : ' '}${achternaam}` : tv || achternaam);
 /** 45-67 → 45–67 (een "en dash" tussen paginanummers). */
 export function paginaStreep(p) {
   return String(p ?? '').trim().replace(/\s*[-–—]+\s*/g, '–');
@@ -282,25 +308,38 @@ const NIET_CURSIEF = new Set(['artikel', 'hoofdstuk', 'wet']);
 
 const personenVan = (bron) => (Array.isArray(bron?.auteurs) ? bron.auteurs.filter((a) => a && zonderSterren(a.achternaam)) : []);
 
-/** Naam in de literatuurlijst: "Bakker, A. B." · "Vries, M. de" (of "De Vries, M." bij 'voor'). */
+/**
+ * Naam in de literatuurlijst: "Bakker, A. B." · "Vries, M. de" · "Ancona, J. d'" · "De Witte, H." (het voorvoegsel
+ * hoort bij de achternaam) · bij 'voor': "De Vries, M.".
+ */
 function lijstNaam(a) {
   const achternaam = zonderSterren(a.achternaam);
   const tv = zonderSterren(a.tussenvoegsel);
   const vl = zonderSterren(a.voorletters);
-  if (tv && OPMAAK.tussenvoegsel === 'voor') return `${hoofdletter(tv)} ${achternaam}${vl ? `, ${vl}` : ''}`;
+  if (tv && OPMAAK.tussenvoegsel === 'voor') return `${metTussenvoegsel(vooraan(tv), achternaam)}${vl ? `, ${vl}` : ''}`;
   return `${achternaam}${vl ? `, ${vl}` : ''}${tv ? `${vl ? ' ' : ', '}${tv}` : ''}`;
 }
 
-/** Naam van een redacteur: voorletters, dan tussenvoegsel en achternaam: "C. van den Berg". */
+/** Naam van een redacteur: voorletters, dan tussenvoegsel en achternaam: "C. van den Berg" · "J. d'Ancona". */
 function redacteurNaam(a) {
-  return [zonderSterren(a.voorletters), zonderSterren(a.tussenvoegsel), zonderSterren(a.achternaam)].filter(Boolean).join(' ');
+  return [zonderSterren(a.voorletters), metTussenvoegsel(zonderSterren(a.tussenvoegsel), zonderSterren(a.achternaam))].filter(Boolean).join(' ');
 }
 
-/** Naam in de lopende tekst: het tussenvoegsel krijgt een hoofdletter ("De Vries"). */
+/** Naam in de lopende tekst: altijd met een hoofdletter vooraan ("De Vries", "Van der Meulen"), behalve d' ("d'Ancona"). */
 function tekstNaam(a) {
-  const tv = zonderSterren(a.tussenvoegsel);
-  return tv ? `${hoofdletter(tv)} ${zonderSterren(a.achternaam)}` : zonderSterren(a.achternaam);
+  return vooraan(metTussenvoegsel(zonderSterren(a.tussenvoegsel), zonderSterren(a.achternaam)));
 }
+
+/**
+ * Naam in de tekst met voorletters ervoor (APA 7 §8.20, zie sorteerLiteratuur): "H. De Witte", "J. de Witte",
+ * "J. d'Ancona". Na de voorletters blijft een tussenvoegsel klein, zoals bij een redacteur.
+ */
+function tekstNaamMetVoorletters(a) {
+  return zonderSterren(a.voorletters) ? redacteurNaam(a) : tekstNaam(a);
+}
+
+/** Wie iemand is, om te vergelijken: hoofdnaam, tussenvoegsel en voorletters. "De Witte, H." is een ander dan "Witte, J. de". */
+const persoonSleutel = (a) => [a.achternaam, a.tussenvoegsel, a.voorletters].map((x) => normaliseer(zonderSterren(x))).join('|');
 
 /** Auteurs in de literatuurlijst: "Bakker, A. B., & Demerouti, E."; 21 of meer: de eerste 19, "…" en de laatste. */
 function lijstAuteurs(personen) {
@@ -329,10 +368,10 @@ function auteurDeel(bron) {
   const personen = personenVan(bron);
   if (personen.length) {
     const t = lijstAuteurs(personen);
-    // Eindigt op een voorletter (met punt) of op een tussenvoegsel: dan geen extra punt (D3 §8.1, geval 4).
-    const laatste = personen[personen.length - 1];
-    const eindigtOpTussenvoegsel = OPMAAK.tussenvoegsel !== 'voor' && zonderSterren(laatste.tussenvoegsel) && personen.length < 21;
-    return { soort: 'personen', tekst: /\.$/.test(t) || eindigtOpTussenvoegsel ? t : `${t}.`, naam: t };
+    // Altijd een punt na de auteurs. Na een voorletter staat die er al ("Bakker, A. B."); na een tussenvoegsel aan het
+    // eind komt hij erbij: "Vroome, E. M. M. de.", "Ancona, J. d'." (besluit 6b van het onderzoeksteam bij P7, zoals in
+    // de Radboud-gids; dit vervangt "geen punt" van D3 §8.1, geval 4).
+    return { soort: 'personen', tekst: /\.$/.test(t) ? t : `${t}.`, naam: t };
   }
   const org = zonderSterren(bron.organisatie);
   if (org) return { soort: 'organisatie', tekst: eindPunt(org), naam: org };
@@ -346,6 +385,14 @@ export function auteursRegel(bron) {
   const personen = personenVan(bron);
   if (personen.length) return lijstAuteurs(personen);
   return zonderSterren(bron?.organisatie);
+}
+
+/**
+ * De namen van de auteurs zoals ze in de tekst staan: ["d'Ancona", 'De Vroome', 'Van der Meulen-de Vries']. Voor het
+ * zoeken: wie "d'Ancona" uit Citeer overneemt, vindt "Ancona, J. d'." (bibliotheek-zoeken.js).
+ */
+export function namenInTekst(bron) {
+  return personenVan(bron).map(tekstNaam);
 }
 
 /** '2024' · 'z.d.' · '2024a' · 'z.d.-a' */
@@ -475,19 +522,33 @@ function korteTitel(bron) {
  * Het naamdeel in de tekst. eerste: eerste keer genoemd (dan bij een organisatie met afkorting de volle naam).
  * → { naam, volledig?, afkorting? }
  */
-function tekstNamen(bron, { verhalend, eerste }) {
+function tekstNamen(bron, { verhalend, eerste, voorletters = false }) {
   const personen = personenVan(bron);
   if (personen.length) {
     const amp = verhalend ? OPMAAK.amp.verhalend : OPMAAK.amp.haakjes;
-    if (personen.length === 1) return { naam: tekstNaam(personen[0]) };
-    if (personen.length === 2) return { naam: `${tekstNaam(personen[0])} ${amp} ${tekstNaam(personen[1])}` };
-    return { naam: `${tekstNaam(personen[0])} et al.` };
+    // Voorletters alleen bij de eerste auteur (APA 7 §8.20).
+    const eersteNaam = voorletters ? tekstNaamMetVoorletters(personen[0]) : tekstNaam(personen[0]);
+    if (personen.length === 1) return { naam: eersteNaam };
+    if (personen.length === 2) return { naam: `${eersteNaam} ${amp} ${tekstNaam(personen[1])}` };
+    return { naam: `${eersteNaam} et al.` };
   }
   const org = zonderSterren(bron.organisatie);
   const afk = zonderSterren(bron.afkorting);
   if (org && afk) return eerste ? { naam: org, volledig: org, afkorting: afk } : { naam: afk };
   if (org) return { naam: org };
   return { naam: korteTitel(bron) || 'Zonder titel' };
+}
+
+/**
+ * Wie een bron in de tekst aanwijst: de personen die in de tekst staan (één, twee, of de eerste met "et al."), elk met
+ * hoofdnaam, tussenvoegsel en voorletters; zonder personen de naam uit de tekst. Twee bronnen met dezelfde naam in de
+ * tekst maar andere mensen ("De Witte, H." en "Witte, J. de.") hebben zo een andere identiteit.
+ */
+function tekstIdentiteit(bron) {
+  const personen = personenVan(bron);
+  if (!personen.length) return `o:${normaliseer(tekstNamen(bron, { verhalend: false, eerste: false }).naam)}`;
+  const getoond = personen.length > 2 ? [personen[0]] : personen;
+  return `p:${getoond.map(persoonSleutel).join(';')}${personen.length > 2 ? ';et al.' : ''}`;
 }
 
 /** '12' → 'p. 12'; '12-14' → 'pp. 12–14'; andere tekst ('hoofdstuk 3', 'p. 4') blijft zoals hij is. */
@@ -500,13 +561,16 @@ export function paginaTekst(pagina) {
 }
 
 // Eén vaste sorteerder (localeCompare met opties maakt er elke keer een nieuwe; dat is traag bij veel bronnen).
-const SORTEERDER = new Intl.Collator('nl', { sensitivity: 'base' });
+// Letter voor letter (APA 7 §9.44): spaties, koppeltekens en apostrofs tellen niet mee, dus "DeBase" en "Dekker" komen
+// voor "De Vries" en "De Witte", en "MacNeil" voor "M'Carthy". Hoofdletters en accenten tellen ook niet mee.
+const SORTEERDER = new Intl.Collator('nl', { sensitivity: 'base', ignorePunctuation: true });
 const vergelijk = (a, b) => SORTEERDER.compare(a, b);
 
 /**
- * Verwijzing in de tekst voor één of meer bronnen: items = [{ bron, pagina?, suffix? }].
- * Tussen haakjes: "(Bakker & Demerouti, 2017, p. 12; Centraal Bureau voor de Statistiek [CBS], 2024b)";
- * verhalend (in de zin): "Bakker en Demerouti (2017)".
+ * Verwijzing in de tekst voor één of meer bronnen: items = [{ bron, pagina?, suffix?, voorletters? }].
+ * Tussen haakjes: "(Bakker & Demerouti, 2017, p. 12; Centraal Bureau voor de Statistiek [CBS], 2024b)", in de volgorde
+ * van de literatuurlijst (APA 7 §8.12); verhalend (in de zin): "Bakker en Demerouti (2017)", in de volgorde die je geeft.
+ * suffix en voorletters: zoals sorteerLiteratuur ze geeft (a, b …; voorletters bij dezelfde achternaam, APA 7 §8.20).
  * eersteKeer: de verzameling citeersleutels die al eerder genoemd zijn. Een bron die er nog niet in staat, wordt
  * als eerste vermelding geschreven (een organisatie met afkorting dan voluit); daarna komt hij erin te staan.
  * Geef dezelfde Set mee voor het hele rapport, in de volgorde van de tekst.
@@ -515,24 +579,27 @@ export function apaInTekst(items, { verhalend = false, eersteKeer = new Set() } 
   const lijst = (Array.isArray(items) ? items : []).filter((i) => i && i.bron);
   const delen = lijst.map((item) => {
     const sleutel = sleutelVan(item.bron);
-    const namen = tekstNamen(item.bron, { verhalend, eerste: !eersteKeer.has(sleutel) });
-    return { ...namen, jaar: jaarTekst(item.bron, item.suffix || ''), pagina: paginaTekst(item.pagina), sleutel, bron: item.bron };
+    const namen = tekstNamen(item.bron, { verhalend, eerste: !eersteKeer.has(sleutel), voorletters: !!item.voorletters });
+    return {
+      ...namen, jaar: jaarTekst(item.bron, item.suffix || ''), pagina: paginaTekst(item.pagina), sleutel, bron: item.bron,
+      wie: `${tekstIdentiteit(item.bron)}|${item.voorletters ? 'v' : ''}`,
+    };
   });
   for (const d of delen) eersteKeer.add(d.sleutel);
   if (!delen.length) return '';
 
   if (!verhalend) {
-    // Op naam (en daarna jaar; zonder datum eerst), dezelfde naam met meerdere jaren samengevoegd: (Bakker, 2017, 2019).
-    const gesorteerd = [...delen].sort((a, b) => vergelijk(a.naam, b.naam)
-      || (Number.isInteger(a.bron.jaar) ? a.bron.jaar : -1) - (Number.isInteger(b.bron.jaar) ? b.bron.jaar : -1)
-      || vergelijk(a.jaar, b.jaar));
+    // In de volgorde van de literatuurlijst (APA 7 §8.12): dezelfde sleutel als sorteerLiteratuur, dus op de hoofdnaam
+    // ("Van Dierendonck" onder de D, "De Vroome" onder de V), daarna jaar (zonder datum eerst) en titel (a voor b).
+    // Dezelfde auteur(s) met meerdere jaren samengevoegd: (Bakker, 2017, 2019); twee mensen met dezelfde naam niet.
+    const gesorteerd = [...delen].sort((a, b) => vergelijkBronnen(a.bron, b.bron) || vergelijk(a.jaar, b.jaar));
     const groepen = [];
     for (const d of gesorteerd) {
       const naam = d.afkorting ? `${d.volledig} [${d.afkorting}]` : d.naam;
       const jaar = `${d.jaar}${d.pagina ? `, ${d.pagina}` : ''}`;
       const vorige = groepen[groepen.length - 1];
-      if (vorige && vorige.naam === naam) vorige.jaren.push(jaar);
-      else groepen.push({ naam, jaren: [jaar] });
+      if (vorige && vorige.naam === naam && vorige.wie === d.wie) vorige.jaren.push(jaar);
+      else groepen.push({ naam, wie: d.wie, jaren: [jaar] });
     }
     return `(${groepen.map((g) => `${g.naam}, ${g.jaren.join(', ')}`).join('; ')})`;
   }
@@ -542,8 +609,8 @@ export function apaInTekst(items, { verhalend = false, eersteKeer = new Set() } 
   for (const d of delen) {
     const jaar = `${d.jaar}${d.pagina ? `, ${d.pagina}` : ''}`;
     const vorige = groepen[groepen.length - 1];
-    if (vorige && vorige.naam === d.naam && !d.afkorting && !vorige.afkorting) vorige.jaren.push(jaar);
-    else groepen.push({ naam: d.naam, afkorting: d.afkorting, jaren: [jaar] });
+    if (vorige && vorige.naam === d.naam && vorige.wie === d.wie && !d.afkorting && !vorige.afkorting) vorige.jaren.push(jaar);
+    else groepen.push({ naam: d.naam, wie: d.wie, afkorting: d.afkorting, jaren: [jaar] });
   }
   const teksten = groepen.map((g) => `${g.naam} (${g.afkorting ? `${g.afkorting}, ` : ''}${g.jaren.join(', ')})`);
   if (teksten.length === 1) return teksten[0];
@@ -586,23 +653,40 @@ export function vergelijkBronnen(a, b) {
 }
 
 /**
- * De literatuurlijst in APA-volgorde, met a, b … bij dezelfde naam (zoals in de tekst) en hetzelfde jaar:
- * → [{ bron, suffix }]. Gebruik dezelfde suffixen in de tekst, zodat tekst en lijst altijd kloppen.
+ * De literatuurlijst in APA-volgorde → [{ bron, suffix, voorletters }]. Geef suffix en voorletters door aan apaInTekst,
+ * zodat tekst en lijst altijd kloppen.
+ * - suffix: a, b … bij dezelfde auteur(s) in hetzelfde jaar (APA 7 §9.47): dezelfde mensen die in de tekst staan (één,
+ *   twee, of de eerste met "et al."), op hoofdnaam, tussenvoegsel en voorletters. "De Witte, H." en "Witte, J. de." zijn
+ *   twee mensen en krijgen geen a en b. Bij "et al." met andere medeauteurs schrijft APA meer namen in de tekst
+ *   (§8.18); wij geven dan a en b, zodat de tekst toch niet dubbelzinnig is.
+ * - voorletters: true als een andere bron in de lijst een eerste auteur heeft met dezelfde naam in de tekst die een
+ *   ander mens is (APA 7 §8.20). In de tekst staan dan de voorletters ervoor: "(H. De Witte, 2020; J. de Witte, 2020)".
  */
 export function sorteerLiteratuur(bronnen) {
   const lijst = (Array.isArray(bronnen) ? bronnen : []).filter(Boolean);
   const uniek = [...new Map(lijst.map((b) => [sleutelVan(b), b])).values()];
   const gesorteerd = uniek.sort(vergelijkBronnen);
-  const groep = (b) => `${normaliseer(tekstNamen(b, { verhalend: false, eerste: false }).naam)}|${Number.isInteger(b.jaar) ? b.jaar : 'zd'}`;
+  const groep = (b) => `${tekstIdentiteit(b)}|${Number.isInteger(b.jaar) ? b.jaar : 'zd'}`;
   const tellers = new Map();
   for (const b of gesorteerd) tellers.set(groep(b), (tellers.get(groep(b)) || 0) + 1);
+  // Per naam van de eerste auteur in de tekst: welke mensen dat zijn.
+  const eersteNaam = (b) => (personenVan(b).length ? normaliseer(tekstNaam(personenVan(b)[0])) : null);
+  const mensen = new Map();
+  for (const b of gesorteerd) {
+    const n = eersteNaam(b);
+    if (n === null) continue;
+    if (!mensen.has(n)) mensen.set(n, new Set());
+    mensen.get(n).add(persoonSleutel(personenVan(b)[0]));
+  }
   const volgnummer = new Map();
   return gesorteerd.map((bron) => {
     const g = groep(bron);
-    if (tellers.get(g) < 2) return { bron, suffix: '' };
+    const n = eersteNaam(bron);
+    const voorletters = n !== null && mensen.get(n).size > 1;
+    if (tellers.get(g) < 2) return { bron, suffix: '', voorletters };
     const i = volgnummer.get(g) || 0;
     volgnummer.set(g, i + 1);
-    return { bron, suffix: String.fromCharCode(97 + Math.min(i, 25)) };
+    return { bron, suffix: String.fromCharCode(97 + Math.min(i, 25)), voorletters };
   });
 }
 
@@ -664,10 +748,18 @@ const isInitialen = (t) => {
   return /^(?:[A-ZÀ-Ý](?:h|hr)?\.\s*(?:-\s*)?)+$/.test(s) || /^[A-Z]{1,4}$/.test(s);
 };
 
-/** Splitst een tussenvoegsel vooraan af: "van der Berg" → { tussenvoegsel: 'van der', achternaam: 'Berg' }. */
+/** Begint met een hoofdletter (dus niet met een kleine letter, een apostrof of een cijfer). */
+const metHoofdletter = (t) => /^\p{Lu}/u.test(t);
+
+/**
+ * Splitst een tussenvoegsel vooraan af: "van der Berg" → { tussenvoegsel: 'van der', achternaam: 'Berg' }. Alleen als
+ * het voorvoegsel in de bron met een kleine letter begint: met een hoofdletter ("De Witte", "Van Dyne", "D'Ancona")
+ * hoort het bij de achternaam (besluit 6a van het onderzoeksteam bij P7; zie de kop van dit bestand).
+ */
 function splitsVoorvoegsel(t) {
   const s = t.trim();
   const klein = s.toLowerCase();
+  if (metHoofdletter(s)) return { tussenvoegsel: '', achternaam: s };
   for (const tv of TUSSENVOEGSELS) {
     if (klein.startsWith(`${tv} `) && s.length > tv.length + 1) return { tussenvoegsel: tv, achternaam: s.slice(tv.length + 1).trim() };
     if (tv === "d'" && klein.startsWith(tv) && s.length > 2) return { tussenvoegsel: tv, achternaam: s.slice(2).trim() };
@@ -675,12 +767,17 @@ function splitsVoorvoegsel(t) {
   return { tussenvoegsel: '', achternaam: s };
 }
 
-/** Splitst een tussenvoegsel achteraan af: "J. de" → { rest: 'J.', tussenvoegsel: 'de' }. */
+/**
+ * Splitst een tussenvoegsel achteraan af: "J. de" → { rest: 'J.', tussenvoegsel: 'de' }. Ook met de punt die in een
+ * literatuurlijst na de auteurs staat: "E. M. M. de." → { rest: 'E. M. M.', tussenvoegsel: 'de' }.
+ */
 function splitsAchtervoegsel(t) {
   const s = t.trim();
   const klein = s.toLowerCase();
   for (const tv of TUSSENVOEGSELS) {
-    if (klein.endsWith(` ${tv}`) && s.length > tv.length + 1) return { rest: s.slice(0, s.length - tv.length - 1).trim(), tussenvoegsel: tv };
+    for (const eind of [` ${tv}`, ` ${tv}.`]) {
+      if (klein.endsWith(eind) && s.length > eind.length) return { rest: s.slice(0, s.length - eind.length).trim(), tussenvoegsel: tv };
+    }
   }
   return { rest: s, tussenvoegsel: '' };
 }
@@ -723,7 +820,11 @@ const isOrgWoord = (w) => {
 
 /**
  * Leest één auteur: "Bakker, A. B." · "Bakker, Arnold B." · "de Vries, J." · "Vries, J. de" · "Jan de Vries" ·
- * "van der Berg, K." · "Bakker A.B." → { achternaam, tussenvoegsel, voorletters }. Een organisatie (geen komma
+ * "van der Berg, K." · "Bakker A.B." → { achternaam, tussenvoegsel, voorletters }. Een voorvoegsel met een
+ * hoofdletter vooraan de achternaam hoort bij de achternaam: "De Witte, H." en "Hans De Witte" →
+ * { achternaam: 'De Witte', tussenvoegsel: '' } (besluit 6a, zie de kop van dit bestand). Met een kleine letter is
+ * het altijd een tussenvoegsel ("de Montjoye, Y.-A." → 'Montjoye' + 'de'): een buitenlandse naam die zo geschreven
+ * wordt, zie je aan de tekst niet; die komt als object (zie de kop en normaliseerStartbron). Een organisatie (geen komma
  * en een woord als Bureau of Ministerie, meer dan drie woorden die geen naam vormen, of één woord) →
  * { organisatie }. Lege tekst → null.
  */
@@ -754,13 +855,17 @@ export function leesAuteur(tekst) {
     return persoon(v.achternaam, v.tussenvoegsel, laatste);
   }
   // Voornamen of voorletters, dan eventueel een tussenvoegsel, dan de achternaam: "Jan de Vries", "C. van den Berg".
+  // Met een hoofdletter ("Hans De Witte") hoort het voorvoegsel bij de achternaam.
   const klein = t.toLowerCase();
   for (let i = 1; i < woorden.length - 1; i++) {
     const rest = woorden.slice(i).join(' ').toLowerCase();
     const tv = TUSSENVOEGSELS.find((x) => rest.startsWith(`${x} `));
     if (tv && woorden.slice(0, i).every((w) => /^[A-ZÀ-Ý]/.test(w))) {
       const achternaam = woorden.slice(i).join(' ').slice(tv.length + 1);
-      if (/^[A-ZÀ-Ý]/.test(achternaam)) return persoon(achternaam, tv, woorden.slice(0, i).join(' '));
+      if (/^[A-ZÀ-Ý]/.test(achternaam)) {
+        if (metHoofdletter(woorden[i])) return persoon(woorden.slice(i).join(' '), '', woorden.slice(0, i).join(' '));
+        return persoon(achternaam, tv, woorden.slice(0, i).join(' '));
+      }
     }
   }
   // Zonder tussenvoegsel: hooguit vier woorden die allemaal met een hoofdletter beginnen ("Arnold B. Bakker").
@@ -1247,10 +1352,11 @@ export function taalUitTekst(t) {
 
 /**
  * Andere namen voor de vaste onderwerpen (genormaliseerd, zoals normaliseer() ze maakt). Alleen namen die precies
- * één onderwerp bedoelen; o.a. de sleutels uit het bestand van het onderzoeksteam (bronnen/startcollectie.json).
- * Niet hier: "wet-regelgeving" (geen vast onderwerp; wordt een trefwoord met een melding, zie BOUWPLAN P7 stap 3).
+ * één onderwerp bedoelen; o.a. de sleutels uit het bestand van het onderzoeksteam (data/startcollectie.json), zoals
+ * "wet-regelgeving" (→ wetgeving, "Wet- en regelgeving").
  */
 const ONDERWERP_ALIASSEN = {
+  'wet regelgeving': 'wetgeving', 'wet en regelgeving': 'wetgeving', regelgeving: 'wetgeving',
   onderzoeksmethode: 'methode', onderzoeksmethoden: 'methode', methodologie: 'methode', vragenlijsten: 'methode',
   'privacy ethiek': 'privacy', 'privacy en ethiek': 'privacy', avg: 'privacy',
   'tevredenheid bevlogenheid': 'tevredenheid', 'tevredenheid en bevlogenheid': 'tevredenheid', betrokkenheid: 'tevredenheid', bevlogenheid: 'tevredenheid',
@@ -1275,10 +1381,161 @@ export function onderwerpUitTekst(t) {
 const kort = (t, max) => (t.length > max ? t.slice(0, max) : t);
 
 /**
+ * De velden die normaliseerStartbron (en scripts/startcollectie.mjs voor 'sleutel') uit een record leest. Andere
+ * velden worden niet gebruikt; het script noemt ze één keer. Bewust niet gebruikt (besluit van het onderzoeksteam,
+ * P7): 'relevantie' (een bron heeft geen veld voor "waarom relevant"; de samenvatting komt uit 'samenvatting') en
+ * 'open_access' (geen veld).
+ */
+export const STARTRECORD_VELDEN = new Set(['sleutel', 'titel', 'soort', 'organisatie', 'afkorting', 'auteurs', 'jaar', 'taal', 'url', 'doi',
+  'onderwerpen', 'trefwoorden', 'samenvatting', 'kernpunten', 'betrouwbaarheid', 'betrouwbaarheid_toelichting', 'details', 'bron_details',
+  'controle', 'tijdschrift', 'jaargang', 'nummer', 'paginas', 'artikelnummer', 'uitgever', 'druk', 'boektitel', 'redacteuren',
+  'rapportnummer', 'sitenaam', 'datum', 'geraadpleegd', 'instelling', 'soort_werk', 'gecontroleerd_op', 'gecontroleerd_door']);
+
+/** "Centraal Bureau voor de Statistiek (CBS)" → naam + wat tussen haakjes staat; anders null. */
+const ORG_HAAKJES = /^(.+?)\s*\(([^()]+)\)$/;
+/** Een afkorting van een organisatie: alleen hoofdletters (en cijfers), zoals CBS, SER, TNO, RIVM. */
+const ORG_AFKORTING = /^[A-Z][A-Z0-9&]{1,9}$/;
+const isCbs = (bron) => bron.afkorting === 'CBS' || normaliseer(bron.organisatie) === 'centraal bureau voor de statistiek';
+
+/**
+ * Betrouwbaarheid zoals het onderzoeksteam die levert: een soort bron, geen niveau. Besluit van het onderzoeksteam
+ * (BOUWPLAN P7):
+ * - 'peer-reviewed' → hoog (wetenschappelijk getoetst);
+ * - 'overheid' met als organisatie het CBS → hoog (officiële statistiek);
+ * - andere 'overheid' (Autoriteit Persoonsgegevens, SER, Nederlandse Arbeidsinspectie, Ministerie van SZW) → redelijk;
+ * - 'kennisinstituut' (TNO) → redelijk.
+ * De toelichting zegt in gewone woorden welke soort bron het is.
+ */
+const START_BETROUWBAARHEID = {
+  'peer-reviewed': () => ({ niveau: 'hoog', toelichting: 'Wetenschappelijk artikel, beoordeeld door andere onderzoekers (peer review).' }),
+  overheid: (bron) => (isCbs(bron)
+    ? { niveau: 'hoog', toelichting: 'Officiële statistiek van het CBS.' }
+    : { niveau: 'redelijk', toelichting: 'Informatie van een overheidsorganisatie.' }),
+  kennisinstituut: () => ({ niveau: 'redelijk', toelichting: 'Publicatie van een kennisinstituut.' }),
+};
+
+const MAAND_NAMEN = Object.keys(MAANDEN_NL).join('|');
+const DATUM_IN_TEKST = `(\\d{1,2}-\\d{1,2}-\\d{4}|\\d{1,2}\\s+(?:${MAAND_NAMEN})\\s+\\d{4})`;
+// "CBS-nieuwsbericht, 31-12-2025" · "Nieuwsbericht op TNO Monitor Arbeid, 22 januari 2024"
+const NIEUWSBERICHT = new RegExp(`^(?:[\\p{L}]+-)?nieuwsbericht(?:\\s+op\\s+([^,]+?))?,\\s*${DATUM_IN_TEKST}(?![\\d-])`, 'iu');
+// "Pagina bijgewerkt op 16 september 2026" (de datum staat op de pagina zelf)
+const BIJGEWERKT = new RegExp(`\\bpagina bijgewerkt op ${DATUM_IN_TEKST}(?![\\d-])`, 'iu');
+// "Webpagina op Arboportaal (…)" · "Themapagina op Arboportaal, …": de naam van de website (tot een komma, een haakje
+// of een punt aan het eind van een zin; een punt in een webadres hoort er dus bij en wordt door isSitenaam afgewezen)
+const SITE_OP = /^(?:[\p{L}]*pagina|nieuwsbericht)\s+op\s+([^,(]+?)\s*(?:[,(]|\.(?=\s|$))/iu;
+// Alleen in de metadata van de pagina, niet zichtbaar: geen datum voor in de verwijzing
+const METADATA = /paginametadata|geen zichtbare datum/i;
+// "TNO-rapport TNO 2021 R11794 (…)" · "SER-advies 22/03, maart 2022": een mogelijk rapportnummer (zie isRapportnummer)
+const RAPPORT_NR = /^(?:[\p{Lu}]+-)?(?:[Rr]apport|[Aa]dvies)\s+([A-Z0-9][A-Za-z0-9 /.-]*?\d[A-Za-z0-9/.-]*)\s*[,(]/u;
+const MAAND_WOORD = new RegExp(`\\b(?:${[...Object.keys(MAANDEN_NL), ...Object.keys(MAANDEN_EN)].join('|')})\\b`, 'i');
+
+/**
+ * Een rapportnummer, en niet een jaartal, een datum of een naam: alleen met een letter direct voor minstens twee
+ * cijfers ("TNO 2021 R11794", "2023-R101") of met één schuine streep tussen twee getallen ("22/03"). Dus niet
+ * "2023", "2021-07" (jaar en maand?), "3 november 2020", "10/11/2026", "Den Haag 2023" of "COVID-19".
+ */
+function isRapportnummer(t) {
+  if (MAAND_WOORD.test(t) || /\d{1,4}[-/.]\d{1,2}[-/.]\d{1,4}/.test(t)) return false;
+  return /\p{L}\d{2,}/u.test(t) || /(?:^|\s)\d{1,4}\/\d{1,4}(?:$|\s)/.test(t);
+}
+
+/** De naam van een website, geen webadres: begint met een hoofdletter of cijfer, zonder punt, schuine streep of "www". */
+const isSitenaam = (t) => /^[\p{Lu}\d]/u.test(t) && !/[./]/.test(t) && !/^www\b/i.test(t);
+
+/** '31-12-2025' of '22 januari 2024' → 'JJJJ-MM-DD' (alleen een bestaande datum), anders ''. */
+function datumUitTekst(t) {
+  const s = String(t).trim().toLowerCase();
+  let j; let m; let d;
+  const cijfers = /^(\d{1,2})-(\d{1,2})-(\d{4})$/.exec(s);
+  if (cijfers) [, d, m, j] = cijfers.map(Number);
+  else {
+    const woord = /^(\d{1,2})\s+([a-z]+)\s+(\d{4})$/.exec(s);
+    if (!woord || !MAANDEN_NL[woord[2]]) return '';
+    [d, m, j] = [Number(woord[1]), MAANDEN_NL[woord[2]], Number(woord[3])];
+  }
+  const dag = new Date(Date.UTC(j, m - 1, d));
+  if (dag.getUTCFullYear() !== j || dag.getUTCMonth() !== m - 1 || dag.getUTCDate() !== d) return '';
+  return `${j}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+
+/**
+ * Wat er ondubbelzinnig uit de vrije tekst bron_details van een bron die geen artikel is te halen is (besluit van het
+ * onderzoeksteam, P7: alleen als de tekst ondubbelzinnig is, nooit raden; de rest wordt gemeld):
+ * - webpagina: de datum van een nieuwsbericht ("CBS-nieuwsbericht, 31-12-2025") of de wijzigingsdatum die op de
+ *   pagina staat ("Pagina bijgewerkt op 16 september 2026"), alleen als het jaar gelijk is aan het jaar van de bron.
+ *   Een datum die alleen in de metadata van de pagina staat ("volgens de paginametadata", "geen zichtbare datum")
+ *   wordt niet gebruikt; dan is zonderDatum true en krijgt de bron "z.d." (normaliseerStartbron, besluit 7).
+ *   De naam van de website bij "Nieuwsbericht op …" of "Webpagina op …", als die anders is dan de organisatie en
+ *   de afkorting, en geen webadres is ("www.arboportaal.nl" wordt niet overgenomen).
+ * - rapport: het rapportnummer na "TNO-rapport" of "SER-advies" ("TNO 2021 R11794", "22/03"); een jaartal of datum
+ *   op die plek ("Rapport 2023, Den Haag") is geen rapportnummer (isRapportnummer).
+ * Bij andere soorten (bijv. cijfers) wordt niets gelezen.
+ * → { velden: { datum?, sitenaam?, rapportnummer? }, meldingen: [tekst], zonderDatum?: true }
+ */
+export function leesStartDetails(tekst, { soort, jaar = null, organisatie = '', afkorting = '' } = {}) {
+  const vrij = String(tekst ?? '').replace(/\s+/g, ' ').trim();
+  const velden = {};
+  const meldingen = [];
+  let zonderDatum = false;
+  if (!vrij) return { velden, meldingen };
+  if (soort === 'website') {
+    const nieuws = NIEUWSBERICHT.exec(vrij);
+    const bijgewerkt = BIJGEWERKT.exec(vrij);
+    const gevonden = nieuws?.[2] || bijgewerkt?.[1] || '';
+    if (gevonden) {
+      const datum = datumUitTekst(gevonden);
+      if (datum && Number(datum.slice(0, 4)) === jaar) velden.datum = datum;
+      else meldingen.push(`De datum "${gevonden}" in bron_details past niet bij het jaar ${jaar ?? 'z.d.'}; niet overgenomen.`);
+    } else if (METADATA.test(vrij)) {
+      zonderDatum = true;
+      meldingen.push('De datum in bron_details staat alleen in de metadata van de pagina; niet overgenomen. De bron krijgt "z.d." (zonder datum) en houdt de raadpleegdatum.');
+    }
+    const site = (nieuws?.[1] || SITE_OP.exec(vrij)?.[1] || '').trim();
+    const isAuteur = [organisatie, afkorting].some((x) => x && normaliseer(x) === normaliseer(site));
+    if (site && !isAuteur) {
+      if (isSitenaam(site)) velden.sitenaam = site;
+      else meldingen.push(`"${kort(site, 60)}" in bron_details lijkt geen naam van een website (een webadres of geen naam); niet overgenomen.`);
+    }
+  } else if (soort === 'rapport') {
+    const nr = RAPPORT_NR.exec(vrij)?.[1].trim();
+    if (nr && isRapportnummer(nr)) velden.rapportnummer = nr;
+    else if (nr) meldingen.push(`"${kort(nr, 60)}" in bron_details lijkt een jaartal, datum of naam, geen rapportnummer; niet overgenomen.`);
+  }
+  const genoemd = Object.entries(velden).map(([k, w]) => `${k} "${w}"`).join(', ');
+  const fragment = `"${kort(vrij, 80)}${vrij.length > 80 ? '…' : ''}"`;
+  meldingen.push(genoemd
+    ? `Uit bron_details overgenomen: ${genoemd}; de rest is niet overgenomen (${fragment}).`
+    : `Uit bron_details is niets overgenomen (${fragment}).`);
+  return zonderDatum ? { velden, meldingen, zonderDatum } : { velden, meldingen };
+}
+
+/**
+ * Geraadpleegd op (besluit 7 van het onderzoeksteam bij P7, de regel van APA 7): een raadpleegdatum hoort alleen bij
+ * inhoud die bedoeld is om te veranderen en die niet wordt gearchiveerd. Voor een startbron betekent dat:
+ * - cijfers (een tabel of database die wordt bijgewerkt, zoals een StatLine-tabel): altijd met raadpleegdatum;
+ * - een webpagina met een eigen datum (een gedateerd nieuwsbericht, een pagina met "Pagina bijgewerkt op …", dus
+ *   details.datum): zonder raadpleegdatum;
+ * - een webpagina zonder eigen datum (z.d., of een datum die alleen in de metadata van de pagina staat; die krijgt
+ *   "z.d.", zie leesStartDetails): met raadpleegdatum.
+ * Een wet of richtlijn houdt de raadpleegdatum uit het record, ook met een eigen datum: de geldende tekst van een wet
+ * (wetten.overheid.nl) verandert wel (bevestigd door het onderzoeksteam bij P7). Zo was het ook vóór besluit 7.
+ * Bij andere soorten (artikel, rapport, boek …) is er geen veld voor; zie normaliseerStartbron.
+ */
+function metRaadpleegdatum(bron) {
+  if (bron.soort !== 'website') return true;
+  return !bron.details?.datum;
+}
+
+/**
  * Zet één record van het onderzoeksteam (data/startcollectie.json, BOUWPLAN §3.9) om in de vorm van een bron.
  * → { bron, meldingen, fouten }. fouten (hard: geen titel, geen URL en geen DOI, onbekende soort, geen bekend
  * onderwerp) los je op door het onderzoeksteam te vragen, nooit door iets in te vullen. meldingen zijn zachte
- * waarschuwingen: onbekende onderwerpen naar de trefwoorden, http in plaats van https, ingekorte velden.
+ * waarschuwingen: onbekende onderwerpen naar de trefwoorden, http in plaats van https, ingekorte velden, wat er uit
+ * bron_details wel en niet is overgenomen.
+ * Uitleg van de velden van het onderzoeksteam (besluiten bij P7): een afkorting tussen haakjes achter de organisatie
+ * wordt de afkorting; de betrouwbaarheid volgt START_BETROUWBAARHEID; bron_details zie hierboven en
+ * leesStartDetails (een webpagina met alleen een datum in de metadata krijgt z.d.); 'geraadpleegd' alleen bij
+ * soorten met dat veld en dan volgens metRaadpleegdatum (besluit 7); 'relevantie' en 'open_access' worden niet gebruikt.
  * De echte controle (lengtes, DOI, URL) doet controleerBron in src/lib/bibliotheek.js.
  */
 export function normaliseerStartbron(record) {
@@ -1296,6 +1553,8 @@ export function normaliseerStartbron(record) {
   else bron.soort = soort;
 
   // Auteurs: teksten ("Bakker, A. B.") of objecten in onze vorm. Een organisatie als auteur gaat naar organisatie.
+  // Een object neemt de achternaam over zoals hij is: zo levert het onderzoeksteam een buitenlandse naam met een
+  // voorvoegsel in kleine letters die bij de achternaam hoort ({ achternaam: 'de Montjoye' }; zie de kop van dit bestand).
   bron.organisatie = tekst(r.organisatie);
   bron.afkorting = tekst(r.afkorting);
   const auteurs = Array.isArray(r.auteurs) ? r.auteurs : typeof r.auteurs === 'string' ? r.auteurs.split(';') : [];
@@ -1308,6 +1567,13 @@ export function normaliseerStartbron(record) {
       if (!bron.organisatie) bron.organisatie = gelezen.organisatie;
       else if (normaliseer(gelezen.organisatie) !== normaliseer(bron.organisatie)) meldingen.push(`Auteur "${gelezen.organisatie}" lijkt een organisatie; niet overgenomen.`);
     } else bron.auteurs.push(gelezen);
+  }
+  // "Centraal Bureau voor de Statistiek (CBS)": de afkorting apart, zodat de verwijzing in de tekst de eerste keer
+  // "(Centraal Bureau voor de Statistiek [CBS], 2025)" wordt en daarna "(CBS, 2025)", en de citeersleutel cbs2025.
+  const haakjes = ORG_HAAKJES.exec(bron.organisatie);
+  if (haakjes && ORG_AFKORTING.test(haakjes[2].trim()) && (!bron.afkorting || bron.afkorting === haakjes[2].trim())) {
+    bron.organisatie = haakjes[1].trim();
+    bron.afkorting = haakjes[2].trim();
   }
 
   if (r.jaar !== undefined && r.jaar !== null && r.jaar !== '') {
@@ -1359,9 +1625,15 @@ export function normaliseerStartbron(record) {
     return kort(k, LIMIETEN.kernpunt);
   });
 
-  // Betrouwbaarheid: een sleutel, een object { niveau, toelichting } of een tekst ("Hoog: peer-reviewed").
+  // Betrouwbaarheid: een sleutel, een soort bron van het onderzoeksteam (START_BETROUWBAARHEID), een object
+  // { niveau, toelichting } of een tekst ("Hoog: peer-reviewed").
   const b = r.betrouwbaarheid;
-  if (b && typeof b === 'object') {
+  const categorie = typeof b === 'string' ? START_BETROUWBAARHEID[b.trim().toLowerCase()] : null;
+  if (categorie) {
+    const { niveau, toelichting } = categorie(bron);
+    bron.betrouwbaarheid = niveau;
+    bron.betrouwbaarheid_toelichting = toelichting;
+  } else if (b && typeof b === 'object') {
     bron.betrouwbaarheid = BETROUWBAARHEID_ALIASSEN[tekst(b.niveau).toLowerCase()] || 'onbekend';
     bron.betrouwbaarheid_toelichting = tekst(b.toelichting);
   } else if (typeof b === 'string' && b.trim()) {
@@ -1384,7 +1656,8 @@ export function normaliseerStartbron(record) {
   for (const k of DETAIL_SLEUTELS) if (r[k] !== undefined && r[k] !== null && r[k] !== '') ruw[k] = r[k];
   // bron_details (vrije tekst, zoals het onderzoeksteam die levert): bij een artikel zonder losse tijdschriftvelden
   // staat daar "Tijdschrift, 22(3), 273–285", soms met een toelichting erachter. Dat deel lezen we; de rest wordt
-  // gemeld en niet overgenomen. Bij andere soorten heeft bron_details geen vast formaat: melden, niet overnemen.
+  // gemeld en niet overgenomen. Bij een webpagina of rapport lezen we alleen wat ondubbelzinnig is (datum, naam van
+  // de website, rapportnummer; leesStartDetails); losse velden in het record gaan altijd voor.
   const vrij = tekst(r.bron_details);
   if (vrij) {
     let gelezen = null;
@@ -1400,7 +1673,12 @@ export function normaliseerStartbron(record) {
       for (const [k, w] of Object.entries(gelezen)) if (ruw[k] === undefined || ruw[k] === null || ruw[k] === '') ruw[k] = w;
       if (rest) meldingen.push(`Uit bron_details is alleen het tijdschriftdeel overgenomen; niet overgenomen: "${kort(rest, 80)}${rest.length > 80 ? '…' : ''}".`);
     } else if (bron.soort !== 'artikel') {
-      meldingen.push('Veld "bron_details" is niet overgenomen: alleen bij een artikel worden daar tijdschrift, jaargang, nummer en pagina\'s uit gelezen.');
+      const uitTekst = leesStartDetails(vrij, bron);
+      for (const [k, w] of Object.entries(uitTekst.velden)) if (ruw[k] === undefined || ruw[k] === null || ruw[k] === '') ruw[k] = w;
+      meldingen.push(...uitTekst.meldingen);
+      // Een webpagina zonder zichtbare datum (de datum staat alleen in de metadata): z.d. (besluit 7, APA 7).
+      // Een datum in het record zelf ('datum') gaat voor; dan blijft het jaar.
+      if (uitTekst.zonderDatum && !ruw.datum) bron.jaar = null;
     } else if (ruw.tijdschrift) {
       meldingen.push('Veld "bron_details" is niet gebruikt: het tijdschrift staat al in de losse velden.');
     } else {
@@ -1408,9 +1686,20 @@ export function normaliseerStartbron(record) {
     }
   }
   if (r.controle && !ruw.gecontroleerd_door) ruw.gecontroleerd_door = r.controle;
+  // "Ministerie van Sociale Zaken en Werkgelegenheid (Arboportaal)" bij een webpagina op Arboportaal: wat tussen
+  // haakjes staat is de naam van de website (APA: auteur, dan de website), niet een deel van de naam.
+  const siteHaakjes = ORG_HAAKJES.exec(bron.organisatie);
+  if (siteHaakjes && bron.soort === 'website' && ruw.sitenaam && normaliseer(siteHaakjes[2]) === normaliseer(ruw.sitenaam)) {
+    bron.organisatie = siteHaakjes[1].trim();
+  } else if (siteHaakjes) {
+    meldingen.push(`De organisatie "${bron.organisatie}" heeft iets tussen haakjes dat niet als afkorting of website is herkend; zo overgenomen.`);
+  }
   const toegestaan = new Set(detailveldenVan(bron.soort).map((v) => v.sleutel));
   for (const [k, w] of Object.entries(ruw)) {
     if (!toegestaan.has(k)) {
+      // Geraadpleegd op: alleen bij soorten met dat veld (webpagina, wet, richtlijn, cijfers: inhoud die verandert;
+      // APA 7). Bij een artikel of een gedateerde bron zonder dat veld laten we het stil weg (besluit onderzoeksteam, P7).
+      if (k === 'geraadpleegd' && (bron.soort === 'artikel' || Number.isInteger(bron.jaar))) continue;
       if (w !== '' && w !== null && w !== undefined) meldingen.push(`Veld "${k}" hoort niet bij de soort "${bron.soort}" en is weggelaten.`);
       continue;
     }
@@ -1425,5 +1714,7 @@ export function normaliseerStartbron(record) {
     }
   }
   if (bron.details.paginas) bron.details.paginas = paginaStreep(bron.details.paginas);
+  // Geen raadpleegdatum bij een webpagina met een eigen datum; stil, zoals bij een artikel (besluit 7).
+  if (bron.details.geraadpleegd && !metRaadpleegdatum(bron)) delete bron.details.geraadpleegd;
   return { bron, meldingen, fouten };
 }
