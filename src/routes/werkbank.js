@@ -139,6 +139,13 @@ function gereserveerd(ctx) {
   }
   const namen = spssVariabeleNamen(ctx.data);
   const gebruikt = new Set(namen.gebruikt);
+  // Zoals de werkbank (rekenkern eigenNamen → dataset.js): de namen van de eigen variabelen van de vragenlijsten
+  // staan al vast vóór de codes. Een code met dezelfde naam als een bestaande eigen variabele heet dan …_2, en die
+  // eigen variabele blijft te wijzigen (J7). Bij een nieuwe variabele telt haar naam hier niet mee: een naam die nu
+  // al van een code is, blijft gereserveerd.
+  for (const d of ctx.definities) {
+    if ((d.dataset_id ?? null) === null && d.soort !== 'eigenschappen' && d.soort !== 'filter') gebruikt.add(String(d.naam).toLowerCase());
+  }
   const codes = codeVariabelen(ctx.data, { namen, gebruikt }).map((c) => c.naam);
   return gereserveerdeNamen([...namen.gebruikt, ...codes], Object.keys(KENMERKEN));
 }
