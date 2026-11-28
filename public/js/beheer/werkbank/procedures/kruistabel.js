@@ -1,6 +1,6 @@
 // Werkbank: kruistabel met chi-kwadraat en de aanpassingstoets (D2 §5.2). Zuivere module, geen DOM.
 
-import { isIndeling } from '../dataset.js';
+import { isIndeling, isGetal, getalWeergave } from '../dataset.js';
 import { beschermIndeling, telTabel, buurTabellen, maskeerMetBuren, verschilVeilig } from '../privacy-selectie.js';
 import { pTekst } from '../../opmaak.js';
 import { LABEL_OVERIG } from '../../privacy.js';
@@ -8,9 +8,11 @@ import { chiKwadraat, chi2Sf, aanpassingsToets, effectGrootte } from '../../stat
 import { fisherExact2x2 } from '../verdelingen.js';
 import { tabel, cel, tekstCel, verborgenCel, aantalCel, voeg, melding, sluitAf, methode } from '../uitvoer.js';
 import {
-  P_GEEN_TOETS, P_TE_WEINIG, P_SAMENGEVOEGD, P_VERDELING_PER_GROEP, UITLEG_RESIDUEN, ZIN_SIG_VERBAND, ZIN_GEEN_SIG_VERBAND, LET_OP_VERBAND, g, apaZinnen, effectWoord,
+  P_GEEN_TOETS, P_TE_WEINIG, P_SAMENGEVOEGD, P_VERDELING_PER_GROEP, P_WORTEL_KRUIS, UITLEG_RESIDUEN, ZIN_SIG_VERBAND, ZIN_GEEN_SIG_VERBAND, LET_OP_VERBAND, g, apaZinnen, effectWoord,
 } from '../uitvoer-tekst.js';
-import { inSelectie, groepVanRijen, selectieControle, begin, weiger, overlapFout, variabelenUit, tel, isVastGetal } from './basis.js';
+import { inSelectie, groepVanRijen, selectieControle, begin, weiger, overlapFout, variabelenUit, tel, isVastGetalOfIndeling, beschermdeWortel, splitstVerborgen } from './basis.js';
+import { groepKeuze } from './beschrijven.js';
+import { wortelVan } from '../transformaties.js';
 
 const ALFA = 0.05;
 const som = (a) => a.reduce((t, x) => t + x, 0);
@@ -79,6 +81,58 @@ export function randenMetBuren(ctx, basisAlles, groep, groepen) {
     gr = samen;
   }
   return null;
+}
+
+/**
+ * P1, P2 in een kruistabel: de groepen van wortel W die in de kruistabel W × y niet los te zien zijn (samengevoegd,
+ * een rij met een verborgen cel, of bij een getal door Gemiddelden per groep en het dashboard verborgen).
+ * Geeft per groep van W true = verborgen.
+ */
+function verborgenBijWortel(ds, ctx, W, y) {
+  const gW = groepVanRijen(ds, W);
+  const gy = groepVanRijen(ds, y);
+  const ngW = W.beschermd.groepen.length;
+  const ngy = y.beschermd.groepen.length;
+  const basisAlles = new Uint8Array(ds.n);
+  for (let r = 0; r < ds.n; r++) basisAlles[r] = gW[r] >= 0 && gy[r] >= 0 ? 1 : 0;
+  const basis = inSelectie(basisAlles, ctx.selectie);
+  const H = new Array(ngW).fill(false);
+  const tW = new Array(ngW).fill(0);
+  const ty = new Array(ngy).fill(0);
+  for (let r = 0; r < ds.n; r++) if (basis[r]) { tW[gW[r]]++; ty[gy[r]]++; }
+  const sW = voegKleineSamen(tW, W.beschermd.groepen, ctx.d);
+  const sy = voegKleineSamen(ty, y.beschermd.groepen, ctx.d);
+  sW.naar.forEach((nieuw, i) => { if (tW[i] > 0 && (nieuw < 0 || sW.groepen[nieuw]?.samengevoegd)) H[i] = true; });
+  if (sW.bruikbaar && sy.bruikbaar) {
+    const rij = herindeel(gW, sW.naar);
+    const kol = herindeel(gy, sy.naar);
+    const T = telTabel(basis, null, rij, kol, sW.groepen.length, sy.groepen.length);
+    const weg = maskeerMetBuren(T, ctx.d, buurTabellen(ctx.selectie, basisAlles, rij, kol, sW.groepen.length, sy.groepen.length, ctx.d));
+    sW.naar.forEach((nieuw, i) => { if (tW[i] > 0 && nieuw >= 0 && weg[nieuw].some(Boolean)) H[i] = true; });
+  } else {
+    tW.forEach((n, i) => { if (n > 0) H[i] = true; });
+  }
+  if (isGetal(y)) {
+    const k = groepKeuze(ds, ctx, getalWeergave(y), W);
+    if (!k.fout) {
+      const mee = new Set(k.keuze.mee);
+      k.aantallen.forEach((n, i) => { if (n > 0 && !mee.has(i)) H[i] = true; });
+    }
+  }
+  return H;
+}
+
+/**
+ * Splitst indeling x (met de groepen na samenvoegen) de verborgen groepen van zijn beschermde wortel bij y? Dan volgt
+ * een verborgen groep uit deze kruistabel en die van de wortel. Geeft null of de melding.
+ */
+function wortelFout(ds, ctx, x, groepx, nx, y, basis) {
+  const W = beschermdeWortel(ds, x);
+  if (!W || W.id === y.id || wortelVan(ds, y).id === W.id) return null;
+  const H = verborgenBijWortel(ds, ctx, W, y);
+  if (!H.some(Boolean)) return null;
+  const weg = splitstVerborgen(groepVanRijen(ds, W), H, groepx, nx, basis);
+  return weg.some(Boolean) ? P_WORTEL_KRUIS(x.label, W.label, W.beschermd.groepen.filter((_, i) => H[i]).map((gr) => gr.label)) : null;
 }
 
 /**
@@ -163,8 +217,16 @@ export function kruistabel(ds, spec, ctx) {
   const ietsWeg = verborgen.some((r) => r.some(Boolean));
   // P3: een schaal- of cijfervraag per groep met verborgen of samengevoegde cellen is uit het gemiddelde en de spreiding
   // per groep terug te rekenen (die staan op het dashboard en bij Gemiddelden per groep). Dan geen kruistabel.
+  // Ook voor een indeling van zo'n vraag ("Indelen in groepen", ook met één waarde per groep): het gemiddelde per groep
+  // van de vraag zelf staat op het dashboard.
   for (const [v, ind] of [[a, ri], [b, ki]]) {
-    if (isVastGetal(v) && (ietsWeg || ind.groepen.some((x) => x.samengevoegd))) return weiger(ds, spec, ctx, titel, 'privacy', P_VERDELING_PER_GROEP(v.label));
+    if (isVastGetalOfIndeling(ds, v) && (ietsWeg || ind.groepen.some((x) => x.samengevoegd))) return weiger(ds, spec, ctx, titel, 'privacy', P_VERDELING_PER_GROEP(v.label));
+  }
+  // P1, P2: een eigen indeling van een beschermde indeling (zoals "Productie of rest" van afdeling) mag de groepen die
+  // daar verborgen blijven niet uit elkaar halen.
+  for (const [x, groepx, nx, y] of [[a, rij, nr, b], [b, kol, nk, a]]) {
+    const fout = wortelFout(ds, ctx, x, groepx, nx, y, basis);
+    if (fout) return weiger(ds, spec, ctx, titel, 'privacy', fout);
   }
   const rijTot = T.map(som);
   const kolTot = T[0].map((_, j) => som(T.map((r) => r[j])));
@@ -269,7 +331,7 @@ export function aanpassing(ds, spec, ctx) {
   gr = rd.groepen;
   // P3: met een selectie is dit de verdeling binnen die selectie; samengevoegde waarden van een schaal- of cijfervraag
   // zijn dan uit het gemiddelde en de spreiding van de selectie terug te rekenen.
-  if (ctx.selectie && !ctx.selectie.impliciet && isVastGetal(v) && gr.some((x) => x.samengevoegd)) return weiger(ds, spec, ctx, titel, 'privacy', P_VERDELING_PER_GROEP(v.label));
+  if (ctx.selectie && !ctx.selectie.impliciet && isVastGetalOfIndeling(ds, v) && gr.some((x) => x.samengevoegd)) return weiger(ds, spec, ctx, titel, 'privacy', P_VERDELING_PER_GROEP(v.label));
   const waargenomen = new Array(gr.length).fill(0);
   for (let r = 0; r < ds.n; r++) if (basis[r] && nieuw[r] >= 0) waargenomen[nieuw[r]]++;
   // Verwacht: gelijk, of per categorie een aantal (bijvoorbeeld medewerkers); per groep opgeteld.

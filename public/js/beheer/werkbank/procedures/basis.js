@@ -8,11 +8,11 @@
 
 import { REDEN, isGetal, isAchtergrond, isIndeling, getalWeergave } from '../dataset.js';
 import { PROCEDURES as SLOTS } from '../definities.js';
-import { verdeelInGroepen, verbergReeks, onderdrukAlles, onderdrukKolom, DREMPEL } from '../../privacy.js';
-import { selectieFout } from '../privacy-selectie.js';
-import { controleerWortels, P_FILTER_REST, pFilterBuur } from '../transformaties.js';
+import { verdeelInGroepen, verbergReeks, onderdrukAlles, onderdrukKolom, maskeer, DREMPEL } from '../../privacy.js';
+import { selectieFout, telTabel, buurTabellen } from '../privacy-selectie.js';
+import { controleerWortels, P_FILTER_REST, pFilterBuur, wortelVan } from '../transformaties.js';
 import { maakUitvoer, geweigerd, melding } from '../uitvoer.js';
-import { P_INDELING_ALS_GETAL, P_ORDINAAL, P_OPEN, P_LIJST_BUUR } from '../uitvoer-tekst.js';
+import { P_INDELING_ALS_GETAL, P_ORDINAAL, P_OPEN, P_LIJST_BUUR, P_LIEVER_NIET_SELECTIE } from '../uitvoer-tekst.js';
 
 /** 1 = rij heeft op alle variabelen een geldige waarde. */
 export function geldigMasker(ds, variabelen) {
@@ -218,6 +218,19 @@ export function selectieControle(ctx, basis) {
  * volgt het verborgen aantal uit n.
  */
 export function indelingAlsGetalFout(v, basis, d = DREMPEL, F = null) {
+  // Een gewone vraag met "Dat zeg ik liever niet" (Ja / Nee / Zeg ik liever niet) als getal: zonder selectie staat
+  // de hele verdeling op het dashboard; binnen een selectie volgt het aantal "liever niet" uit de grootte van de
+  // selectie min N. Dat aantal moet dan 0 of minstens d zijn (J2).
+  if (!v.groepering && v.origineel && F && F.some((x) => !x)) {
+    let liever = 0;
+    let n = 0;
+    for (let r = 0; r < v.reden.length; r++) {
+      if (!F[r]) continue;
+      if (v.reden[r] === REDEN.LIEVER_NIET) liever++;
+      else if (basis[r]) n++;
+    }
+    return verbergReeks([n, liever], d).some(Boolean) ? P_LIEVER_NIET_SELECTIE(v.label) : null;
+  }
   if (!v.groepering) return null;
   const tellingen = new Map();
   for (let r = 0; r < basis.length; r++) if (basis[r]) tellingen.set(v.waarden[r], (tellingen.get(v.waarden[r]) || 0) + 1);
@@ -271,6 +284,84 @@ export function analyseVariabelen(ds, spec) {
  * spreiding, scheefheid en kurtosis terug te rekenen. (Van een indeling als getal is het andersom: zie groepKeuze.)
  */
 export const isVastGetal = (v) => !!v && isGetal(v) && !v.groepering && v.labels.length >= 3;
+
+/**
+ * P3 ook voor een indeling van zo'n vraag ("Indelen in groepen" van een schaalvraag, ook met één waarde per groep):
+ * het gemiddelde per groep of selectie van de vraag zelf staat op het dashboard en in de werkbank, dus verborgen
+ * cellen van de indeling zijn daaruit net zo goed terug te rekenen.
+ */
+export const isVastGetalOfIndeling = (ds, v) => isVastGetal(v) || (!!v?.groepering && isVastGetal(wortelVan(ds, v)));
+
+/**
+ * P3 (optie 1): van een vraag met vaste waarden tonen we per groep of binnen een selectie meer dan N en gemiddelde
+ * (SD, SE, interval, mediaan, percentielen, minimum, maximum, scheefheid, kurtosis) alleen als de verdeling daar geen
+ * verborgen cel heeft: de rij van de kruistabel waarde × groep (met de buren van de selectie, regel D). Anders zijn de
+ * verborgen aantallen uit die getallen samen met het gemiddelde terug te rekenen. Het dashboard toont per groep ook
+ * alleen N en gemiddelde.
+ * rijen: per rij het groepnummer 0..aantal−1 (of −1: telt mee als één "rest"-rij, want ook die verdeling volgt uit
+ * het totaal), of null zonder groepen. U: de rijen met een geldige waarde, los van de selectie (de tabel telt
+ * U ∩ selectie; de buren van de selectie tellen in U). Geeft per groep true = vrij (alles mag).
+ */
+export function spreidingVrij(v, U, rijen, aantal, ctx) {
+  const uit = new Array(Math.max(1, aantal)).fill(true);
+  if (!isVastGetal(v)) return uit;
+  const sel = ctx.selectie && !ctx.selectie.impliciet ? ctx.selectie : null;
+  if (!rijen && !sel) return uit;
+  const waarden = [];
+  const gezien = new Set();
+  for (let r = 0; r < U.length; r++) if (U[r] && !gezien.has(v.waarden[r])) { gezien.add(v.waarden[r]); waarden.push(v.waarden[r]); }
+  waarden.sort((p, q) => p - q);
+  const kolomNr = new Map(waarden.map((x, i) => [x, i]));
+  const nr = rijen ? aantal + 1 : 1;
+  const nk = Math.max(1, waarden.length);
+  const rij = new Int32Array(U.length).fill(-1);
+  const kol = new Int32Array(U.length).fill(-1);
+  for (let r = 0; r < U.length; r++) {
+    if (!U[r]) continue;
+    rij[r] = rijen ? (rijen[r] >= 0 ? rijen[r] : aantal) : 0;
+    kol[r] = kolomNr.get(v.waarden[r]);
+  }
+  const T = telTabel(inSelectie(U, sel), null, rij, kol, nr, nk);
+  const { verschillen, vooraf } = buurTabellen(sel, U, rij, kol, nr, nk, ctx.d);
+  const mee = T.map((x) => x.some((c) => c > 0));
+  if (!mee.some(Boolean)) return uit;
+  const kies = (t) => t.filter((_, i) => mee[i]);
+  const weg = maskeer([kies(T), ...verschillen.map(kies)], ctx.d, vooraf ? kies(vooraf) : null);
+  let k = 0;
+  for (let i = 0; i < nr; i++) {
+    if (!mee[i]) continue;
+    if (i < uit.length) uit[i] = !weg[k].some(Boolean);
+    k++;
+  }
+  return uit;
+}
+
+/**
+ * Een eigen indeling w van een beschermde indeling W (zijn wortel), zoals "Productie of rest" van "Op welke afdeling
+ * werk je?": geeft W, of null. (P1, P2: groepen die bij W niet apart te zien zijn, blijven via w ook verborgen.)
+ */
+export function beschermdeWortel(ds, w) {
+  if (!w) return null;
+  const W = wortelVan(ds, w);
+  return W && W.id !== w.id && W.beschermd && W.labels?.length >= 2 && W.soort !== 'set' ? W : null;
+}
+
+/**
+ * Welke groepen van indeling w een deel van de verborgen groepen H van de wortel bevatten, maar niet alles daarvan
+ * (in de rijen van masker). Zo'n groep min de getoonde groepen van de wortel geeft een verborgen groep terug.
+ * Een groep zonder rijen uit H, of met heel H, mag blijven (heel H volgt ook uit het totaal).
+ * groepW / groepw: per rij de groep van de wortel en van w (−1 = geen). Geeft per groep van w true = verbergen.
+ */
+export function splitstVerborgen(groepW, H, groepw, aantal, masker) {
+  let totaal = 0;
+  const per = new Array(aantal).fill(0);
+  for (let r = 0; r < groepW.length; r++) {
+    if (!masker[r] || groepW[r] < 0 || !H[groepW[r]]) continue;
+    totaal++;
+    if (groepw[r] >= 0) per[groepw[r]]++;
+  }
+  return per.map((x) => x > 0 && x < totaal);
+}
 
 /** Kan v als getal? Anders de melding. */
 export function getalFout(v) {

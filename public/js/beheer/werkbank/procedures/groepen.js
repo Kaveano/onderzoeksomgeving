@@ -9,10 +9,11 @@ import { tweeWaardenRegel, weggevallenRegel } from '../privacy-selectie.js';
 import { tabel, cel, tekstCel, verborgenCel, voeg, melding, sluitAf, methode } from '../uitvoer.js';
 import {
   UITLEG_LEVENE, UITLEG_POSTHOC, ZIN_SIG_VERSCHIL, ZIN_GEEN_SIG_VERSCHIL, ZIN_SIG_GROEPEN, ZIN_GEEN_SIG_GROEPEN, LET_OP_VERSCHIL,
-  P_GEPAARD, pWeggevallen, UITLEG_GEPAARD, g, apaZinnen, effectWoord, pWaarde,
+  P_GEPAARD, pWeggevallen, UITLEG_GEPAARD, g, apaZinnen, effectWoord, pWaarde, P_SPREIDING_SELECTIE,
 } from '../uitvoer-tekst.js';
 import {
   getalFout, begin, weiger, overlapFout, ordinaalMelding, variabelenUit, geldigMasker, inSelectie, iedereen, selectieControle, indelingAlsGetalFout,
+  spreidingVrij,
 } from './basis.js';
 import { groepenVoor, beschrijving } from './beschrijven.js';
 
@@ -182,7 +183,7 @@ export async function ttoets(ds, spec, ctx) {
     await ctx.pauze();
     const fout = getalFout(v);
     if (fout) { voeg(u, melding('waarschuwing', fout)); continue; }
-    const gr = groepenVoor(ds, ctx, v, w);
+    const gr = groepenVoor(ds, ctx, v, w, { momenten: true });
     if (gr.fout) { voeg(u, melding(gr.niveau, gr.fout)); continue; }
     voeg(u, gr.meldingen);
     if (!gr.mee.includes(ga) || !gr.mee.includes(gb)) {
@@ -275,7 +276,7 @@ export async function anova(ds, spec, ctx) {
     await ctx.pauze();
     const fout = getalFout(v);
     if (fout) { voeg(u, melding('waarschuwing', fout)); continue; }
-    const gr = groepenVoor(ds, ctx, v, w);
+    const gr = groepenVoor(ds, ctx, v, w, { momenten: true });
     if (gr.fout) { voeg(u, melding(gr.niveau, gr.fout)); continue; }
     voeg(u, gr.meldingen);
     if (gr.mee.length < 2) { voeg(u, melding('privacy', `“${v.label}”: er zijn geen twee groepen met genoeg respondenten.`)); continue; }
@@ -469,8 +470,15 @@ export async function gepaard(ds, spec, ctx) {
     nMax = Math.max(nMax, x.length);
     const A = beschrijving(x);
     const B = beschrijving(y);
-    stat.push([tekstCel(label), tekstCel(a.label), cel(A.n, 'aantal'), cel(A.gemiddelde, 'gem'), cel(A.sd, 'gem'), cel(A.se, 'gem')]);
-    stat.push([tekstCel(''), tekstCel(b.label), cel(B.n, 'aantal'), cel(B.gemiddelde, 'gem'), cel(B.sd, 'gem'), cel(B.se, 'gem')]);
+    // P3 (optie 1): binnen een selectie van een vraag met vaste waarden en een verborgen cel daar alleen N en gemiddelde.
+    const vrijA = spreidingVrij(a, geldig, null, 1, ctx)[0];
+    const vrijB = spreidingVrij(b, geldig, null, 1, ctx)[0];
+    const sd = (X, vrij) => (vrij ? [cel(X.sd, 'gem'), cel(X.se, 'gem')] : [verborgenCel('gem'), verborgenCel('gem')]);
+    stat.push([tekstCel(label), tekstCel(a.label), cel(A.n, 'aantal'), cel(A.gemiddelde, 'gem'), ...sd(A, vrijA)]);
+    stat.push([tekstCel(''), tekstCel(b.label), cel(B.n, 'aantal'), cel(B.gemiddelde, 'gem'), ...sd(B, vrijB)]);
+    for (const [vr, vv] of [[vrijA, a], [vrijB, b]]) if (!vr) voeg(u, melding('privacy', P_SPREIDING_SELECTIE(vv.label)));
+    A.vrij = vrijA;
+    B.vrij = vrijB;
     const pr = pearson(x, y);
     samen.push([tekstCel(`${label}: ${a.label} en ${b.label}`), cel(x.length, 'aantal'), cel(pr?.r, 'r'), cel(pr?.p, 'p')]);
     const t = gepaardeT(x, y);
@@ -520,7 +528,8 @@ export async function gepaard(ds, spec, ctx) {
     u.apa = apaZinnen((f) => {
       const [h, l, Mh, Ml] = t.verschil >= 0 ? [a.label, b.label, A, B] : [b.label, a.label, B, A];
       const werkwoord = significant ? 'hoger' : 'niet significant anders';
-      return `Respondenten scoorden op “${h}” (*M* = ${f.g(Mh.gemiddelde)}; *SD* = ${f.g(Mh.sd)}) ${werkwoord} dan op “${l}” (*M* = ${f.g(Ml.gemiddelde)}; *SD* = ${f.g(Ml.sd)}), *t*(${f.df(t.df)}) = ${f.g(Math.abs(t.t))}; ${f.p(t.p)}; *d*z = ${f.g(Math.abs(t.dz))}.`;
+      const m = (X) => (X.vrij ? `*M* = ${f.g(X.gemiddelde)}; *SD* = ${f.g(X.sd)}` : `*M* = ${f.g(X.gemiddelde)}`);
+      return `Respondenten scoorden op “${h}” (${m(Mh)}) ${werkwoord} dan op “${l}” (${m(Ml)}), *t*(${f.df(t.df)}) = ${f.g(Math.abs(t.t))}; ${f.p(t.p)}; *d*z = ${f.g(Math.abs(t.dz))}.`;
     });
   }
   return sluitAf(u);

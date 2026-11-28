@@ -6,11 +6,12 @@ import { REDEN } from '../dataset.js';
 import { cronbachAlpha, momenten, pearson, chi2Sf } from '../../statistiek.js';
 import { tweeWaardenRegel, weggevallenRegel } from '../privacy-selectie.js';
 import { correlatieMatrix, inverseSpd, cholesky, logDeterminant, jacobiEigen } from '../matrix.js';
-import { tabel, cel, tekstCel, voeg, melding, sluitAf, methode } from '../uitvoer.js';
+import { tabel, cel, tekstCel, verborgenCel, voeg, melding, sluitAf, methode } from '../uitvoer.js';
 import {
   ALFA_UITLEG, P_TE_WEINIG, pWeggevallen, P_CIJFER_ITEM, P_BEREIK_VERSCHILT, P_NIET_PD, P_HEYWOOD, P_WEINIG_FACTOR, UITLEG_FACTOR, apaZinnen, g, opsomming,
+  P_SPREIDING_SELECTIE,
 } from '../uitvoer-tekst.js';
-import { getalFout, begin, weiger, variabelenUit, indelingAlsGetalFout, inSelectie, iedereen, selectieControle, tel } from './basis.js';
+import { getalFout, begin, weiger, variabelenUit, indelingAlsGetalFout, inSelectie, iedereen, selectieControle, tel, spreidingVrij } from './basis.js';
 
 const MIN_N = 10;
 
@@ -116,13 +117,18 @@ export function betrouwbaarheid(ds, spec, ctx) {
   if (!b) return weiger(ds, spec, ctx, titel, 'fout', 'De betrouwbaarheid is niet te berekenen: er is te weinig spreiding in de antwoorden.');
   u.gegevens.n = b.n;
   const naam = (x) => `${x.v.label}${x.om ? ' (omgescoord)' : ''}`;
+  // P3 (optie 1): binnen een selectie van een vraag met vaste waarden en een verborgen cel daar geen SD (en geen
+  // schaalvariantie zonder een vraag: bij twee vragen is dat de variantie van de andere).
+  const vrij = items.map(({ v }) => spreidingVrij(v, geldig, null, 1, ctx)[0]);
+  for (const [j, { v }] of items.entries()) if (!vrij[j]) voeg(u, melding('privacy', P_SPREIDING_SELECTIE(v.label)));
+  const alleVrij = vrij.every(Boolean);
   voeg(u,
     tabel('alfa', 'Betrouwbaarheid', ['', 'Cronbachs α', 'Gestandaardiseerde α', 'Aantal vragen', 'N'], [[tekstCel('Schaal'), cel(b.alpha, 'r'), cel(b.gestandaardiseerd, 'r'), cel(b.k, 'df'), cel(b.n, 'aantal')]]),
-    tabel('items', 'Itemstatistieken', ['Vraag', 'Gemiddelde', 'SD', 'N'], items.map((x, j) => [tekstCel(naam(x)), cel(b.items[j].gemiddelde, 'gem'), cel(b.items[j].sd, 'gem'), cel(b.n, 'aantal')])),
+    tabel('items', 'Itemstatistieken', ['Vraag', 'Gemiddelde', 'SD', 'N'], items.map((x, j) => [tekstCel(naam(x)), cel(b.items[j].gemiddelde, 'gem'), vrij[j] ? cel(b.items[j].sd, 'gem') : verborgenCel('gem'), cel(b.n, 'aantal')])),
     tabel('itemtotaal', 'Item-totaalstatistieken', ['Vraag', 'Schaalgemiddelde zonder vraag', 'Schaalvariantie zonder vraag', 'Gecorrigeerde item-totaalcorrelatie', 'Kwadratische meervoudige correlatie', 'α zonder deze vraag'],
       items.map((x, j) => {
         const it = b.items[j];
-        return [tekstCel(naam(x)), cel(it.schaalGemZonder, 'gem'), cel(it.schaalVarZonder, 'gem'), cel(it.itemTotaal, 'r', it.itemTotaal < 0 ? { nadruk: true } : {}), cel(it.smc, 'r'), cel(it.alfaZonder, 'r')];
+        return [tekstCel(naam(x)), cel(it.schaalGemZonder, 'gem'), alleVrij ? cel(it.schaalVarZonder, 'gem') : verborgenCel('gem'), cel(it.itemTotaal, 'r', it.itemTotaal < 0 ? { nadruk: true } : {}), cel(it.smc, 'r'), cel(it.alfaZonder, 'r')];
       }), { voetnoten: [b.items.some((it) => it.smc === null) ? 'Een kwadratische meervoudige correlatie is niet te berekenen als vragen (bijna) volledig samenvallen.' : null] }),
     b.inter ? tabel('inter', 'Samenhang tussen de vragen', ['', 'Gemiddelde', 'Laagste', 'Hoogste'], [[tekstCel('Correlatie tussen de vragen'), cel(b.inter.gemiddelde, 'r'), cel(b.inter.laagste, 'r'), cel(b.inter.hoogste, 'r')]]) : null);
   methode(u, 'cronbach');
