@@ -732,11 +732,14 @@ test('besluit 7 (P7): een raadpleegdatum alleen bij inhoud die verandert (APA 7)
   assert.equal(r.bron.jaar, 2026);
   assert.deepEqual(r.bron.details, { geraadpleegd: '2026-11-27' });
   assert.ok(apaVerwijzing(r.bron).includes('[Dataset]. Geraadpleegd op 27 november 2026, van https://'));
-  // Wet en richtlijn: hetzelfde als een webpagina (met eigen datum zonder, zonder datum met)
+  // Wet en richtlijn: besluit 7 noemt ze niet, dus de raadpleegdatum uit het record blijft, ook met een eigen datum
+  // (zoals vóór besluit 7; de geldende tekst van een wet verandert wel)
   const wet = { titel: 'Arbeidsomstandighedenwet', soort: 'wet', jaar: 1998, url: 'https://wetten.overheid.nl/BWBR0010346', onderwerpen: ['wet-regelgeving'], geraadpleegd: '2026-11-27' };
   assert.deepEqual(normaliseerStartbron(wet).bron.details, { geraadpleegd: '2026-11-27' });
-  assert.deepEqual(normaliseerStartbron({ ...wet, datum: '1998-11-01' }).bron.details, { datum: '1998-11-01' });
-  assert.deepEqual(normaliseerStartbron({ ...wet, soort: 'richtlijn', datum: '2024-03' }).bron.details, { datum: '2024-03' });
+  assert.deepEqual(normaliseerStartbron({ ...wet, datum: '1998-11-01' }).bron.details, { geraadpleegd: '2026-11-27', datum: '1998-11-01' });
+  assert.deepEqual(normaliseerStartbron({ ...wet, soort: 'richtlijn', datum: '2024-03' }).bron.details, { geraadpleegd: '2026-11-27', datum: '2024-03' });
+  assert.equal(apaVerwijzing(normaliseerStartbron({ ...wet, datum: '1998-11-01' }).bron),
+    'Arbeidsomstandighedenwet. (1998, 1 november). Geraadpleegd op 27 november 2026, van https://wetten.overheid.nl/BWBR0010346');
   // Alleen bij een webpagina leidt een datum in de metadata tot z.d.
   assert.equal(leesStartDetails('Rapport, datum volgens de paginametadata.', { soort: 'rapport', jaar: 2021 }).zonderDatum, undefined);
 });

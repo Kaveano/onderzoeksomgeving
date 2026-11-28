@@ -1505,14 +1505,16 @@ export function leesStartDetails(tekst, { soort, jaar = null, organisatie = '', 
  * Geraadpleegd op (besluit 7 van het onderzoeksteam bij P7, de regel van APA 7): een raadpleegdatum hoort alleen bij
  * inhoud die bedoeld is om te veranderen en die niet wordt gearchiveerd. Voor een startbron betekent dat:
  * - cijfers (een tabel of database die wordt bijgewerkt, zoals een StatLine-tabel): altijd met raadpleegdatum;
- * - een webpagina, wet of richtlijn met een eigen datum (een gedateerd nieuwsbericht, een pagina met "Pagina
- *   bijgewerkt op …", dus details.datum): zonder raadpleegdatum;
- * - een webpagina, wet of richtlijn zonder eigen datum (z.d., of een datum die alleen in de metadata van de pagina
- *   staat; die krijgt "z.d.", zie leesStartDetails): met raadpleegdatum.
+ * - een webpagina met een eigen datum (een gedateerd nieuwsbericht, een pagina met "Pagina bijgewerkt op …", dus
+ *   details.datum): zonder raadpleegdatum;
+ * - een webpagina zonder eigen datum (z.d., of een datum die alleen in de metadata van de pagina staat; die krijgt
+ *   "z.d.", zie leesStartDetails): met raadpleegdatum.
+ * Een wet of richtlijn houdt de raadpleegdatum uit het record, ook met een eigen datum: besluit 7 noemt die soorten
+ * niet, en de geldende tekst van een wet (wetten.overheid.nl) verandert wel. Zo was het ook vóór besluit 7.
  * Bij andere soorten (artikel, rapport, boek …) is er geen veld voor; zie normaliseerStartbron.
  */
 function metRaadpleegdatum(bron) {
-  if (bron.soort === 'cijfers') return true;
+  if (bron.soort !== 'website') return true;
   return !bron.details?.datum;
 }
 
@@ -1702,7 +1704,7 @@ export function normaliseerStartbron(record) {
     }
   }
   if (bron.details.paginas) bron.details.paginas = paginaStreep(bron.details.paginas);
-  // Geen raadpleegdatum bij een bron met een eigen datum (behalve cijfers); stil, zoals bij een artikel (besluit 7).
+  // Geen raadpleegdatum bij een webpagina met een eigen datum; stil, zoals bij een artikel (besluit 7).
   if (bron.details.geraadpleegd && !metRaadpleegdatum(bron)) delete bron.details.geraadpleegd;
   return { bron, meldingen, fouten };
 }
