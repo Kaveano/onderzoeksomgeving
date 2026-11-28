@@ -445,6 +445,12 @@ export function dashboardUitRijen(rijen, keuze = { vragenlijst: null, uitsplitse
       if (beschermd) beschermVerdeling(r, inz.length);
       if (s.q.type === 'schaal' || s.q.type === 'janee' || s.q.type === 'cijfer') {
         const perMm = new Map();
+        // Het verloop is van de stamvraag, niet van deze ene vragenlijst: is de vraag in één van de bijdragende
+        // vragenlijsten een achtergrondvraag (kenmerk of uitsplitsen), dan is het verloop beschermd, ook als je
+        // het bekijkt vanuit een kopie zonder kenmerk. Anders staat het verborgen ja-aantal van die lijst in het
+        // verloop van de kopie. Zo is het verloop vanuit elke vragenlijst hetzelfde.
+        const beschermdVerloop = beschermd || (vragenPerStam.get(stam(s.q)) || [])
+          .some((ander) => vraagSoort(ander) === vraagSoort(s.q) && isBeschermd(ander));
         for (const ander of vragenPerStam.get(stam(s.q)) || []) {
           const info = lijstInfo.get(ander.vragenlijst_id);
           const mmId = info?.meetmoment_id;
@@ -464,7 +470,7 @@ export function dashboardUitRijen(rijen, keuze = { vragenlijst: null, uitsplitse
           // Achtergrondvraag (ja/nee): is in één bijdragende vragenlijst iets van ja, nee of "Niet ingevuld" verborgen,
           // dan is dat getal uit dit punt min de andere (zichtbare) vragenlijsten terug te rekenen. Het samentellen
           // beschermt dus niet; elke vragenlijst moet op zich veilig zijn.
-          if (beschermd && s.q.type === 'janee' && verbergReeks([a.ja, a.nee, lijstN - a.ja - a.nee], DREMPEL).some(Boolean)) {
+          if (beschermdVerloop && s.q.type === 'janee' && verbergReeks([a.ja, a.nee, lijstN - a.ja - a.nee], DREMPEL).some(Boolean)) {
             p.deelVerborgen = true;
           }
           // Per meetmoment kunnen meer vragenlijsten meetellen. Voor kijkers is van belang hoe klein de kleinste
@@ -488,7 +494,7 @@ export function dashboardUitRijen(rijen, keuze = { vragenlijst: null, uitsplitse
             // Achtergrondvraag (ja/nee): het percentage ja per meetmoment is ook een verdeling. Alleen tonen als
             // ja, nee en "Niet ingevuld" daar elk 0 of minstens DREMPEL zijn (dezelfde regel als de verdeling),
             // samen en in elke bijdragende vragenlijst apart.
-            if (beschermd && (p.deelVerborgen || verbergReeks([p.ja, p.janee - p.ja, p.lijstN - p.janee], DREMPEL).some(Boolean))) {
+            if (beschermdVerloop && (p.deelVerborgen || verbergReeks([p.ja, p.janee - p.ja, p.lijstN - p.janee], DREMPEL).some(Boolean))) {
               return { meetmoment_id: mm.id, naam: mm.naam, percentage_ja: null, n: null, klein: true, open: p.open };
             }
             return { meetmoment_id: mm.id, naam: mm.naam, percentage_ja: pct(p.ja, p.janee), n: p.janee, klein: p.klein, open: p.open };
