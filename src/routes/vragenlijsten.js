@@ -181,15 +181,20 @@ export async function verwijder({ request, env, params }) {
   return json({ ok: true });
 }
 
-/** Wist alle antwoorden (bijv. testantwoorden) maar laat de vragenlijst staan. */
+/**
+ * Wist alle antwoorden (bijv. testantwoorden) maar laat de vragenlijst staan. Het aantal gewiste ingevulde
+ * vragenlijsten wordt vooraf geteld, in dezelfde batch: meta.changes van de DELETE telt ook de coderingen en
+ * citaten die via ON DELETE CASCADE meegaan (migratie 0015), en dat is niet wat je wist (J5).
+ */
 export async function wisInzendingen({ env, params }) {
   const id = v.id(params.id);
   await bewerkbaarVia(env, 'vragenlijst', id);
   const res = await env.DB.batch([
+    env.DB.prepare('SELECT COUNT(*) AS n FROM inzendingen WHERE vragenlijst_id = ?').bind(id),
     env.DB.prepare('DELETE FROM inzendingen WHERE vragenlijst_id = ?').bind(id),
     env.DB.prepare('DELETE FROM inzendteller WHERE vragenlijst_id = ?').bind(id),
   ]);
-  return json({ ok: true, verwijderd: res[0].meta.changes });
+  return json({ ok: true, verwijderd: res[0].results?.[0]?.n ?? 0 });
 }
 
 export async function nieuweCode({ env, params }) {
