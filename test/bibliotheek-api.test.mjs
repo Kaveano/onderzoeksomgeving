@@ -54,7 +54,8 @@ before(async () => {
   writeFileSync(zaadPad, zaad());
   execFileSync('npx', ['wrangler', 'd1', 'execute', 'DB', '--local', '--persist-to', map, '--file', zaadPad], { stdio: 'ignore', env: WRANGLER_ENV });
   // Criterium 8: het script maakt een migratie die op deze D1 werkt (twee keer uitvoeren voegt niets dubbel toe).
-  execFileSync('node', [join(ROOT, 'scripts/startcollectie.mjs'), join(ROOT, 'test/fixtures/startcollectie-voorbeeld.json'), '--uit', uit], { stdio: 'ignore' });
+  // Een vaste datum in de kop (zoals NU), zodat de test niet afhangt van de dag waarop hij draait.
+  execFileSync('node', [join(ROOT, 'scripts/startcollectie.mjs'), join(ROOT, 'test/fixtures/startcollectie-voorbeeld.json'), '--uit', uit, '--datum', NU.slice(0, 10)], { stdio: 'ignore' });
   for (let i = 0; i < 2; i++) {
     execFileSync('npx', ['wrangler', 'd1', 'execute', 'DB', '--local', '--persist-to', map, '--file', join(uit, '0016_bibliotheek_start.sql')], { stdio: 'ignore', env: WRANGLER_ENV });
   }
