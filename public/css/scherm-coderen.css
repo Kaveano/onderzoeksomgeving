@@ -59,7 +59,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-height: 40px;
+  min-height: 44px; /* vingervriendelijk, net als de knoppen van de cijfervraag */
   padding: 4px 12px 4px 6px;
   border: 1px solid var(--rand-sterk);
   border-radius: 999px;
@@ -121,9 +121,29 @@
 dialog.cd-dialoog { width: min(640px, calc(100vw - 24px)); }
 dialog.cd-dialoog textarea, dialog.cd-dialoog select { width: 100%; }
 
+/* Smal scherm (telefoon, tablet staand): het codeboek staat na de antwoorden en blijft als balk onder in beeld
+   ("plakt" onderaan zolang je door de antwoorden scrolt). Dicht is het één regel; open kun je erin scrollen.
+   De indeling is dan geen grid: een plakkend element blijft binnen zijn rastervak, en dat zou hier alleen het
+   codeboek zelf zijn. Knoppen zijn minstens 44 px hoog. */
 @media (max-width: 900px) {
-  .cd-indeling { grid-template-columns: minmax(0, 1fr); }
-  .cd-codeboek { position: static; max-height: none; order: -1; }
+  .cd-indeling { display: block; }
+  .cd-werkvlak { margin-bottom: var(--ruimte-3); }
+  .cd-codeboek {
+    position: sticky;
+    top: auto;
+    bottom: 0;
+    z-index: 5;
+    max-height: min(45dvh, 26rem); /* open: het gekozen antwoord blijft erboven in beeld */
+    padding: 0 var(--ruimte-3) var(--ruimte-2);
+    border-top: 3px solid var(--oker);
+    border-radius: var(--radius) var(--radius) 0 0;
+  }
+  .cd-codeboek > summary { position: sticky; top: 0; z-index: 1; background: var(--vlak); padding: 10px 0; margin-bottom: 0; line-height: 24px; }
+  .cd-codeboek[open] > summary { margin-bottom: var(--ruimte-1); }
+  /* Het gekozen antwoord schuift niet achter de balk van het codeboek. */
+  .cd-antwoord { scroll-margin-bottom: 96px; }
+  .cd-indeling .knop, .cd-citaten .knop { min-height: 44px; }
+  .cd-code-acties .knop { padding: 4px 10px; }
 }
 @media (max-width: 600px) {
   .cd-keuzes { grid-template-columns: minmax(0, 1fr); gap: 0; }

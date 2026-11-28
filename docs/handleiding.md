@@ -395,6 +395,8 @@ In het tabblad **Analyse**, onderdeel **Open antwoorden**, geef je open antwoord
 
 **Codeboek**: hier voeg je codes toe, wijzig je de naam of omschrijving, **voeg je codes samen** (alle antwoorden en citaten gaan naar de andere code) of verwijder je een code. Je ziet ook hoe vaak elke code bij deze vraag voorkomt. Net als in het rapport staan aantallen van 1 tot 4 er niet: die zie je als **×**. Dat geldt ook voor een code die bijna iedereen kreeg (minder dan 5 antwoorden zonder die code). Is er iets verborgen, dan is ook *Antwoorden zonder code* verborgen, en soms nog een code, zodat een klein aantal niet terug te rekenen is. Heeft een vraag minder dan 5 antwoorden, dan zie je geen aantallen.
 
+Op een **telefoon** (of een smal venster) staat het codeboek als balk onder in beeld, terwijl je door de antwoorden scrolt. Tik op **Codeboek** om het te openen of weer dicht te doen. Zo zie je de aantallen bij het antwoord waar je bent.
+
 **Citaten**
 - Klik bij een antwoord op **Citaat maken**. Het citaat is een kopie die je kunt inkorten of aanpassen. Bij een interview selecteer je eerst het stuk tekst dat je wilt citeren.
 - **Controleer of dit citaat iemand herkenbaar maakt. Haal namen, functies en andere herkenbare details weg.** Vink daarna **Gecontroleerd: dit citaat maakt niemand herkenbaar** aan. Pas dan kun je **In rapport** aanvinken.

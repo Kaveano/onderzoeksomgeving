@@ -1,7 +1,8 @@
-// Integratiebevindingen over bruikbaarheid (G5–G7):
+// Integratiebevindingen over bruikbaarheid (G5–G8):
 // - G5: "Alle resultaten" (ook bij een meelezer) gebruikt voor een verborgen cel overal ×, met VERBORGEN_UITLEG; nergens "<5";
 // - G6: een RIS-bestand zonder taal (LA) maakt een Engelse bron niet Nederlands: de taal wordt geraden, met een melding;
 // - G7: het advies in "Achtergrondvragen toevoegen" telt de achtergrondvragen die er al in staan mee;
+// - G8: coderen op een telefoon: het codeboek blijft bij de antwoorden in beeld en de knoppen zijn minstens 44 px hoog.
 // Zuiver: geen server nodig. Uitvoeren: node --test test/integratie-gebruik.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -200,4 +201,34 @@ test('G7: beide editors geven het aantal achtergrondvragen door, de vragenlijst 
   assert.match(sj, /aantalAanwezig: model\.vragen\.filter\(\(v\) => v\.kenmerk \|\| v\.uitsplitsen\)\.length,/);
   const dlg = lees('../public/js/beheer/schermen/kenmerk-dialoog.js');
   assert.match(dlg, /vak\.addEventListener\('change', \(\) => tekenAdvies\(\)\)/, 'het advies verandert met de vinkjes');
+});
+
+// ---------- G8: coderen op een telefoon ----------
+
+/** De regels van één selector in een stuk CSS: { eigenschap: waarde }. */
+function regels(css, selector) {
+  const m = new RegExp(`(?:^|\\n)\\s*${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\{([^}]*)\\}`).exec(css);
+  if (!m) return null;
+  return Object.fromEntries(m[1].split(';').map((r) => r.replace(/\/\*.*?\*\//g, '').trim()).filter(Boolean).map((r) => r.split(':').map((x) => x.trim())));
+}
+
+test('G8: codeknoppen zijn minstens 44 px hoog; op een smal scherm plakt het codeboek onder de antwoorden', () => {
+  const css = lees('../public/css/scherm-coderen.css');
+  assert.equal(regels(css, '.cd-codeknop')['min-height'], '44px');
+  const smal = /@media \(max-width: 900px\) \{([\s\S]*?)\n\}/.exec(css);
+  assert.ok(smal, 'er is een blok voor smalle schermen');
+  const m = smal[1];
+  assert.ok(!/order:\s*-1/.test(m), 'het codeboek staat niet meer boven de antwoorden');
+  assert.equal(regels(m, '.cd-indeling').display, 'block', 'geen grid: anders blijft het plakkende codeboek in zijn eigen rastervak');
+  const boek = regels(m, '.cd-codeboek');
+  assert.equal(boek.position, 'sticky');
+  assert.equal(boek.bottom, '0');
+  assert.match(boek['max-height'], /dvh/);
+  assert.equal(regels(m, '.cd-indeling .knop, .cd-citaten .knop')['min-height'], '44px');
+  const kop = regels(m, '.cd-codeboek > summary');
+  assert.equal(kop.padding, '10px 0');
+  assert.equal(kop['line-height'], '24px', '10 + 24 + 10 = 44 px om op te tikken');
+  // In de DOM staat het codeboek na het werkvlak (dus na de antwoorden).
+  const scherm = lees('../public/js/beheer/schermen/coderen.js');
+  assert.match(scherm, /h\('div', \{ class: 'cd-indeling' \}, werkvlak, codeboekEl\)/);
 });
