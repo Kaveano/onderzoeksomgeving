@@ -38,7 +38,6 @@ const g1 = (x) => (eindig(x) ? nlGetal(x, 1) : VERBORGEN);
 const pc = (x) => (eindig(x) ? nlProcent(x) : VERBORGEN);
 const n0 = (x) => (eindig(x) ? nlGetal(x, 0) : VERBORGEN);
 const sc = (x) => (eindig(x) ? metTeken(Math.round(x), 0) : VERBORGEN);
-const kortTekst = (t, max = 60) => (String(t).length > max ? `${String(t).slice(0, max - 1)}…` : String(t));
 const nlKort = (iso) => {
   const t = nlDatum(iso);
   return t ? t.replace(/ \d{4}$/, '').replace(/(\w{3})\w*$/, '$1') : '';
@@ -245,10 +244,11 @@ export async function toon(container, ctx) {
     const kaarten = [];
     const zonderUitkomsten = !k.lijst || k.lijst.verborgen || !k.lijst.n;
     kaarten.push(oogopslagKaart(), deelnameKaart());
-    if (!k.lijst || !k.lijst.n) {
-      kaarten.push(melding(['Er zijn nog geen antwoorden op deze vragenlijst. ', 'Zodra er minstens 5 vragenlijsten zijn ingevuld, zie je hier de scores, de groepen en de samenhang.']));
-    } else if (k.lijst.verborgen) {
+    // Eerst 1 tot 4 antwoorden (dan is n verborgen, dus null), daarna nog geen antwoorden.
+    if (k.lijst?.verborgen) {
       kaarten.push(melding([h('strong', {}, `Nog minder dan ${k.drempel} ingevulde vragenlijsten. `), 'Om de anonimiteit te beschermen staan hier pas uitkomsten vanaf 5 respondenten.'], 'waarschuwing'));
+    } else if (!k.lijst || !k.lijst.n) {
+      kaarten.push(melding(['Er zijn nog geen antwoorden op deze vragenlijst. ', 'Zodra er minstens 5 vragenlijsten zijn ingevuld, zie je hier de scores, de groepen en de samenhang.']));
     }
     if (!zonderUitkomsten) {
       kaarten.push(samenstellingKaart(), kernscoresKaart(), sterkZwakKaart(), groepenKaart(), drijversKaart(), signalenKaart(), ontwikkelingKaart(), kwaliteitKaart());
@@ -377,7 +377,8 @@ export async function toon(container, ctx) {
         knop('Excel', naarExcel, !metCijfers && !k?.personeel),
         knop('Word', naarWord, !metCijfers && !k?.personeel),
         h('span', { class: 'label label-succes', title: 'Uitkomsten van minder dan 5 respondenten staan er niet in.' }, 'geschikt om te delen'),
-        knop('Neem op in stuk', () => neemOpInStuk({ onderzoekId, tekst: R.kerncijferTekst(k), alleenLezen: ctx.alleenLezen, stuksoorten: ctx.instellingen?.stuksoorten || null }), !k?.lijst),
+        k?.lijst?.status === 'open' ? h('span', { class: 'label label-waarschuwing', title: 'De uitkomsten kunnen nog veranderen. Deel geen twee versies met een klein verschil in aantal.' }, 'vragenlijst staat nog open') : null,
+        knop('Neem op in stuk', naarStuk, !k?.lijst),
         knop('Instellingen', () => instellingen())));
   }
 
@@ -401,14 +402,17 @@ export async function toon(container, ctx) {
     return id;
   }
 
-  /** Met een personeelsbestand: vragen of de personeelscijfers mee moeten (gezondheidsgegevens, PR-16). */
-  async function exportCijfers() {
+  /**
+   * Met een personeelsbestand: vragen of de personeelscijfers mee moeten (gezondheidsgegevens, PR-16). Voor Excel,
+   * Word en "Neem op in stuk" (een stuk kan ook gedeeld worden).
+   */
+  async function exportCijfers({ waar = 'In het bestand', knopTekst = 'Downloaden' } = {}) {
     if (!k.personeel) return k;
     const keuzeDlg = await formulierDialoog({
       titel: 'Personeelscijfers meenemen?',
-      intro: 'In het bestand staan de afgeschermde kerncijfers. Kies of de cijfers uit het personeelsbestand er ook in komen.',
+      intro: `${waar} staan de afgeschermde kerncijfers. Kies of de cijfers uit het personeelsbestand er ook in komen.`,
       velden: [{ naam: 'mee', type: 'checkbox', label: 'Ook de personeelscijfers meenemen (zoals verzuim)', hulp: 'Dit zijn gegevens over de gezondheid van medewerkers. Deel ze alleen als dat met de opdrachtgever is afgesproken.' }],
-      knop: 'Downloaden',
+      knop: knopTekst,
     });
     if (!keuzeDlg) return null;
     const uit = R.kerncijfersVoorKijker(k, { tussenstand: true, metPersoneel: keuzeDlg.mee });
@@ -420,6 +424,12 @@ export async function toon(container, ctx) {
     const slug = (t) => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'onderzoek';
     return `${slug(ctx.onderzoek.onderzoek.bedrijfsnaam || titel)}-hr-analytics-${vandaag()}.${ext}`;
   };
+
+  async function naarStuk() {
+    const kx = await exportCijfers({ waar: 'In het stuk', knopTekst: 'Verder' });
+    if (!kx) return;
+    await neemOpInStuk({ onderzoekId, tekst: R.kerncijferTekst(kx, { metPersoneel: !!kx.personeel }), alleenLezen: ctx.alleenLezen, stuksoorten: ctx.instellingen?.stuksoorten || null });
+  }
 
   async function naarExcel() {
     const kx = await exportCijfers();
@@ -439,6 +449,8 @@ export async function toon(container, ctx) {
       { soort: 'alinea', tekst: `${o.bedrijfsnaam ? `${o.bedrijfsnaam} – ` : ''}${kx.lijst ? `vragenlijst "${kx.lijst.titel}"${kx.lijst.meetmoment_naam ? ` (${kx.lijst.meetmoment_naam})` : ''}` : 'personeelscijfers'}. Peildatum ${nlDatum(kx.peildatum)}.` },
       { soort: 'alinea', tekst: `*Alleen afgeschermde cijfers: groepen van minder dan ${kx.drempel} respondenten staan er niet in. ${VERBORGEN_UITLEG}*` },
     ];
+    const oz = R.openZin(kx);
+    if (oz) kopTekst.push({ soort: 'alinea', tekst: `**${oz}**` });
     const bytes = b.maakDocx({ titel: `HR-analytics – ${o.titel}`, blokken: [...kopTekst, ...blokken], voettekst: `${o.titel}${o.bedrijfsnaam ? ` – ${o.bedrijfsnaam}` : ''}` });
     b.bewaarBestand(bytes, naamBestand('docx'), DOCX);
     meld('Het Word-bestand is gedownload.', 'succes');
@@ -482,7 +494,7 @@ export async function toon(container, ctx) {
     }
     const s = k.scores;
     const e = s.enps;
-    if (e) tegels.push(tegel('eNPS', e.verborgen ? VERBORGEN : sc(e.score), e.verborgen ? null : `${e.promotors} promotors · ${e.criticasters} criticasters`, ...verg('enps')));
+    if (e) tegels.push(tegel('eNPS', e.verborgen ? VERBORGEN : sc(e.score), e.verborgen ? null : `${R.promotorsTekst(e.promotors)} · ${R.criticastersTekst(e.criticasters)}`, ...verg('enps')));
     const rapport = s.cijfers.find((c) => c.schaal_soort === 'rapport');
     if (rapport) tegels.push(tegel('Rapportcijfer', rapport.verborgen ? VERBORGEN : g1(rapport.gemiddelde), rapport.verborgen ? null : `${nlProcent(rapport.pct_onvoldoende)} onvoldoende`));
     const themas = s.themas.filter((t) => !t.verborgen && eindig(t.gemiddelde));
@@ -544,7 +556,7 @@ export async function toon(container, ctx) {
       zin ? h('div', { class: 'hr-zinnen' },
         h('p', {}, zin, dl.populatie_bron && dl.populatie_bron !== 'uitgenodigd' ? ` (Uitgegaan van ${bronN[dl.populatie_bron]}.)` : ''),
         h('p', { class: 'hr-noot' }, R.FOUTMARGE_UITLEG))
-        : (k.lijst && !k.lijst.verborgen && k.lijst.n ? noot('De foutmarge staat er zodra bekend is hoeveel mensen de vragenlijst kregen: vul het aantal uitgenodigden in bij de vragenlijst, of voeg een personeelsbestand toe.') : null),
+        : (k.lijst && !k.lijst.verborgen && k.lijst.n ? noot('De foutmarge staat er zodra bekend is hoeveel mensen de vragenlijst kregen: vul het aantal uitgenodigden in bij de vragenlijst, voeg een personeelsbestand toe, of vul bij Instellingen bij elke groep van een achtergrondvraag het aantal medewerkers in.') : null),
       curve ? [h('h3', { class: 'hr-subkop' }, 'Wanneer werd er ingevuld?'), figuurVak(curve),
         k.deelname.per_dag_samengevoegd ? noot('Dagen met minder dan 5 ingevulde vragenlijsten zijn samengenomen met de dagen erna.') : null] : null,
       perGroep ? [responsFig ? null : h('h3', { class: 'hr-subkop' }, `Respons per ${(km?.kenmerk_naam || 'groep').toLowerCase()}`), perGroep] : null);
@@ -692,12 +704,10 @@ export async function toon(container, ctx) {
       return h('td', { class: `rechts getal ${klasse}` }, rij.soort === 'enps' ? sc(waarde) : g1(waarde),
         klasse ? h('span', { class: 'sr-only' }, klasse === 'hm-hoger' ? ' (hoger dan iedereen)' : ' (lager dan iedereen)') : null);
     };
-    // Cijfervragen kort ("eNPS", "Rapportcijfer"); de hele vraag staat erbij voor schermlezers en als je erop wijst.
-    const aantalSoort = (soort) => g.rijen.filter((r) => r.soort === soort).length;
+    // Cijfervragen kort ("eNPS", "Rapportcijfer", zoals in Word); de hele vraag staat erbij voor schermlezers en als je erop wijst.
     const rijNaam = (r) => {
       if (r.soort !== 'enps' && r.soort !== 'cijfer') return r.naam;
-      const basis = r.soort === 'enps' ? 'eNPS' : 'Rapportcijfer';
-      return h('span', { title: r.naam }, aantalSoort(r.soort) > 1 ? `${basis}: ${kortTekst(r.naam, 30)}` : basis, h('span', { class: 'sr-only' }, ` (${r.naam})`));
+      return h('span', { title: r.naam }, R.rijNaamKort(g, r), h('span', { class: 'sr-only' }, ` (${r.naam})`));
     };
     const tabelEl = h('div', { class: 'tabel-wrapper hr-heatmap-wrapper' },
       h('table', { class: 'tabel hr-heatmap' },
@@ -764,14 +774,13 @@ export async function toon(container, ctx) {
         h('p', { class: 'zacht' }, 'Kies een uitkomst, bijvoorbeeld de eNPS, een rapportcijfer of de algemene tevredenheid. Dan zie je welke thema\'s daar het sterkst mee samenhangen.'));
     }
     const fig = R.kerncijferFiguren({ ...k, kenmerken: [], scores: {}, verloop: null, personeel: null }).find((f) => f.id === 'prioriteiten');
-    const KWADRANT = { vasthouden: 'Sterk punt – vasthouden', verbeteren: 'Verbeterpunt – hier liggen kansen', goed_genoeg: 'Minder belangrijk – goed genoeg', later: 'Minder belangrijk – later' };
     const rijen = dr.rijen.map((r) => [
       r.naam,
       r.reden === 'weggevallen' ? 'niet getoond' : eindig(r.r) ? nlGetal(r.r, 2) : '–',
       eindig(r.ci_laag) ? `${nlGetal(r.ci_laag, 2)} tot ${nlGetal(r.ci_hoog, 2)}` : '–',
       eindig(r.n) ? n0(r.n) : '–',
       g1(r.gemiddelde),
-      r.kwadrant ? KWADRANT[r.kwadrant] : eindig(r.r) ? 'geen duidelijke samenhang' : r.reden === 'te_weinig' ? 'te weinig paren' : '–',
+      r.kwadrant ? R.kwadrantTekst(r) : eindig(r.r) ? 'geen duidelijke samenhang' : r.reden === 'te_weinig' ? 'te weinig paren' : '–',
     ]);
     const uitkomst = `"${dr.uitkomst.naam}"`;
     return kaart('hr-drijvers', titelTekst, 'Samenhang', {},
@@ -781,7 +790,8 @@ export async function toon(container, ctx) {
       dr.rijen.some((r) => r.reden === 'weggevallen') ? noot('niet getoond: te weinig volledig ingevulde antwoorden om dit veilig naast het dashboard te tonen') : null,
       dr.rijen.some((r) => r.overlap) ? noot('Is de uitkomst zelf een vraag uit een thema, dan telt die vraag bij dat thema niet mee.') : null,
       fig ? [figuurVak(fig),
-        noot('Rechts staan thema\'s die hoog scoren, boven thema\'s die sterk samenhangen met de uitkomst. Een kwadrant staat er alleen bij een duidelijke samenhang (p < 0,05). Het gaat om thema\'s, nooit om personen.')] : null,
+        noot('Rechts staan thema\'s die hoog scoren, boven thema\'s die sterk samenhangen met de uitkomst. Een kwadrant staat er alleen bij een duidelijke samenhang (p < 0,05). Het gaat om thema\'s, nooit om personen.'),
+        dr.rijen.some((r) => r.kwadrant) ? noot(R.MATRIX_UITLEG) : null] : null,
       noot(`Alleen thema's met minstens 10 respondenten die beide beantwoordden. r loopt van −1 tot +1; hoe verder van 0, hoe sterker de samenhang.`));
   }
 
@@ -917,12 +927,11 @@ export async function toon(container, ctx) {
         vervang(groepVak);
         return;
       }
-      const rijen = g.rijen.map((r) => [r.label, n0(r.medewerkers), kan('fte') ? g1(r.fte) : '–', kan('gem_leeftijd') ? g1(r.gem_leeftijd) : '–', kan('pct_vrouw') ? pc(r.pct_vrouw) : '–',
-        kan('verzuim_pct') ? (eindig(r.verzuim_pct) ? `${nlGetal(r.verzuim_pct, 1)}%` : VERBORGEN) : '–', kan('meldingsfrequentie') ? (eindig(r.meldingsfrequentie) ? nlGetal(r.meldingsfrequentie, 2) : VERBORGEN) : '–', kan('verloop_pct') ? pc(r.verloop_pct) : '–']);
+      // Dezelfde tabel als in Word en Excel: kolommen die het bestand niet had, staan er niet in.
+      const pt = R.personeelGroepTabel(p, g);
       vervang(groepVak,
-        tabel([g.dimensie_naam, 'Medewerkers', 'Fte', 'Gem. leeftijd', '% vrouw', 'Verzuim', 'Meldingsfreq.', 'Verloop'], rijen, { bijschrift: `Personeelscijfers per ${g.dimensie_naam.toLowerCase()}` }),
-        rijen.some((r) => r.includes(VERBORGEN)) ? noot(R.PERSONEEL_VERBORGEN) : null,
-        g.rijen.some((r) => r.reden || (kan('verzuim_pct') && !r.verborgen && r.verzuim_pct === null)) ? noot(R.VERZUIM_VERBORGEN) : null);
+        tabel(pt.kop, pt.rijen, { bijschrift: `Personeelscijfers per ${g.dimensie_naam.toLowerCase()}` }),
+        pt.noten.map((n) => noot(n)));
     };
     vulGroep();
     const leeftijdFig = R.kerncijferFiguren({ ...k, kenmerken: [], scores: {}, verloop: null, drijvers: null }).find((f) => f.id === 'leeftijdsopbouw');
@@ -932,7 +941,7 @@ export async function toon(container, ctx) {
       kopEl,
       h('div', { class: 'hr-tegels' }, tegels),
       tegelsVerborgen ? noot(R.PERSONEEL_VERBORGEN) : null,
-      t.verzuim_reden ? noot(`${R.VERZUIM_VERBORGEN.replace('van deze groep', 'van de organisatie')}`) : null,
+      t.verzuim_reden ? noot(R.VERZUIM_VERBORGEN_ORGANISATIE) : null,
       kan('verzuim_pct') && eindig(t.verzuim_pct) ? noot(`${R.DAGEN_UITLEG}${zwanger ? ` ${zwanger}` : ''}`) : null,
       dims.length ? [h('h3', { class: 'hr-subkop' }, 'Per groep'),
         dims.length > 1 ? h('div', { class: 'hr-veld' }, h('label', { for: perId }, 'Per'),

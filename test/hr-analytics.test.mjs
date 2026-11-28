@@ -79,7 +79,9 @@ test('representativiteit gemaskeerd: [18, 9, 3, 1, 9] → categorieën [18, 9, s
 });
 
 test('representativiteit: een duidelijke afwijking geeft de zin "wijkt af" en per groep onder- of oververtegenwoordigd', () => {
-  const k = kern(kenmerkExport([30, 5, 5, 6], { populatie: [25, 25, 25, 25], labels: ['Zorg', 'Staf', 'Facilitair', 'ICT'] }));
+  // Review P3: met 30 respondenten tegen 25 medewerkers bij Zorg kloppen de aantallen niet en wordt er niet getoetst;
+  // daarom 40 medewerkers per groep (dezelfde verhoudingen, 25% per groep).
+  const k = kern(kenmerkExport([30, 5, 5, 6], { populatie: [40, 40, 40, 40], labels: ['Zorg', 'Staf', 'Facilitair', 'ICT'] }));
   const km = k.kenmerken[0];
   assert.equal(km.representativiteit.oordeel, 'wijkt_af');
   const zinnen = R.representativiteitZinnen(km);
@@ -590,12 +592,12 @@ test('samenstellingTabel: zonder organisatie Groep/Respondenten/%; met organisat
   const km = kern(kenmerkExport([18, 9, 6, 7], { populatie: [60, 20, 25, 15] })).kenmerken[0];
   const t = R.samenstellingTabel(km);
   assert.equal(t.metOrganisatie, true);
-  assert.equal(t.kop.length, 6);
+  assert.equal(t.kop.length, 7, 'met de foutmarge per groep (review P3)');
   for (const r of t.rijen) {
     const [, , pR, , pM, verschil] = r.getallen;
     assert.equal(verschil, pR - pM, 'het verschil klopt met de getoonde percentages');
   }
-  assert.deepEqual(t.rijen.map((r) => r.getallen.slice(2)), [[45, 60, 50, -5], [23, 20, 17, 6], [15, 25, 21, -6], [18, 15, 13, 5]]);
+  assert.deepEqual(t.rijen.map((r) => r.getallen.slice(2, 6)), [[45, 60, 50, -5], [23, 20, 17, 6], [15, 25, 21, -6], [18, 15, 13, 5]]);
   assert.ok(t.noten.includes(R.VERGELIJK_UITLEG));
   // Gemaskeerd: de kleine groepen samen, een verborgen populatie is ×, "Niet ingevuld" wordt niet vergeleken.
   const m = R.samenstellingTabel(kern(kenmerkExport([18, 9, 3, 1, 9], { populatie: [60, 25, 3, 5, 20], nietIngevuld: 12 })).kenmerken[0]);
@@ -619,4 +621,183 @@ test('controleerPersoneelsaggregaat: zwangerschapsverlof alleen als vaste keuze 
   const zonder = verwerkPersoneel(['Afdeling'], rijen.map((r) => [r[0]]), { rollen: { 0: 'afdeling' }, periode }).aggregaat;
   assert.equal(controleerPersoneelsaggregaat(structuredClone(zonder)).zwangerschapsverlof, undefined);
   assert.throws(() => controleerPersoneelsaggregaat({ ...structuredClone(zonder), zwangerschapsverlof: 'telt_niet' }), /verzuimkolom/);
+});
+
+// ---------- Review P3 (fase C): aantallen die niet kloppen, randen van intervallen, teksten en exports ----------
+
+test('een groep met respondenten maar 0 medewerkers: "controleer de aantallen", geen ×, geen toets', () => {
+  const k = kern(kenmerkExport([20, 15, 10], { populatie: [30, 20, 0] }));
+  const km = k.kenmerken[0];
+  const c = km.groepen.find((g) => g.label === 'Groep C');
+  assert.deepEqual([c.n, c.populatie, c.respons_pct, c.controleer_aantallen, c.foutmarge_pp], [10, 0, null, true, null]);
+  assert.equal(km.representativiteit.oordeel, 'niet_te_toetsen');
+  assert.equal(km.representativiteit.reden, 'controleer_aantallen');
+  const zinnen = R.representativiteitZinnen(km);
+  assert.match(zinnen[0], /^Naar afdeling is niet getoetst .*bij Groep C zijn er meer respondenten dan medewerkers\. Controleer de aantallen medewerkers/);
+  assert.ok(!zinnen.some((z) => /te klein/.test(z)));
+  // De figuur "Respons per groep": Groep C niet als ×-vakje (× is voor verborgen cijfers), wel in de noot.
+  const f = R.kerncijferFiguren(k).find((x) => x.id.startsWith('respons-'));
+  assert.deepEqual(f.categorieen, ['Groep A', 'Groep B']);
+  assert.match(f.noot, /Groep C: meer respondenten dan medewerkers; controleer de aantallen/);
+  assert.equal(figuurPlan(f).verborgen.length, 0);
+  assert.ok(!/Groep C niet getoond/.test(f.alt));
+  // Meer respondenten dan medewerkers (30 tegen 25): ook geen toets.
+  const meer = kern(kenmerkExport([30, 5, 5, 6], { populatie: [25, 25, 25, 25] })).kenmerken[0];
+  assert.equal(meer.representativiteit.reden, 'controleer_aantallen');
+});
+
+test('aantal medewerkers met de hand: alleen als bij elke groep een aantal staat (anders geen respons of foutmarge)', () => {
+  const deels = kenmerkExport([30, 25, 20, 15]);
+  deels.hr_instellingen = { versie: 1, populatie: { 1: { o1: 60, o2: 50, o3: 40 } } };
+  const l = kern(deels).deelname.lijsten[0];
+  assert.deepEqual([l.populatie, l.respons_pct, l.foutmarge_pp], [null, null, null]);
+  const heel = kenmerkExport([30, 25, 20, 15], { populatie: [60, 50, 40, 30] });
+  const h = kern(heel).deelname.lijsten[0];
+  assert.deepEqual([h.populatie, h.populatie_bron, h.respons_pct], [180, 'handmatig', 50]);
+  // "Dat zeg ik liever niet" heeft geen aantal nodig.
+  const ln = kenmerkExport([30, 25, 5], { labels: ['Zorg', 'Staf', 'Dat zeg ik liever niet'] });
+  ln.hr_instellingen = { versie: 1, populatie: { 1: { o1: 60, o2: 50 } } };
+  assert.equal(kern(ln).deelname.lijsten[0].populatie, 110);
+});
+
+test('intervallen blijven binnen de schaal: eNPS −100 tot +100, rapportcijfer 1 tot 10', () => {
+  const e = H.enps([9, 9, 9, 9, 7, 10, 9, 10]);
+  dicht(e.score, 87.5, 1e-9);
+  dicht(e.ci_laag, 64.58, 0.01);
+  assert.equal(e.ci_hoog, 100);
+  assert.equal(R.enpsZin({ ...e, verborgen: false }).endsWith('Het 95%-interval loopt van +65 tot +100.'), true);
+  const c = H.cijferStatistiek([10, 10, 10, 9, 10, 10], 'rapport');
+  dicht(c.ci_laag, 9.40, 0.01);
+  assert.equal(c.ci_hoog, 10);
+  assert.equal(H.cijferStatistiek([1, 1, 1, 2, 1, 1], 'rapport').ci_laag, 1);
+  assert.equal(H.cijferStatistiek([0, 0, 0, 1, 0, 0], 'nps').ci_laag, 0);
+  assert.equal(H.cijferStatistiek([0, 0, 0, 1, 0, 0], 'rapport', { bereik: { min: 0, max: 10 } }).ci_laag, 0);
+});
+
+test('foutmarge per groep in de tabel "Wie deden mee" (scherm, Word en Excel), alleen bij een bekend aantal medewerkers', () => {
+  const k = kern(kenmerkExport([18, 9, 6, 7], { populatie: [60, 20, 25, 15] }));
+  const km = k.kenmerken[0];
+  const t = R.samenstellingTabel(km);
+  assert.equal(t.kop[6], 'Foutmarge');
+  const a = km.groepen.find((g) => g.label === 'Groep A');
+  assert.equal(t.rijen[0].cellen[6], `±${Math.round(a.foutmarge_pp)} procentpunt`);
+  dicht(a.foutmarge_pp, S.foutmarge(18, 60), 1e-12);
+  assert.ok(t.noten.includes(R.FOUTMARGE_GROEP_UITLEG));
+  const blad = R.kerncijferBladen(k).find((b) => b.naam === 'Samenstelling');
+  assert.equal(blad.rijen[0][8], 'Foutmarge (procentpunt)');
+  assert.equal(blad.rijen[1][8], Math.round(a.foutmarge_pp * 10) / 10);
+  // Verborgen of samengevoegd: geen foutmarge.
+  const m = kern(kenmerkExport([18, 9, 3, 1, 9], { populatie: [60, 25, 3, 5, 20], nietIngevuld: 12 })).kenmerken[0];
+  for (const g of m.groepen) if (g.populatie === null || g.samengevoegd) assert.equal(g.foutmarge_pp, null, g.label);
+  // Woord: "procentpunt", niet "pp".
+  const deelname = R.kerncijferBlokken(kern(standaardExport({ n: 62, uitgenodigd: 130 })), 'deelname');
+  const tekst = JSON.stringify(deelname);
+  assert.ok(tekst.includes('±9 procentpunt') && !/\d pp/.test(tekst));
+});
+
+test('"Dat zeg ik liever niet" samen met "Niet ingevuld" is geen groep van de organisatie en wordt niet "niet vergeleken"', () => {
+  const k = kern(kenmerkExport([30, 20, 3], { labels: ['Zorg', 'Staf', 'Dat zeg ik liever niet'], nietIngevuld: 2, populatie: [40, 30, 0] }));
+  const km = k.kenmerken[0];
+  const samen = km.groepen.find((g) => g.samengevoegd);
+  assert.ok(samen, 'liever niet en niet ingevuld staan samen');
+  assert.equal(samen.liever_niet, true);
+  assert.deepEqual(km.representativiteit.niet_vergeleken, []);
+  assert.ok(!R.representativiteitZinnen(km).some((z) => z.includes('niet vergeleken')));
+  const rij = R.samenstellingTabel(km).rijen.find((r) => r.cellen[0].startsWith('Overige groepen samen'));
+  assert.equal(rij.cellen[3], '–');
+});
+
+test('prioriteitenmatrix: een thema vlak bij een lijn krijgt "(dicht bij het midden)" en de uitleg staat erbij', () => {
+  const k = kern(standaardExport({ n: 160, volledig: true }));
+  const dr = k.drijvers;
+  assert.ok(dr && dr.kruis);
+  for (const r of dr.rijen) {
+    if (!r.kwadrant) {
+      assert.equal(r.dicht_bij_kruis, false);
+      continue;
+    }
+    const verwacht = Math.abs(r.gemiddelde - dr.kruis.x) < H.DICHT_BIJ_X || (r.ci_laag <= dr.kruis.y && dr.kruis.y <= r.ci_hoog);
+    assert.equal(r.dicht_bij_kruis, verwacht, r.naam);
+    assert.equal(R.kwadrantTekst(r), `${R.KWADRANT[r.kwadrant]}${verwacht ? ' (dicht bij het midden)' : ''}`);
+  }
+  assert.equal(R.kwadrantTekst({ kwadrant: 'later', dicht_bij_kruis: true }), 'Minder belangrijk – later (dicht bij het midden)');
+  if (dr.rijen.some((r) => r.kwadrant)) {
+    assert.ok(R.kerncijferBlokken(k, 'kerncijfers').some((b) => b.soort === 'alinea' && b.tekst.includes(R.MATRIX_UITLEG)));
+  }
+});
+
+test('teksten: 1 promotor en 1 criticaster, "gelijk aan" de signaalgrens, één paar haakjes bij een significant verschil', () => {
+  const e = { verborgen: false, score: -50, n: 6, promotors: 1, passief: 1, criticasters: 4, ci_laag: -90, ci_hoog: -10 };
+  assert.ok(R.enpsZin(e).includes('(1 promotor, 1 passieve en 4 criticasters van 6 respondenten)'));
+  assert.ok(R.enpsZin({ ...e, promotors: 4, criticasters: 1, score: 50 }).includes('(4 promotors, 1 passieve en 1 criticaster van 6 respondenten)'));
+  assert.match(R.signaalZin({ regel: 'ongunstig', waarde: 30, grens: 30, tekst: 'Werkdruk.', ongunstig: ['1', '2'] }), /Dat is gelijk aan de signaalgrens van 30%/);
+  assert.match(R.signaalZin({ regel: 'ongunstig', waarde: 31, grens: 30, tekst: 'Werkdruk.', ongunstig: ['1', '2'] }), /Dat is boven de signaalgrens van 30%/);
+  const [z] = R.verloopZinnen({ toetsen: [{ thema_naam: 'Werkdruk', van: { naam: 'Nulmeting', gemiddelde: 3.5 }, naar: { naam: 'Eindmeting', gemiddelde: 3.7 }, verschil: 0.2, p: 0.008 }] });
+  assert.equal(z, 'Werkdruk: het verschil tussen Nulmeting en Eindmeting is statistisch significant: van 3,5 naar 3,7 (p = 0,008).');
+});
+
+test('open vragenlijst: Excel en "Neem op in stuk" zeggen dat de lijst nog openstaat; personeel alleen als dat gekozen is', () => {
+  const open = kern(standaardExport({ n: 40, status: 'open' }));
+  const oz = R.openZin(open);
+  assert.match(oz, /^De vragenlijst "Medewerkersonderzoek" staat nog open \(peildatum .*\): de uitkomsten kunnen nog veranderen\. Deel geen twee versies/);
+  for (const b of R.kerncijferBladen(open)) if (b.naam !== 'Benchmarks') assert.ok(b.rijen.some((r) => r[0] === oz), b.naam);
+  assert.ok(R.kerncijferTekst(open).split('\n')[1] === oz);
+  const dicht_ = kern(standaardExport({ n: 40 }));
+  assert.equal(R.openZin(dicht_), null);
+  assert.ok(!R.kerncijferTekst(dicht_).includes('staat nog open'));
+  // Personeelscijfers in de platte tekst alleen met metPersoneel (zoals Excel en Word na de vraag).
+  const { aggregaat } = verwerkPersoneel(['Afdeling', 'Verzuimdagen', 'Uit dienst'], Array.from({ length: 60 }, (_, i) => [i % 3 ? 'Zorg' : 'Staf', i % 7, i % 9 === 0 ? '2026-05' : '']), { rollen: { 0: 'afdeling', 1: 'verzuimdagen', 2: 'datum_uit' }, periode: { van: '2025-11', tot: '2026-10' } });
+  const metP = kern(standaardExport({ n: 40 }), {}, aggregaat);
+  assert.ok(Number.isFinite(metP.personeel.totaal.verzuim_pct));
+  assert.ok(!R.kerncijferTekst(metP).includes('Personeel:'));
+  assert.match(R.kerncijferTekst(metP, { metPersoneel: true }), /Personeel: \d+ medewerkers, verzuim [\d,]+%/);
+});
+
+test('personeelscijfers in Word en Excel: geen × voor een kolom die het bestand niet had, verzuimnoot alleen met verzuim', () => {
+  const kop = ['Afdeling', 'Uren per week'];
+  const rijen = [...Array.from({ length: 50 }, () => ['Productie', '36']), ...Array.from({ length: 3 }, () => ['Kantoor', '20']), ...Array.from({ length: 20 }, () => ['Magazijn', '30'])];
+  const { aggregaat } = verwerkPersoneel(kop, rijen, { rollen: { 0: 'afdeling', 1: 'uren' }, periode: { van: '2025-11', tot: '2026-10' }, uren_per_fte: 36 });
+  const k = kern(standaardExport({ n: 40 }), {}, aggregaat);
+  const g = k.personeel.per_groep.find((x) => x.dimensie === 'afdeling');
+  const pt = R.personeelGroepTabel(k.personeel, g);
+  assert.deepEqual(pt.kop, ['Afdeling', 'Medewerkers', 'Fte']);
+  assert.deepEqual(pt.rijen.find((r) => r[0] === 'Productie'), ['Productie', '50', '50,0']);
+  assert.ok(pt.noten.includes(R.PERSONEEL_VERBORGEN), 'Kantoor (3) en Magazijn zijn verborgen');
+  assert.ok(!pt.noten.includes(R.VERZUIM_VERBORGEN));
+  const blad = R.kerncijferBladen(k).find((b) => b.naam === 'Personeel').rijen;
+  assert.ok(!blad.some((r) => r[0] === R.VERZUIM_VERBORGEN || r[0] === R.VERZUIM_VERBORGEN_ORGANISATIE));
+  assert.ok(blad.some((r) => r.join('|') === 'Afdeling|Medewerkers|Fte'));
+  assert.ok(!blad.some((r) => r[0] === 'Productie' && r.length > 3));
+  const blokken = JSON.stringify(R.kerncijferBlokken(k, 'personeel'));
+  assert.ok(!blokken.includes('Verzuim van deze groep niet getoond'));
+  // Met een verzuimkolom en een groep van 9: de noot staat er wel.
+  const metV = verwerkPersoneel(['Afdeling', 'Verzuimdagen'], [...Array.from({ length: 9 }, (_, i) => ['Klein', i]), ...Array.from({ length: 30 }, (_, i) => ['Groot', i % 5]), ...Array.from({ length: 12 }, (_, i) => ['Midden', i % 3])], { rollen: { 0: 'afdeling', 1: 'verzuimdagen' }, periode: { van: '2025-11', tot: '2026-10' } }).aggregaat;
+  const kv = kern(standaardExport({ n: 40 }), {}, metV);
+  const ptv = R.personeelGroepTabel(kv.personeel, kv.personeel.per_groep[0]);
+  assert.ok(ptv.kop.includes('Verzuim'));
+  assert.ok(ptv.noten.includes(R.VERZUIM_VERBORGEN));
+});
+
+test('Word: "Thema\'s per groep" met korte rijnamen (eNPS, Rapportcijfer), de vraag in een noot, kolommen breed genoeg', () => {
+  const k = kern(standaardExport({ n: 200, afdelingen: [60, 50, 40, 50] }));
+  const blokken = R.kerncijferBlokken(k, 'groepen');
+  const tabellen = blokken.filter((b) => b.soort === 'tabel');
+  assert.ok(tabellen.length >= 1);
+  const namen = tabellen[0].rijen.map((r) => r[0]);
+  assert.ok(namen.includes('eNPS') && namen.includes('Rapportcijfer'), namen.join(' | '));
+  assert.ok(!namen.some((n) => n.includes('Welk rapportcijfer')));
+  const noten = blokken.filter((b) => b.soort === 'alinea').map((b) => b.tekst).join(' ');
+  assert.ok(noten.includes('Rapportcijfer: "Welk rapportcijfer geef je Voorbeeld BV als werkgever?"'));
+  for (const t of tabellen) {
+    assert.equal(t.breedtes.length, t.kop.length);
+    assert.ok(t.breedtes.reduce((a, b) => a + b, 0) <= 9070 + 1e-9);
+  }
+  // Veel groepen: verdeeld over meer tabellen die elk op de pagina passen.
+  const veel = structuredClone(k.groepen[0]);
+  veel.kolommen = Array.from({ length: 12 }, (_, i) => ({ ...veel.kolommen[0], label: `Verpleegafdeling${i}` }));
+  veel.rijen = veel.rijen.map((r) => ({ ...r, cellen: Array.from({ length: 12 }, () => r.cellen[0]) }));
+  const breed = R.kerncijferBlokken({ ...k, groepen: [veel] }, 'groepen').filter((b) => b.soort === 'tabel');
+  assert.ok(breed.length >= 2);
+  assert.equal(breed.reduce((t, b) => t + b.kop.length - 2, 0), 12);
+  for (const t of breed) assert.ok(t.breedtes.reduce((a, b) => a + b, 0) <= 9070 + 1e-9);
 });

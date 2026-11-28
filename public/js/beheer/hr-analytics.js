@@ -32,6 +32,8 @@ export const MIN_PAREN = 10;
 /** Grens voor "significant". */
 const ALFA = 0.05;
 const Z975 = 1.959963984540054;
+/** Een thema ligt "dicht bij het midden" van de prioriteitenmatrix bij minder dan zoveel verschil met het gemiddelde. */
+export const DICHT_BIJ_X = 0.1;
 
 const eindig = (x) => typeof x === 'number' && Number.isFinite(x);
 const pct = (a, b) => (b > 0 && eindig(a) ? (a / b) * 100 : null);
@@ -59,18 +61,24 @@ export function enps(waarden) {
   return {
     n, promotors, passief, criticasters,
     pct_promotors: pP * 100, pct_passief: (passief / n) * 100, pct_criticasters: pD * 100,
-    score, ci_laag: score - Z975 * se, ci_hoog: score + Z975 * se,
+    // Het interval loopt nooit buiten de schaal van −100 tot +100.
+    score, ci_laag: Math.max(-100, score - Z975 * se), ci_hoog: Math.min(100, score + Z975 * se),
   };
 }
 
-/** Gemiddelde, standaarddeviatie en 95%-interval (t) van cijfers; bij een rapportcijfer ook het deel onvoldoendes (≤ 5). */
-export function cijferStatistiek(waarden, soort = 'rapport') {
+/**
+ * Gemiddelde, standaarddeviatie en 95%-interval (t) van cijfers; bij een rapportcijfer ook het deel onvoldoendes (≤ 5).
+ * Het interval loopt nooit buiten de schaal (bereik: { min, max }; standaard 1–10, bij soort 'nps' 0–10).
+ */
+export function cijferStatistiek(waarden, soort = 'rapport', { bereik = null } = {}) {
   const v = (waarden || []).filter(eindig);
   const b = S.beschrijf(v);
   if (!b) return null;
   const t = b.n > 1 ? S.tKwantiel(0.975, b.n - 1) : null;
   const marge = t !== null && b.sd !== null ? (t * b.sd) / Math.sqrt(b.n) : null;
-  const uit = { n: b.n, gemiddelde: b.gemiddelde, sd: b.sd, ci_laag: marge === null ? null : b.gemiddelde - marge, ci_hoog: marge === null ? null : b.gemiddelde + marge };
+  const lo = eindig(bereik?.min) ? bereik.min : soort === 'nps' ? 0 : 1;
+  const hi = eindig(bereik?.max) ? bereik.max : 10;
+  const uit = { n: b.n, gemiddelde: b.gemiddelde, sd: b.sd, ci_laag: marge === null ? null : Math.max(lo, b.gemiddelde - marge), ci_hoog: marge === null ? null : Math.min(hi, b.gemiddelde + marge) };
   if (soort === 'rapport') uit.pct_onvoldoende = (v.filter((x) => x <= 5).length / b.n) * 100;
   return uit;
 }
@@ -156,10 +164,14 @@ export function drijvers(lijst, uitkomstSleutel, model, d = DREMPEL, { gemiddeld
   const getoond = rijen.filter((r) => r.r !== null && r.gemiddelde !== null);
   const kruis = getoond.length ? { x: gemiddelde(getoond.map((r) => r.gemiddelde)), y: gemiddelde(getoond.map((r) => r.r)) } : null;
   for (const r of rijen) {
+    r.dicht_bij_kruis = false;
     if (!kruis || r.r === null || r.gemiddelde === null || !(r.p < ALFA)) continue;
     const hoog = r.r >= kruis.y;
     const goed = r.gemiddelde >= kruis.x;
     r.kwadrant = hoog ? (goed ? 'vasthouden' : 'verbeteren') : goed ? 'goed_genoeg' : 'later';
+    // De lijnen zijn gemiddelden: een thema vlak bij een lijn (minder dan 0,1 van het gemiddelde, of een interval van r
+    // dat over de lijn heen loopt) verschilt daar niet echt van. Het kwadrant blijft, met die kanttekening.
+    r.dicht_bij_kruis = Math.abs(r.gemiddelde - kruis.x) < DICHT_BIJ_X || (eindig(r.ci_laag) && eindig(r.ci_hoog) && r.ci_laag <= kruis.y && kruis.y <= r.ci_hoog);
   }
   rijen.sort((a, b) => (b.r ?? -Infinity) - (a.r ?? -Infinity) || a.naam.localeCompare(b.naam, 'nl'));
   return {
@@ -317,6 +329,8 @@ function samenstelling(q, lijst, instellingen, personeel, d) {
     const pops = ids.filter((id) => !lieverNiet.has(id)).map(P);
     samen = basis({
       label: LABEL_OVERIG, optie_ids: ids, n: indeling.samengevoegd.n, samengevoegd: true,
+      // Alleen "Dat zeg ik liever niet" (en eventueel "Niet ingevuld"): geen groep in de organisatie, dus nooit vergeleken.
+      liever_niet: ids.every((id) => lieverNiet.has(id)),
       labels_samengevoegd: indeling.samengevoegd.labels.filter((_, i) => indeling.samengevoegd.sleutels[i] !== null),
       ook_niet_ingevuld: !nietIngevuldApart,
       // Een samengevoegde groep is één categorie: de populatie is de som (alleen als die van alle mogelijkheden bekend is).
@@ -349,8 +363,13 @@ function samenstelling(q, lijst, instellingen, personeel, d) {
   for (const g of groepen) {
     if (g.populatie === null || g.niet_ingevuld) continue;
     const r = pct(g.n, g.populatie);
-    if (r !== null && r > 100) g.controleer_aantallen = true;
-    else g.respons_pct = r;
+    // Meer respondenten dan medewerkers (ook: respondenten in een groep met 0 medewerkers) is geen privacykwestie maar
+    // een fout in de aantallen, bijvoorbeeld een waarde in het personeelsbestand die niet aan de vragenlijst gekoppeld is.
+    if ((r !== null && r > 100) || (g.populatie === 0 && g.n > 0)) {
+      g.controleer_aantallen = true;
+      continue;
+    }
+    g.respons_pct = r;
     if (!g.samengevoegd && g.n > 0) g.foutmarge_pp = S.foutmarge(g.n, g.populatie);
   }
 
@@ -368,7 +387,9 @@ function samenstelling(q, lijst, instellingen, personeel, d) {
       g.verschil_pp = g.pct_vergelijk !== null && pp !== null ? g.pct_vergelijk - pp : null;
       g.populatie_pct_vergelijk = pp;
     }
-    const toets = vergelijk.length >= 2 ? S.aanpassingsToets(vergelijk.map((g) => g.n), vergelijk.map((g) => g.populatie)) : { reden: 'te_weinig_groepen' };
+    // Klopt een aantal medewerkers niet (meer respondenten dan medewerkers), dan zegt een toets niets over de respondenten.
+    const toets = vergelijk.some((g) => g.controleer_aantallen) ? { reden: 'controleer_aantallen' }
+      : vergelijk.length >= 2 ? S.aanpassingsToets(vergelijk.map((g) => g.n), vergelijk.map((g) => g.populatie)) : { reden: 'te_weinig_groepen' };
     const basisR = { chi2: null, df: null, p: null, n: nV, kleinste_verwacht: null, populatie_bron: pop.bron, niet_vergeleken: nietVergeleken };
     const verschillen = vergelijk.map((g) => ({ label: g.label, pct_respondenten: g.pct_vergelijk, pct_medewerkers: g.populatie_pct_vergelijk, verschil_pp: g.verschil_pp }));
     if (!toets || toets.reden) {
@@ -519,14 +540,17 @@ export function verzamelKerncijfers(data, personeel, instellingen = {}, opties =
   const personeelN = personeel && Number.isInteger(personeel.totaal?.medewerkers) && personeel.totaal.medewerkers >= d ? personeel.totaal.medewerkers : null;
 
   // Deelname per vragenlijst.
+  // Met de hand ingevulde aantallen zijn alleen het aantal medewerkers van de organisatie als bij elke mogelijkheid
+  // (behalve "Dat zeg ik liever niet") een aantal staat; anders is de som te laag (en de respons en foutmarge te hoog).
   const handN = (l) => {
     const lm = model.lijsten.find((x) => x.id === l.vragenlijst_id);
     for (const q of lm?.vragen || []) {
       const hand = inst.populatie?.[q.id] || inst.populatie?.[q.stam];
-      if (q.kenmerk && hand) {
-        const som = Object.values(hand).filter((x) => Number.isInteger(x)).reduce((t, x) => t + x, 0);
-        if (som > 0) return som;
-      }
+      if (!q.kenmerk || !hand) continue;
+      const opties = optiesVan(q).filter((o) => !isLieverNiet(o.label));
+      if (!opties.length || !opties.every((o) => Number.isInteger(hand[o.id]) && hand[o.id] >= 0)) continue;
+      const som = opties.reduce((t, o) => t + hand[o.id], 0);
+      if (som > 0) return som;
     }
     return null;
   };
@@ -609,7 +633,7 @@ export function verzamelKerncijfers(data, personeel, instellingen = {}, opties =
         score: e?.score ?? null, ci_laag: e?.ci_laag ?? null, ci_hoog: e?.ci_hoog ?? null, gemiddelde: verborgen ? null : dq.gemiddelde,
       });
     } else {
-      const c = verborgen ? null : cijferStatistiek(waarden, 'rapport');
+      const c = verborgen ? null : cijferStatistiek(waarden, 'rapport', { bereik: q.bereik });
       cijferVragen.set(q.id, {
         ...basis, n: c ? c.n : null, gemiddelde: c ? dq.gemiddelde : null, sd: c?.sd ?? null, ci_laag: c?.ci_laag ?? null, ci_hoog: c?.ci_hoog ?? null,
         pct_onvoldoende: c?.pct_onvoldoende ?? null,

@@ -317,3 +317,15 @@ test('maakDocx: zonder afbeeldingen verandert er niets; een kapotte afbeelding g
   assert.throws(() => maakDocx({ blokken: [{ soort: 'afbeelding', png: new Uint8Array([1, 2, 3]), breedte_cm: 5, hoogte_cm: 5, alt: '' }] }), /geen PNG/);
   assert.throws(() => maakDocx({ blokken: [{ soort: 'afbeelding', png: kleinePng(), breedte_cm: 0, hoogte_cm: 5, alt: '' }] }), /geen geldige maten/);
 });
+
+test('streepjes van een as met de decimalen die ze hebben: 0,25 en 0,75 (niet 0,3 en 0,8)', () => {
+  assert.deepEqual(F.streepjes(0, 1, 4).map(F.streepTekst), ['0', '0,25', '0,5', '0,75', '1']);
+  const p = F.figuurPlan({
+    soort: 'figuur', id: 'p', vorm: 'spreiding', titel: 'Prioriteitenmatrix', bijschrift: '', alt: 'x.', eenheid: 'gem',
+    schaal: { min: 1, max: 5 }, schaalY: { min: 0, max: 1 }, categorieen: [], reeksen: [],
+    punten: [{ label: 'A', x: 3, y: 0.38 }], kruis: { x: 3, y: 0.38 },
+  }, { breedte: 600 });
+  const teksten = p.elementen.filter((e) => e.soort === 'tekst').map((e) => e.tekst);
+  assert.ok(teksten.includes('0,25') && teksten.includes('0,75'));
+  assert.ok(!teksten.includes('0,3') && !teksten.includes('0,8'));
+});

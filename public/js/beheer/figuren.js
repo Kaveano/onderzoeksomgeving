@@ -75,6 +75,12 @@ export function afbreken(tekst, maxBreedte, grootte = LETTER, maxRegels = 2) {
 }
 
 /** "Mooie" verdeelstreepjes tussen min en max (hooguit ongeveer n). */
+/** Een getal bij een streepje van een as, met precies zoveel decimalen als het heeft (0 · 0,25 · 0,5 · 1), hooguit 3. */
+export function streepTekst(t) {
+  const r = Math.round(t * 1000) / 1000;
+  return nlGetal(r, Math.min(3, (String(r).split('.')[1] || '').length));
+}
+
 export function streepjes(min, max, n = 5) {
   if (!(max > min)) return [min];
   const ruw = (max - min) / n;
@@ -331,8 +337,8 @@ function spreidingPlan(fig, breedte) {
   const X = (v) => x0 + ((v - sx.min) / (sx.max - sx.min)) * (x1 - x0);
   const Y = (v) => y1 - ((v - sy.min) / (sy.max - sy.min)) * plotH;
   rect(plan, x0, top, x1 - x0, plotH, 'fig-kader');
-  for (const t of streepjes(sx.min, sx.max, 4)) tekst(plan, X(t), y1 + 15, nlGetal(t, Number.isInteger(t) ? 0 : 1), 'fig-tekst fig-zacht fig-klein', 'middle', KLEIN);
-  for (const t of streepjes(sy.min, sy.max, 4)) tekst(plan, x0 - 4, Y(t) + 4, nlGetal(t, Math.abs(t) < 1 && t !== 0 ? 1 : 0), 'fig-tekst fig-zacht fig-klein', 'end', KLEIN);
+  for (const t of streepjes(sx.min, sx.max, 4)) tekst(plan, X(t), y1 + 15, streepTekst(t), 'fig-tekst fig-zacht fig-klein', 'middle', KLEIN);
+  for (const t of streepjes(sy.min, sy.max, 4)) tekst(plan, x0 - 4, Y(t) + 4, streepTekst(t), 'fig-tekst fig-zacht fig-klein', 'end', KLEIN);
   if (fig.asLabels?.y) tekst(plan, x0, top - 7, `↑ ${fig.asLabels.y}`, 'fig-tekst fig-zacht fig-klein', 'start', KLEIN);
   if (fig.asLabels?.x) tekst(plan, x1, y1 + 30, `${fig.asLabels.x} →`, 'fig-tekst fig-zacht fig-klein', 'end', KLEIN);
   if (fig.kruis && eindig(fig.kruis.x) && eindig(fig.kruis.y)) {

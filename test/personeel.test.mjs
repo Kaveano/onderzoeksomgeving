@@ -436,17 +436,21 @@ test('populatie per mogelijkheid: diensttijd in jaren en maanden (onboarding), u
   assert.deepEqual(P.populatieVoorVraag(lg, { id: 2, type: 'janee', kenmerk: 'leidinggevend' }), { ja: 6, nee: 9 });
 });
 
-test('populatie per mogelijkheid: afdelingen via de koppeling bij het inlezen; ontbrekende mogelijkheid = 0', () => {
+test('populatie per mogelijkheid: afdelingen via de koppeling bij het inlezen; ontbrekende mogelijkheid onbekend zolang er niet-gekoppelde groepen zijn', () => {
   const rijen = [...groep(12, { afdeling: 'Verpleging' }), ...groep(8, { afdeling: 'ADMIN' }), ...groep(5, { afdeling: 'Staf' })];
   const vraag = vraagVan('afdeling', ['Zorg', 'Administratie', 'Directie']);
   const { aggregaat } = verwerk(rijen, { koppeling: { afdeling: { Verpleging: 'Zorg', admin: 'Administratie' } } });
   assert.deepEqual(aggregaat.dimensies.afdeling.groepen.map((g) => g.label), ['Administratie', 'Staf', 'Zorg']);
-  assert.deepEqual(P.populatieVoorVraag(aggregaat, vraag), { o1: 12, o2: 8, o3: 0 });
+  // Review P3: "Staf" hoort bij geen mogelijkheid, dus is "Directie" onbekend (misschien zitten die medewerkers in Staf).
+  assert.deepEqual(P.populatieVoorVraag(aggregaat, vraag), { o1: 12, o2: 8 });
   assert.deepEqual(P.ongekoppeldeGroepen(aggregaat, vraag), [{ label: 'Staf', medewerkers: 5 }]);
+  // Alles gekoppeld: een mogelijkheid zonder groep heeft 0 medewerkers.
+  const alles = verwerk(rijen, { koppeling: { afdeling: { Verpleging: 'Zorg', admin: 'Administratie', Staf: 'Zorg' } } }).aggregaat;
+  assert.deepEqual(P.populatieVoorVraag(alles, vraag), { o1: 17, o2: 8, o3: 0 });
   // Zonder overeenkomst: null.
   assert.equal(P.populatieVoorVraag(aggregaat, vraagVan('afdeling', ['X', 'Y'])), null);
   // Opties als tekst (zoals in de database).
-  assert.deepEqual(P.populatieVoorVraag(aggregaat, { ...vraag, opties: JSON.stringify(vraag.opties) }), { o1: 12, o2: 8, o3: 0 });
+  assert.deepEqual(P.populatieVoorVraag(aggregaat, { ...vraag, opties: JSON.stringify(vraag.opties) }), { o1: 12, o2: 8 });
 });
 
 test('verwerkPersoneel: ongeldige periode, uren per fte en meldingen bij rare cellen', () => {
@@ -747,4 +751,14 @@ test('verzuim: ook de ziekmeldingen mogen niet vooral van één persoon zijn (al
   assert.deepEqual(dimGroep(b, 'afdeling', 'Team').verzuim, { toonbaar: false, reden: 'dominant' });
   assert.equal(dimGroep(b, 'afdeling', 'Rest').verzuim.toonbaar, true);
   assert.equal(b.totaal.verzuim.toonbaar, true);
+});
+
+test('populatie per mogelijkheid: een mogelijkheid zonder groep is onbekend (niet 0) als het bestand niet-gekoppelde groepen heeft', () => {
+  const agg = verwerk([...groep(38, { afdeling: 'Keukenteam' }), ...groep(20, { afdeling: 'Zorg' }), ...groep(12, { afdeling: 'Staf' })]).aggregaat;
+  const q = vraagVan('afdeling', ['Zorg', 'Staf', 'Keuken']);
+  assert.deepEqual(P.populatieVoorVraag(agg, q), { o1: 20, o2: 12 });
+  assert.deepEqual(P.ongekoppeldeGroepen(agg, q), [{ label: 'Keukenteam', medewerkers: 38 }]);
+  // Gekoppeld bij het inlezen: dan wel een aantal.
+  const goed = verwerk([...groep(38, { afdeling: 'Keukenteam' }), ...groep(20, { afdeling: 'Zorg' }), ...groep(12, { afdeling: 'Staf' })], { koppeling: { afdeling: { Keukenteam: 'Keuken' } } }).aggregaat;
+  assert.deepEqual(P.populatieVoorVraag(goed, q), { o1: 20, o2: 12, o3: 38 });
 });

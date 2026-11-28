@@ -1022,7 +1022,8 @@ export function personeelKpis(aggregaat, { d = DREMPEL } = {}) {
  * - Indelingen in klassen (leeftijd, diensttijd, uren): elke mogelijkheid (behalve "Dat zeg ik liever niet") moet
  *   precies uit hele klassen bestaan (klasseVan); anders null (dan vul je de aantallen zelf in).
  * - Andere indelingen: de groep met dezelfde naam (na normaal()); een mogelijkheid zonder groep heeft 0
- *   medewerkers. Komt geen enkele mogelijkheid overeen, dan null.
+ *   medewerkers, behalve als het bestand groepen heeft die bij geen mogelijkheid horen (dan geen aantal). Komt geen
+ *   enkele mogelijkheid overeen, dan null.
  * "Dat zeg ik liever niet" en "Onbekend" krijgen geen aantal.
  */
 export function populatieVoorVraag(aggregaat, vraag, { d = DREMPEL } = {}) {
@@ -1059,11 +1060,16 @@ export function populatieVoorVraag(aggregaat, vraag, { d = DREMPEL } = {}) {
     return uit;
   }
   let gevonden = 0;
+  // Staan er in het bestand groepen die bij geen mogelijkheid horen (bijv. "Keukenteam" niet gekoppeld aan "Keuken"),
+  // dan is een mogelijkheid zonder groep onbekend, niet 0: misschien zitten haar medewerkers in zo'n groep.
+  const alleLabels = new Set(optiesVan(vraag).map((o) => normaal(o.label)));
+  const ongekoppeld = groepen.some((g) => !alleLabels.has(normaal(g.label)));
   for (const o of opties) {
     const g = groepen.find((x) => normaal(x.label) === normaal(o.label));
     if (g) gevonden++;
-    if (!g) uit[o.id] = 0;
-    else if (!splitstVerborgen(verborgen, (label) => label === g.label)) uit[o.id] = g.medewerkers;
+    if (!g) {
+      if (!ongekoppeld) uit[o.id] = 0;
+    } else if (!splitstVerborgen(verborgen, (label) => label === g.label)) uit[o.id] = g.medewerkers;
   }
   return gevonden ? uit : null;
 }
