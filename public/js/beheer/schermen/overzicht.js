@@ -729,12 +729,15 @@ export async function toon(container, ctx) {
             r.cellen.map((c) => celEl(r, c, r.totaal)),
             h('td', { class: 'rechts getal hm-totaal' }, r.totaal === null ? kruisje() : r.soort === 'enps' ? sc(r.totaal) : g1(r.totaal)))))));
     const toelichting = [...new Set(kolommen.map((c) => c.toelichting).filter(Boolean))];
+    // Zoals bij Alle resultaten (uitsplitsingIetsVerborgen) en in Word: de uitleg van × alleen als er een × in de tabel staat.
+    const ietsVerborgen = kolommen.some((c) => c.verborgen || c.n === null)
+      || g.rijen.some((r) => r.totaal === null || r.cellen.some((c) => c === null || c === undefined));
     return kaart('hr-groepen', "Thema's per groep", 'Per groep',
       { uitleg: `Het gemiddelde per thema (1 tot 5) per groep, naar "${g.tekst}". Dezelfde getallen als bij Alle resultaten.` },
       g.rijen.length ? tabelEl : h('p', { class: 'zacht' }, 'Deze vragenlijst heeft geen schaalvragen of cijfervragen om per groep te vergelijken.'),
       h('p', { class: 'hr-legenda' }, h('span', { class: 'hm-voorbeeld hm-hoger', 'aria-hidden': 'true' }), h('span', { class: 'hm-voorbeeld hm-lager', 'aria-hidden': 'true' }), HM_LEGENDA),
       toelichting.map((t) => noot(t)),
-      noot(`${VERBORGEN_UITLEG} Groepen met minder dan ${k.drempel} respondenten staan samen bij "Overige groepen samen" of worden niet getoond.`),
+      noot(`${ietsVerborgen ? `${VERBORGEN_UITLEG} ` : ''}Groepen met minder dan ${k.drempel} respondenten staan samen bij "Overige groepen samen" of worden niet getoond.`),
       noot('Leg de uitkomsten van verschillende indelingen niet naast elkaar om kleinere groepen af te leiden.'));
   }
 
