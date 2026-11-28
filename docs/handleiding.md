@@ -119,10 +119,13 @@ Bovenin staat naast **Onderzoeken** en **Sjablonen** de **Bibliotheek**: één v
    - Bij een **Nederlandse** naam vul je dat apart in bij **Tussenvoegsel**, met een kleine letter (bijvoorbeeld *de* bij *Vroome*). In de literatuurlijst staat het dan achter de voorletters, met een punt erachter: *Vroome, E. M. M. de. (2025).* In je tekst begint de naam met een hoofdletter: *De Vroome (2025)*.
    - Bij een **Vlaamse of buitenlandse** naam hoort het bij de achternaam. Vul dan bijvoorbeeld *De Witte* in bij **Achternaam** en laat het tussenvoegsel leeg: *De Witte, H. (2020).*
    - Bij **Plak een verwijzing** ziet de app het verschil aan de hoofdletter: *de Vroome* of *Vroome, E. M. M. de* wordt een tussenvoegsel, *De Witte* blijft de achternaam. Controleer het even.
-5. Geen jaartal? Laat het jaar leeg; in de verwijzing staat dan *z.d.* (zonder datum).
-6. Een DOI heeft de voorkeur boven een link.
-7. Kies onderwerpen, de betrouwbaarheid en eventueel kernpunten (één per regel).
-8. Klik op **Opslaan**. De bron krijgt een vaste code voor rapporten, bijvoorbeeld `[@bakker2017]`. Staat de bron er al in (zelfde DOI, of zelfde titel en jaar), dan vraagt de app eerst of je hem toch apart wilt toevoegen.
+5. Geen jaartal? Laat het jaar leeg; in de verwijzing staat dan *z.d.* (zonder datum). Dat geldt ook voor een webpagina waarop geen datum staat.
+6. Een webpagina of cijfers?
+   - Staat er een datum op de pagina, zoals bij een nieuwsbericht of "Pagina bijgewerkt op …"? Vul die in bij **Datum van de pagina** en laat **Geraadpleegd op** leeg.
+   - Vul **Geraadpleegd op** alleen in bij een pagina zonder datum, of bij cijfers die steeds worden bijgewerkt (zoals een tabel van CBS StatLine). In de verwijzing staat dan *Geraadpleegd op … van …*. Zo doet APA het: alleen bij iets dat kan veranderen.
+7. Een DOI heeft de voorkeur boven een link.
+8. Kies onderwerpen, de betrouwbaarheid en eventueel kernpunten (één per regel).
+9. Klik op **Opslaan**. De bron krijgt een vaste code voor rapporten, bijvoorbeeld `[@bakker2017]`. Staat de bron er al in (zelfde DOI, of zelfde titel en jaar), dan vraagt de app eerst of je hem toch apart wilt toevoegen.
 
 **Citeer**: bij elke bron laat **Citeer** zien hoe je ernaar verwijst, met een knop **Kopieer** per vorm:
 - in de literatuurlijst (APA, 7e editie, Nederlandse schrijfwijze), bijvoorbeeld *Bakker, A. B., & Demerouti, E. (2017). …*;

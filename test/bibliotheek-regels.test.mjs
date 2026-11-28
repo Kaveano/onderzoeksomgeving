@@ -490,7 +490,9 @@ test('startcollectie: een afkorting tussen haakjes achter de organisatie wordt d
   }));
   assert.equal(r.bron.organisatie, 'Ministerie van Sociale Zaken en Werkgelegenheid');
   assert.deepEqual(r.bron.details, { sitenaam: 'Arboportaal', geraadpleegd: '2026-11-27' });
-  assert.equal(apaVerwijzing(r.bron), 'Ministerie van Sociale Zaken en Werkgelegenheid. (2026). *Psychosociale arbeidsbelasting (PSA)*. Arboportaal. '
+  // Besluit 7: de datum staat alleen in de metadata, dus z.d. met de raadpleegdatum
+  assert.equal(r.bron.jaar, null);
+  assert.equal(apaVerwijzing(r.bron), 'Ministerie van Sociale Zaken en Werkgelegenheid. (z.d.). *Psychosociale arbeidsbelasting (PSA)*. Arboportaal. '
     + 'Geraadpleegd op 27 november 2026, van https://www.arboportaal.nl/onderwerpen/psychosociale-arbeidsbelasting');
   assert.ok(r.meldingen.some((m) => m.includes('alleen in de metadata')), 'een datum uit de metadata wordt niet gebruikt');
 });
@@ -507,6 +509,7 @@ test('startcollectie (c): leesStartDetails leest alleen wat ondubbelzinnig in br
   let r = web('Webpagina van de Nederlandse Arbeidsinspectie. Laatst gewijzigd 9 september 2026 volgens de paginametadata (geen zichtbare datum op de pagina).', 2026);
   assert.deepEqual(r.velden, {});
   assert.ok(r.meldingen.some((m) => m.includes('alleen in de metadata')));
+  assert.equal(r.zonderDatum, true, 'besluit 7: de bron krijgt z.d.');
   r = web('CBS-nieuwsbericht, 31-12-2025.', 2026);
   assert.deepEqual(r.velden, {});
   assert.ok(r.meldingen.some((m) => m.includes('past niet bij het jaar 2026')));
@@ -568,8 +571,8 @@ test('startcollectie (c): geen jaartal of datum als rapportnummer en geen webadr
   assert.deepEqual(web('Nieuwsbericht op Centraal Bureau voor de Statistiek, 3-4-2026.', cbs).velden, { datum: '2026-04-03' });
   // In de omgezette bron: de afkorting tussen haakjes telt mee, en APA noemt de website dan niet nog een keer
   r = normaliseerStartbron(startWebpagina({ jaar: 2026, bron_details: 'Nieuwsbericht op CBS, 3-4-2026.' }));
-  assert.deepEqual(r.bron.details, { geraadpleegd: '2026-11-27', datum: '2026-04-03' });
-  assert.ok(apaVerwijzing(r.bron).startsWith('Centraal Bureau voor de Statistiek. (2026, 3 april). *Cao-lonen stijgen in 2025 met 5,0 procent*. Geraadpleegd op'));
+  assert.deepEqual(r.bron.details, { datum: '2026-04-03' }, 'besluit 7: een gedateerd nieuwsbericht zonder raadpleegdatum');
+  assert.ok(apaVerwijzing(r.bron).startsWith('Centraal Bureau voor de Statistiek. (2026, 3 april). *Cao-lonen stijgen in 2025 met 5,0 procent*. https://'));
 });
 
 test('alle vaste onderwerpen samen mogen (LIMIETEN.onderwerpen volgt ONDERWERPEN; review P7)', () => {
@@ -588,12 +591,12 @@ test('alle vaste onderwerpen samen mogen (LIMIETEN.onderwerpen volgt ONDERWERPEN
 });
 
 test('startcollectie (c, d): bron_details en geraadpleegd in de omgezette bron', () => {
-  // Webpagina: datum en geraadpleegd (APA 7: inhoud die verandert); de rest van bron_details wordt gemeld
+  // Webpagina: de datum van het nieuwsbericht, en dan geen raadpleegdatum (besluit 7, APA 7); de rest van bron_details wordt gemeld
   let r = normaliseerStartbron(startWebpagina());
   assert.deepEqual(r.fouten, []);
-  assert.deepEqual(r.bron.details, { geraadpleegd: '2026-11-27', datum: '2025-12-31' });
+  assert.deepEqual(r.bron.details, { datum: '2025-12-31' });
   assert.equal(apaVerwijzing(r.bron), 'Centraal Bureau voor de Statistiek. (2025, 31 december). *Cao-lonen stijgen in 2025 met 5,0 procent*. '
-    + 'Geraadpleegd op 27 november 2026, van https://www.cbs.nl/nl-nl/nieuws/2026/01/cao-lonen-stijgen-in-2025-met-5-0-procent');
+    + 'https://www.cbs.nl/nl-nl/nieuws/2026/01/cao-lonen-stijgen-in-2025-met-5-0-procent');
   assert.ok(r.meldingen.some((m) => m.includes('de rest is niet overgenomen ("CBS-nieuwsbericht, 31-12-2025. Cao-lonen')));
   // Een datum in het record zelf gaat voor
   r = normaliseerStartbron(startWebpagina({ datum: '2025-12' }));
@@ -616,6 +619,57 @@ test('startcollectie (c, d): bron_details en geraadpleegd in de omgezette bron',
   r = normaliseerStartbron(startWebpagina({ soort: 'dataset', titel: 'Ziekteverzuimpercentage', bron_details: 'CBS StatLine-tabel 80072NED, gewijzigd op 17-11-2026.' }));
   assert.equal(r.bron.soort, 'cijfers');
   assert.deepEqual(r.bron.details, { geraadpleegd: '2026-11-27' });
+});
+
+test('besluit 7 (P7): een raadpleegdatum alleen bij inhoud die verandert (APA 7)', () => {
+  const geen = (r) => !Object.hasOwn(r.bron.details, 'geraadpleegd');
+  // Gedateerd nieuwsbericht en een pagina met "Pagina bijgewerkt op": de datum, geen raadpleegdatum
+  let r = normaliseerStartbron(startWebpagina());
+  assert.equal(r.bron.jaar, 2025);
+  assert.ok(geen(r));
+  assert.ok(!apaVerwijzing(r.bron).includes('Geraadpleegd'));
+  const ap = { titel: 'De AVG in het kort', organisatie: 'Autoriteit Persoonsgegevens', jaar: 2026, soort: 'website', taal: 'nl',
+    url: 'https://www.autoriteitpersoonsgegevens.nl/themas/basis-avg/avg-algemeen/de-avg-in-het-kort', onderwerpen: ['privacy-ethiek'],
+    betrouwbaarheid: 'overheid', geraadpleegd: '2026-11-27',
+    bron_details: 'Webpagina van de Autoriteit Persoonsgegevens, thema Basis AVG > AVG algemeen. Pagina bijgewerkt op 16 november 2026. Vat artikel 5 AVG samen.' };
+  r = normaliseerStartbron(ap);
+  assert.deepEqual(r.bron.details, { datum: '2026-11-16' });
+  assert.equal(apaVerwijzing(r.bron), 'Autoriteit Persoonsgegevens. (2026, 16 november). *De AVG in het kort*. https://www.autoriteitpersoonsgegevens.nl/themas/basis-avg/avg-algemeen/de-avg-in-het-kort');
+  // Alleen een datum in de metadata (geen zichtbare datum): z.d. en wel een raadpleegdatum
+  const nla = { ...ap, titel: 'Werkdruk', organisatie: 'Nederlandse Arbeidsinspectie', url: 'https://www.nlarbeidsinspectie.nl/onderwerpen/werkdruk',
+    bron_details: 'Webpagina van de Nederlandse Arbeidsinspectie (Ministerie van SZW). Laatst gewijzigd 10 september 2026 volgens de paginametadata (geen zichtbare datum op de pagina).' };
+  r = normaliseerStartbron(nla);
+  assert.equal(r.bron.jaar, null);
+  assert.deepEqual(r.bron.details, { geraadpleegd: '2026-11-27' });
+  assert.equal(apaVerwijzing(r.bron), 'Nederlandse Arbeidsinspectie. (z.d.). *Werkdruk*. Geraadpleegd op 27 november 2026, van https://www.nlarbeidsinspectie.nl/onderwerpen/werkdruk');
+  assert.equal(apaInTekst([{ bron: r.bron }]), '(Nederlandse Arbeidsinspectie, z.d.)');
+  assert.ok(r.meldingen.some((m) => m.includes('krijgt "z.d."')));
+  assert.equal(normaliseerStartbron({ ...nla, bron_details: 'Webpagina op Arboportaal. Geen zichtbare datum.' }).bron.jaar, null, 'ook zonder het woord metadata');
+  // Een datum in het record zelf gaat voor: dan blijft het jaar en is er geen raadpleegdatum
+  r = normaliseerStartbron({ ...nla, datum: '2026-09-10' });
+  assert.equal(r.bron.jaar, 2026);
+  assert.deepEqual(r.bron.details, { datum: '2026-09-10' });
+  // Geen datum vermeld (z.d.) of alleen een jaar: wel een raadpleegdatum
+  r = normaliseerStartbron({ ...nla, jaar: null, bron_details: 'Webpagina van de SER. Geen publicatiedatum vermeld (z.d.; geraadpleegd 27-11-2026).' });
+  assert.equal(r.bron.jaar, null);
+  assert.deepEqual(r.bron.details, { geraadpleegd: '2026-11-27' });
+  r = normaliseerStartbron({ ...nla, bron_details: '' });
+  assert.equal(r.bron.jaar, 2026, 'zonder bron_details raden we niets: het jaar blijft');
+  assert.deepEqual(r.bron.details, { geraadpleegd: '2026-11-27' });
+  // Cijfers (zoals een StatLine-tabel die elk kwartaal wordt bijgewerkt): altijd met raadpleegdatum, ook met een jaar
+  r = normaliseerStartbron({ ...ap, soort: 'dataset', titel: 'Ziekteverzuimpercentage', organisatie: 'Centraal Bureau voor de Statistiek (CBS)',
+    bron_details: 'CBS StatLine-tabel 80072NED, gewijzigd op 17-11-2026. Tabel wordt elk kwartaal bijgewerkt.' });
+  assert.equal(r.bron.soort, 'cijfers');
+  assert.equal(r.bron.jaar, 2026);
+  assert.deepEqual(r.bron.details, { geraadpleegd: '2026-11-27' });
+  assert.ok(apaVerwijzing(r.bron).includes('[Dataset]. Geraadpleegd op 27 november 2026, van https://'));
+  // Wet en richtlijn: hetzelfde als een webpagina (met eigen datum zonder, zonder datum met)
+  const wet = { titel: 'Arbeidsomstandighedenwet', soort: 'wet', jaar: 1998, url: 'https://wetten.overheid.nl/BWBR0010346', onderwerpen: ['wet-regelgeving'], geraadpleegd: '2026-11-27' };
+  assert.deepEqual(normaliseerStartbron(wet).bron.details, { geraadpleegd: '2026-11-27' });
+  assert.deepEqual(normaliseerStartbron({ ...wet, datum: '1998-11-01' }).bron.details, { datum: '1998-11-01' });
+  assert.deepEqual(normaliseerStartbron({ ...wet, soort: 'richtlijn', datum: '2024-03' }).bron.details, { datum: '2024-03' });
+  // Alleen bij een webpagina leidt een datum in de metadata tot z.d.
+  assert.equal(leesStartDetails('Rapport, datum volgens de paginametadata.', { soort: 'rapport', jaar: 2021 }).zonderDatum, undefined);
 });
 
 test('Plak een verwijzing: een titel met ? en een ondertitel; "Geraadpleegd op … van" is een webpagina', () => {

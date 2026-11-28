@@ -106,7 +106,10 @@ export function controleerRecords(records) {
 
 /**
  * Wijst sleutels toe (bestaande blijven). sleutelbestand: { samengesteld_op, bronnen: [{ doi, titel_jaar, sleutel,
- * citeersleutel, toegevoegd_op }] } (of null). → { lijst: [{ bron, sleutel, citeersleutel, toegevoegd_op }], sleutelbestand }.
+ * citeersleutel, toegevoegd_op }] } (of null). → { lijst: [{ bron, sleutel, citeersleutel, toegevoegd_op }], sleutelbestand,
+ * meldingen }. meldingen: records die niet op DOI of titel en jaar herkend worden, terwijl hun eigen 'sleutel' al in het
+ * sleutelbestand staat (bijvoorbeeld omdat het jaar of de titel is veranderd): die krijgen een nieuwe sleutel en zouden
+ * er bij een nieuwe versie dubbel in komen. Controleer dat voordat je de migratie gebruikt.
  */
 export function wijsSleutelsToe(bronnen, sleutelbestand, datum) {
   const vorige = Array.isArray(sleutelbestand?.bronnen) ? sleutelbestand.bronnen : [];
@@ -118,6 +121,7 @@ export function wijsSleutelsToe(bronnen, sleutelbestand, datum) {
   // Eigen sleutels uit de records: alleen bruikbaar als ze passen en maar één keer voorkomen.
   const keren = new Map();
   for (const { voorkeur } of bronnen) if (voorkeur) keren.set(voorkeur, (keren.get(voorkeur) || 0) + 1);
+  const meldingen = [];
   const lijst = bronnen.map(({ bron, voorkeur }) => {
     const doi = kaleDoi(bron.doi);
     let bekend = (doi && opDoi.get(doi)) || opTitel.get(titelJaar(bron));
@@ -127,6 +131,11 @@ export function wijsSleutelsToe(bronnen, sleutelbestand, datum) {
       bekend.doi = doi;
       bekend.titel_jaar = titelJaar(bron);
       return { bron, sleutel: bekend.sleutel, citeersleutel: bekend.citeersleutel, toegevoegd_op: bekend.toegevoegd_op || datum };
+    }
+    if (voorkeur && sleutels.has(voorkeur) && !gebruikt.has(voorkeur)) {
+      meldingen.push(`De bron "${bron.titel.slice(0, 60)}" heeft de sleutel "${voorkeur}", die al in het sleutelbestand staat bij een andere titel, `
+        + 'een ander jaar of een andere DOI. Hij krijgt een nieuwe sleutel en komt er dus dubbel in. Is het dezelfde bron (bijvoorbeeld met een '
+        + 'verbeterd jaar), vraag dan hoe het verder moet: bij versie 1 die nog niet live is kun je het sleutelbestand opnieuw laten maken.');
     }
     const eigen = voorkeur && SLEUTEL_PATROON.test(voorkeur) && keren.get(voorkeur) === 1 && !sleutels.has(voorkeur);
     const sleutel = eigen ? voorkeur : maakSleutel(bron, sleutels);
@@ -148,7 +157,7 @@ export function wijsSleutelsToe(bronnen, sleutelbestand, datum) {
     samengesteld_op: sleutelbestand?.samengesteld_op || datum,
     bronnen: [...vorige].sort((a, b) => (a.sleutel < b.sleutel ? -1 : a.sleutel > b.sleutel ? 1 : 0)),
   };
-  return { lijst, sleutelbestand: bestand };
+  return { lijst, sleutelbestand: bestand, meldingen };
 }
 
 const KOLOMMEN = ['collectie', 'sleutel', 'citeersleutel', 'soort', 'titel', 'auteurs', 'organisatie', 'afkorting', 'jaar', 'taal', 'url', 'doi',
@@ -215,12 +224,13 @@ export function main(argv) {
   const sleutelPad = resolve(o.sleutels || (o.uit ? join(uitMap, 'startcollectie-sleutels.json') : join(ROOT, 'data', 'startcollectie-sleutels.json')));
   const vorigeSleutels = existsSync(sleutelPad) ? JSON.parse(readFileSync(sleutelPad, 'utf8')) : null;
   const datum = o.datum || vorigeSleutels?.samengesteld_op || vandaag();
-  const { lijst, sleutelbestand } = wijsSleutelsToe(bronnen, vorigeSleutels, datum);
+  const { lijst, sleutelbestand, meldingen: sleutelMeldingen } = wijsSleutelsToe(bronnen, vorigeSleutels, datum);
   if (o.datum) sleutelbestand.samengesteld_op = o.datum;
   const migratie = maakMigratie(lijst, { versie: o.versie, datum });
   const migratiePad = join(uitMap, o.bestand || '0016_bibliotheek_start.sql');
   const sleutelTekst = `${JSON.stringify(sleutelbestand, null, 2)}\n`;
   for (const b of bronnen) for (const m of b.meldingen) console.warn(`Let op: ${m}`);
+  for (const m of sleutelMeldingen) console.warn(`Let op (sleutels): ${m}`);
   if (ongebruikt.size) {
     console.warn(`Niet gebruikt (de bibliotheek heeft er geen veld voor): ${[...ongebruikt].map(([k, n]) => `${k} (${n}×)`).join(', ')}.`);
   }

@@ -1399,18 +1399,20 @@ function datumUitTekst(t) {
  * onderzoeksteam, P7: alleen als de tekst ondubbelzinnig is, nooit raden; de rest wordt gemeld):
  * - webpagina: de datum van een nieuwsbericht ("CBS-nieuwsbericht, 31-12-2025") of de wijzigingsdatum die op de
  *   pagina staat ("Pagina bijgewerkt op 16 september 2026"), alleen als het jaar gelijk is aan het jaar van de bron.
- *   Een datum die alleen in de metadata van de pagina staat ("volgens de paginametadata") wordt niet gebruikt.
+ *   Een datum die alleen in de metadata van de pagina staat ("volgens de paginametadata", "geen zichtbare datum")
+ *   wordt niet gebruikt; dan is zonderDatum true en krijgt de bron "z.d." (normaliseerStartbron, besluit 7).
  *   De naam van de website bij "Nieuwsbericht op …" of "Webpagina op …", als die anders is dan de organisatie en
  *   de afkorting, en geen webadres is ("www.arboportaal.nl" wordt niet overgenomen).
  * - rapport: het rapportnummer na "TNO-rapport" of "SER-advies" ("TNO 2021 R11794", "22/03"); een jaartal of datum
  *   op die plek ("Rapport 2023, Den Haag") is geen rapportnummer (isRapportnummer).
  * Bij andere soorten (bijv. cijfers) wordt niets gelezen.
- * → { velden: { datum?, sitenaam?, rapportnummer? }, meldingen: [tekst] }
+ * → { velden: { datum?, sitenaam?, rapportnummer? }, meldingen: [tekst], zonderDatum?: true }
  */
 export function leesStartDetails(tekst, { soort, jaar = null, organisatie = '', afkorting = '' } = {}) {
   const vrij = String(tekst ?? '').replace(/\s+/g, ' ').trim();
   const velden = {};
   const meldingen = [];
+  let zonderDatum = false;
   if (!vrij) return { velden, meldingen };
   if (soort === 'website') {
     const nieuws = NIEUWSBERICHT.exec(vrij);
@@ -1421,7 +1423,8 @@ export function leesStartDetails(tekst, { soort, jaar = null, organisatie = '', 
       if (datum && Number(datum.slice(0, 4)) === jaar) velden.datum = datum;
       else meldingen.push(`De datum "${gevonden}" in bron_details past niet bij het jaar ${jaar ?? 'z.d.'}; niet overgenomen.`);
     } else if (METADATA.test(vrij)) {
-      meldingen.push('De datum in bron_details staat alleen in de metadata van de pagina; niet overgenomen (het jaar blijft).');
+      zonderDatum = true;
+      meldingen.push('De datum in bron_details staat alleen in de metadata van de pagina; niet overgenomen. De bron krijgt "z.d." (zonder datum) en houdt de raadpleegdatum.');
     }
     const site = (nieuws?.[1] || SITE_OP.exec(vrij)?.[1] || '').trim();
     const isAuteur = [organisatie, afkorting].some((x) => x && normaliseer(x) === normaliseer(site));
@@ -1439,7 +1442,22 @@ export function leesStartDetails(tekst, { soort, jaar = null, organisatie = '', 
   meldingen.push(genoemd
     ? `Uit bron_details overgenomen: ${genoemd}; de rest is niet overgenomen (${fragment}).`
     : `Uit bron_details is niets overgenomen (${fragment}).`);
-  return { velden, meldingen };
+  return zonderDatum ? { velden, meldingen, zonderDatum } : { velden, meldingen };
+}
+
+/**
+ * Geraadpleegd op (besluit 7 van het onderzoeksteam bij P7, de regel van APA 7): een raadpleegdatum hoort alleen bij
+ * inhoud die bedoeld is om te veranderen en die niet wordt gearchiveerd. Voor een startbron betekent dat:
+ * - cijfers (een tabel of database die wordt bijgewerkt, zoals een StatLine-tabel): altijd met raadpleegdatum;
+ * - een webpagina, wet of richtlijn met een eigen datum (een gedateerd nieuwsbericht, een pagina met "Pagina
+ *   bijgewerkt op …", dus details.datum): zonder raadpleegdatum;
+ * - een webpagina, wet of richtlijn zonder eigen datum (z.d., of een datum die alleen in de metadata van de pagina
+ *   staat; die krijgt "z.d.", zie leesStartDetails): met raadpleegdatum.
+ * Bij andere soorten (artikel, rapport, boek …) is er geen veld voor; zie normaliseerStartbron.
+ */
+function metRaadpleegdatum(bron) {
+  if (bron.soort === 'cijfers') return true;
+  return !bron.details?.datum;
 }
 
 /**
@@ -1450,7 +1468,8 @@ export function leesStartDetails(tekst, { soort, jaar = null, organisatie = '', 
  * bron_details wel en niet is overgenomen.
  * Uitleg van de velden van het onderzoeksteam (besluiten bij P7): een afkorting tussen haakjes achter de organisatie
  * wordt de afkorting; de betrouwbaarheid volgt START_BETROUWBAARHEID; bron_details zie hierboven en
- * leesStartDetails; 'geraadpleegd' alleen bij soorten met dat veld; 'relevantie' en 'open_access' worden niet gebruikt.
+ * leesStartDetails (een webpagina met alleen een datum in de metadata krijgt z.d.); 'geraadpleegd' alleen bij
+ * soorten met dat veld en dan volgens metRaadpleegdatum (besluit 7); 'relevantie' en 'open_access' worden niet gebruikt.
  * De echte controle (lengtes, DOI, URL) doet controleerBron in src/lib/bibliotheek.js.
  */
 export function normaliseerStartbron(record) {
@@ -1589,6 +1608,9 @@ export function normaliseerStartbron(record) {
       const uitTekst = leesStartDetails(vrij, bron);
       for (const [k, w] of Object.entries(uitTekst.velden)) if (ruw[k] === undefined || ruw[k] === null || ruw[k] === '') ruw[k] = w;
       meldingen.push(...uitTekst.meldingen);
+      // Een webpagina zonder zichtbare datum (de datum staat alleen in de metadata): z.d. (besluit 7, APA 7).
+      // Een datum in het record zelf ('datum') gaat voor; dan blijft het jaar.
+      if (uitTekst.zonderDatum && !ruw.datum) bron.jaar = null;
     } else if (ruw.tijdschrift) {
       meldingen.push('Veld "bron_details" is niet gebruikt: het tijdschrift staat al in de losse velden.');
     } else {
@@ -1624,5 +1646,7 @@ export function normaliseerStartbron(record) {
     }
   }
   if (bron.details.paginas) bron.details.paginas = paginaStreep(bron.details.paginas);
+  // Geen raadpleegdatum bij een bron met een eigen datum (behalve cijfers); stil, zoals bij een artikel (besluit 7).
+  if (bron.details.geraadpleegd && !metRaadpleegdatum(bron)) delete bron.details.geraadpleegd;
   return { bron, meldingen, fouten };
 }
