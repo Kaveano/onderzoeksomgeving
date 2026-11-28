@@ -147,6 +147,14 @@ export function foutmargeZin(n, N, marge) {
 }
 export const FOUTMARGE_UITLEG = 'Dit gaat uit van toeval; als vooral tevreden of juist ontevreden mensen meededen, zegt de foutmarge daar niets over.';
 export const SAMENHANG_UITLEG = (uitkomst) => `Samenhang is geen oorzaak. Een sterke samenhang betekent dat mensen die dit thema hoog scoren, ook ${uitkomst} hoger scoren.`;
+/** De uitkomst van "Wat hangt samen met …?" kort, voor een kop: "de eNPS", "het rapportcijfer", het thema of de vraag. */
+export function uitkomstKort(u) {
+  if (u?.soort === 'cijfer_nps') return 'de eNPS';
+  if (u?.soort === 'cijfer_rapport') return 'het rapportcijfer';
+  const naam = String(u?.naam ?? '');
+  if (u?.soort === 'thema') return `het thema "${naam}"`;
+  return `"${naam.length > 60 ? `${naam.slice(0, 59)}…` : naam}"`;
+}
 export const ENPS_UITLEG = 'Een eNPS loopt van −100 tot +100. Promotors gaven een 9 of 10, criticasters 0 tot en met 6.';
 export const TER_VERGELIJKING = 'Ter vergelijking';
 export const VERZUIM_VERBORGEN = 'Verzuim van deze groep niet getoond: te klein, of het cijfer zou vooral over één persoon gaan.';
@@ -441,7 +449,7 @@ function kerncijferBlokkenScores(k, figuren, bronnen = {}) {
   }
   const dr = k.drijvers;
   if (dr) {
-    uit.push(kop(`Wat hangt samen met "${dr.uitkomst.naam}"?`, 3));
+    uit.push(kop(`Wat hangt samen met ${uitkomstKort(dr.uitkomst)}?`, 3));
     uit.push(alinea(drijverZin(dr)));
     uit.push(tabel(['Thema', 'Samenhang (r)', '95%-interval', 'Respondenten', 'Gemiddelde', 'Kwadrant'], dr.rijen.map((r) => [
       r.naam,

@@ -39,9 +39,6 @@ const pc = (x) => (eindig(x) ? nlProcent(x) : VERBORGEN);
 const n0 = (x) => (eindig(x) ? nlGetal(x, 0) : VERBORGEN);
 const sc = (x) => (eindig(x) ? metTeken(Math.round(x), 0) : VERBORGEN);
 const kortTekst = (t, max = 60) => (String(t).length > max ? `${String(t).slice(0, max - 1)}…` : String(t));
-/** De uitkomst van "Wat hangt samen met …?" kort, voor de kop van de kaart. */
-const uitkomstKort = (u) => (u.soort === 'cijfer_nps' ? 'de eNPS' : u.soort === 'cijfer_rapport' ? 'het rapportcijfer'
-  : u.soort === 'thema' ? `het thema "${u.naam}"` : `"${kortTekst(u.naam)}"`);
 const nlKort = (iso) => {
   const t = nlDatum(iso);
   return t ? t.replace(/ \d{4}$/, '').replace(/(\w{3})\w*$/, '$1') : '';
@@ -760,7 +757,7 @@ export async function toon(container, ctx) {
       },
       huidig ? null : h('option', { value: '', selected: true }, 'Kies een uitkomst'),
       groepen.map((gr) => h('optgroup', { label: gr }, opties.filter((o) => o.groep === gr).map((o) => h('option', { value: o.sleutel, selected: o.sleutel === huidig }, o.naam.length > 90 ? `${o.naam.slice(0, 89)}…` : o.naam)))))) : null;
-    const titelTekst = dr ? `Wat hangt samen met ${uitkomstKort(dr.uitkomst)}?` : 'Wat hangt samen met …?';
+    const titelTekst = dr ? `Wat hangt samen met ${R.uitkomstKort(dr.uitkomst)}?` : 'Wat hangt samen met …?';
     if (!dr) {
       return kaart('hr-drijvers', titelTekst, 'Samenhang', {},
         kies,
