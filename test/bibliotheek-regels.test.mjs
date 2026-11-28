@@ -29,8 +29,8 @@ test('criterium 1: gouden verwijzingen in de literatuurlijst', () => {
   assert.equal(apaVerwijzing(GOUDEN.smit),
     'Smit, A. (2021). Onboarding als proces. In B. Kok & C. van den Berg (Red.), *Handboek HRM* (pp. 45–67). Noordhoff.');
   assert.ok(apaVerwijzing(GOUDEN.smit).includes('In B. Kok & C. van den Berg (Red.), *Handboek HRM* (pp. 45–67). Noordhoff.'));
-  // D3 §8.1 gevallen 4, 6 en 7 ongewijzigd
-  assert.equal(apaVerwijzing(GOUDEN.vries), 'Vries, J. de (z.d.). *Praktisch HR-onderzoek* (3e dr.). Boom.');
+  // D3 §8.1 gevallen 6 en 7 ongewijzigd; geval 4 met een punt na het tussenvoegsel (besluit 6b van het onderzoeksteam, P7)
+  assert.equal(apaVerwijzing(GOUDEN.vries), 'Vries, J. de. (z.d.). *Praktisch HR-onderzoek* (3e dr.). Boom.');
   assert.equal(apaVerwijzing(GOUDEN.arboportaal),
     'Arboportaal. (2024, 5 maart). *Werkdruk*. Geraadpleegd op 20 november 2026, van https://www.arboportaal.nl/onderwerpen/werkdruk');
   assert.equal(apaVerwijzing(GOUDEN.arbowet), 'Arbeidsomstandighedenwet. (1998). https://wetten.overheid.nl/BWBR0010346');
@@ -65,7 +65,7 @@ test('criterium 1: [@cbs2024b; @bakker2017, p. 12] met a/b uit de literatuurlijs
   );
   // Dezelfde suffixen in de lijst
   assert.equal(apaVerwijzing(cbsA, { suffix: 'a' }), 'Centraal Bureau voor de Statistiek. (2024a). *Arbeid in cijfers*. https://www.cbs.nl/voorbeeld');
-  assert.equal(apaVerwijzing({ ...GOUDEN.vries }, { suffix: 'b' }).slice(0, 26), 'Vries, J. de (z.d.-b). *Pr');
+  assert.equal(apaVerwijzing({ ...GOUDEN.vries }, { suffix: 'b' }).slice(0, 27), 'Vries, J. de. (z.d.-b). *Pr');
 });
 
 test('tussenvoegsel vooraan ("voor") geeft De Vries, J.', () => {
@@ -107,7 +107,8 @@ test('leesAuteur: alle vormen uit D3 §2.8', () => {
   assert.deepEqual(leesAuteur('Bakker, A. B.'), p('Bakker', '', 'A. B.'));
   assert.deepEqual(leesAuteur('Bakker, Arnold B.'), p('Bakker', '', 'A. B.'));
   assert.deepEqual(leesAuteur('de Vries, J.'), p('Vries', 'de', 'J.'));
-  assert.deepEqual(leesAuteur('De Vries, J.'), p('Vries', 'de', 'J.'));
+  // Besluit 6a (P7): met een hoofdletter hoort het voorvoegsel bij de achternaam (Vlaamse of buitenlandse naam)
+  assert.deepEqual(leesAuteur('De Vries, J.'), p('De Vries', '', 'J.'));
   assert.deepEqual(leesAuteur('Vries, J. de'), p('Vries', 'de', 'J.'));
   assert.deepEqual(leesAuteur('Jan de Vries'), p('Vries', 'de', 'J.'));
   assert.deepEqual(leesAuteur('van der Berg, K.'), p('Berg', 'van der', 'K.'));
@@ -119,6 +120,95 @@ test('leesAuteur: alle vormen uit D3 §2.8', () => {
   assert.deepEqual(leesAuteur('Jan de Raad'), p('Raad', 'de', 'J.'));
   assert.deepEqual(leesAuteur('Raad voor Werk en Inkomen'), { organisatie: 'Raad voor Werk en Inkomen' });
   assert.equal(leesAuteur('  '), null);
+});
+
+test('besluit 6a (P7): een voorvoegsel met een hoofdletter hoort bij de achternaam, met een kleine letter is het een tussenvoegsel', () => {
+  const p = (achternaam, tussenvoegsel, vl) => ({ achternaam, tussenvoegsel, voorletters: vl });
+  // Vlaamse en buitenlandse namen zoals het onderzoeksteam ze schrijft
+  assert.deepEqual(leesAuteur('De Witte, H.'), p('De Witte', '', 'H.'));
+  assert.deepEqual(leesAuteur('De Dreu, C. K. W.'), p('De Dreu', '', 'C. K. W.'));
+  assert.deepEqual(leesAuteur('Van Dyne, L.'), p('Van Dyne', '', 'L.'));
+  assert.deepEqual(leesAuteur("D'Ancona, J."), p("D'Ancona", '', 'J.'));
+  assert.deepEqual(leesAuteur('Hans De Witte'), p('De Witte', '', 'H.'));
+  assert.deepEqual(leesAuteur('De Witte H.'), p('De Witte', '', 'H.'));
+  // Nederlandse namen: het tussenvoegsel klein, vooraan of achter de voorletters
+  assert.deepEqual(leesAuteur('de Vroome, E. M. M.'), p('Vroome', 'de', 'E. M. M.'));
+  assert.deepEqual(leesAuteur('Vroome, E. M. M. de'), p('Vroome', 'de', 'E. M. M.'));
+  assert.deepEqual(leesAuteur('Vroome, E. M. M. de.'), p('Vroome', 'de', 'E. M. M.'), 'met de punt uit de literatuurlijst');
+  assert.deepEqual(leesAuteur('van der Meulen-de Vries, G. H.'), p('Meulen-de Vries', 'van der', 'G. H.'));
+  assert.deepEqual(leesAuteur('Meulen-de Vries, G. H. van der.'), p('Meulen-de Vries', 'van der', 'G. H.'));
+  assert.deepEqual(leesAuteur("d'Ancona, J."), p('Ancona', "d'", 'J.'));
+  assert.deepEqual(leesAuteur("Ancona, J. d'."), p('Ancona', "d'", 'J.'));
+  assert.deepEqual(leesAuteur("'t Hart, J."), p('Hart', "'t", 'J.'));
+  assert.deepEqual(leesAuteur('Hans de Witte'), p('Witte', 'de', 'H.'));
+  assert.deepEqual(leesAuteur('de Witte H.'), p('Witte', 'de', 'H.'));
+});
+
+test('besluiten 6a en 6b (P7): de voorbeelden van de Radboud-gids in de lijst en in de tekst', () => {
+  const boek = (auteurs, jaar = 2022, titel = 'Titel') => ({ soort: 'boek', titel, jaar, auteurs, details: { uitgever: 'Uitgever' } });
+  const meulen = boek([A('Meulen-de Vries', 'G. H.', 'van der')]);
+  const ancona = boek([A('Ancona', 'J.', "d'")]);
+  const vroome = boek([A('Vroome', 'E. M. M.', 'de')], 2025);
+  const witte = boek([A('De Witte', 'H.')], 2020);
+  // 6b: een punt na een tussenvoegsel aan het eind van de auteurs
+  assert.equal(apaVerwijzing(meulen), 'Meulen-de Vries, G. H. van der. (2022). *Titel*. Uitgever.');
+  assert.equal(apaVerwijzing(ancona), "Ancona, J. d'. (2022). *Titel*. Uitgever.");
+  assert.equal(apaVerwijzing(vroome), 'Vroome, E. M. M. de. (2025). *Titel*. Uitgever.');
+  assert.equal(apaVerwijzing(boek([A('Heuvel', 'S. G.', 'van den'), A('Bouwens', 'L.'), A('Vroome', 'E. M. M.', 'de')], 2025)),
+    'Heuvel, S. G. van den, Bouwens, L., & Vroome, E. M. M. de. (2025). *Titel*. Uitgever.');
+  assert.equal(apaVerwijzing(boek([A('Knippenberg', 'D.', 'van'), A('De Dreu', 'C. K. W.'), A('Homan', 'A. C.')], 2004)),
+    'Knippenberg, D. van, De Dreu, C. K. W., & Homan, A. C. (2004). *Titel*. Uitgever.', 'midden in de lijst geen extra punt');
+  // 6a: een voorvoegsel dat bij de achternaam hoort, staat vooraan
+  assert.equal(apaVerwijzing(witte), 'De Witte, H. (2020). *Titel*. Uitgever.');
+  assert.equal(apaVerwijzing(boek([A('Schaufeli', 'W. B.'), A('Desart', 'S.'), A('De Witte', 'H.')], 2020)),
+    'Schaufeli, W. B., Desart, S., & De Witte, H. (2020). *Titel*. Uitgever.');
+  // In de tekst altijd met een hoofdletter, behalve d' (klein en vast aan de naam)
+  assert.equal(apaInTekst([{ bron: meulen }]), '(Van der Meulen-de Vries, 2022)');
+  assert.equal(apaInTekst([{ bron: meulen }], { verhalend: true }), 'Van der Meulen-de Vries (2022)');
+  assert.equal(apaInTekst([{ bron: vroome }], { verhalend: true }), 'De Vroome (2025)');
+  assert.equal(apaInTekst([{ bron: ancona }]), "(d'Ancona, 2022)");
+  assert.equal(apaInTekst([{ bron: ancona }], { verhalend: true }), "d'Ancona (2022)");
+  assert.equal(apaInTekst([{ bron: witte }]), '(De Witte, 2020)');
+  assert.equal(apaInTekst([{ bron: boek([A('Bakker', 'A. B.'), A('Dijk', 'P.', 'van')], 2021) }], { verhalend: true }), 'Bakker en Van Dijk (2021)');
+  assert.equal(apaInTekst([{ bron: boek([A('van Dijk', 'P.')], 2021) }]), '(Van Dijk, 2021)', 'ook een achternaam die met een kleine letter is ingevuld');
+  assert.equal(apaKort(vroome), '(De Vroome, 2025)');
+  // Redacteuren: voorletters, tussenvoegsel en naam; d' vast aan de naam
+  const hoofdstuk = { soort: 'hoofdstuk', titel: 'H', jaar: 2021, auteurs: [A('Smit', 'A.')],
+    details: { boektitel: 'Boek', redacteuren: [A('Ancona', 'J.', "d'"), A('Berg', 'C.', 'van den')], uitgever: 'U' } };
+  assert.equal(apaVerwijzing(hoofdstuk), "Smit, A. (2021). H. In J. d'Ancona & C. van den Berg (Red.), *Boek*. U.");
+  // Volgorde: een Nederlandse naam op de hoofdnaam, een Vlaamse of buitenlandse onder D of V
+  const bronnen = [vroome, witte, meulen, ancona, boek([A('Dijk', 'P.')], 2020), boek([A('Vos', 'K.')], 2020)].map((b, i) => ({ ...b, citeersleutel: `b${i}` }));
+  const lijst = sorteerLiteratuur(bronnen).map((l) => l.bron.auteurs[0].achternaam);
+  assert.deepEqual(lijst, ['Ancona', 'De Witte', 'Dijk', 'Meulen-de Vries', 'Vos', 'Vroome']);
+  // Bij 'voor' staat het tussenvoegsel vooraan, met d' vast aan de naam
+  OPMAAK.tussenvoegsel = 'voor';
+  try {
+    assert.equal(apaVerwijzing(ancona), "d'Ancona, J. (2022). *Titel*. Uitgever.");
+    assert.equal(apaVerwijzing(meulen), 'Van der Meulen-de Vries, G. H. (2022). *Titel*. Uitgever.');
+  } finally {
+    OPMAAK.tussenvoegsel = 'achter';
+  }
+});
+
+test('besluiten 6a en 6b (P7): "Plak een verwijzing" leest de nieuwe vorm terug', () => {
+  let r = leesApaVerwijzing('Heuvel, S. G. van den, Bouwens, L., & Vroome, E. M. M. de. (2025). Arbobalans 2024 (Rapportnr. TNO 2025 R11108). TNO. https://monitorarbeid.tno.nl/publicaties/arbobalans-2024/');
+  assert.deepEqual(r.bron.auteurs, [A('Heuvel', 'S. G.', 'van den'), A('Bouwens', 'L.'), A('Vroome', 'E. M. M.', 'de')]);
+  assert.equal(r.bron.jaar, 2025);
+  assert.equal(r.bron.titel, 'Arbobalans 2024');
+  assert.equal(apaVerwijzing(r.bron),
+    'Heuvel, S. G. van den, Bouwens, L., & Vroome, E. M. M. de. (2025). *Arbobalans 2024* (Rapportnr. TNO 2025 R11108). TNO. https://monitorarbeid.tno.nl/publicaties/arbobalans-2024/');
+  r = leesApaVerwijzing('Schaufeli, W. B., Desart, S., & De Witte, H. (2020). Burnout Assessment Tool (BAT)—Development, Validity, and Reliability. International Journal of Environmental Research and Public Health, 17(24), 9495. https://doi.org/10.3390/ijerph17249495');
+  assert.deepEqual(r.bron.auteurs, [A('Schaufeli', 'W. B.'), A('Desart', 'S.'), A('De Witte', 'H.')], 'een geplakte "De Witte, H." blijft "De Witte, H."');
+  assert.equal(r.bron.soort, 'artikel');
+  r = leesApaVerwijzing('Meulen-de Vries, G. H. van der. (2022). Werken in de zorg. Boom.');
+  assert.deepEqual(r.bron.auteurs, [A('Meulen-de Vries', 'G. H.', 'van der')]);
+  assert.equal(r.bron.titel, 'Werken in de zorg');
+  r = leesApaVerwijzing("Ancona, J. d'. (2022). Werken in de zorg. Boom.");
+  assert.deepEqual(r.bron.auteurs, [A('Ancona', 'J.', "d'")]);
+  assert.equal(apaVerwijzing(r.bron), "Ancona, J. d'. (2022). *Werken in de zorg*. Boom.");
+  // De oude vorm zonder punt wordt ook nog gelezen
+  r = leesApaVerwijzing('Rocher, L., Hendrickx, J. M., & Montjoye, Y.-A. de (2019). Estimating the success of re-identifications. Nature Communications, 10(1), 3069.');
+  assert.deepEqual(r.bron.auteurs, [A('Rocher', 'L.'), A('Hendrickx', 'J. M.'), A('Montjoye', 'Y.-A.', 'de')]);
 });
 
 test('voorletters', () => {
@@ -173,7 +263,7 @@ test('criterium 2: "Plak een verwijzing" herkent de zes gouden invoeren', () => 
   });
   assert.equal(r.bron.details.druk, '3');
   assert.equal(r.bron.details.uitgever, 'Boom');
-  assert.equal(apaVerwijzing(r.bron), 'Vries, J. de (2019). *Praktisch HR-onderzoek* (3e dr.). Boom.');
+  assert.equal(apaVerwijzing(r.bron), 'Vries, J. de. (2019). *Praktisch HR-onderzoek* (3e dr.). Boom.');
   // 4. DOI als link
   r = leesApaVerwijzing('Schaufeli, W. B., & Bakker, A. B. (2004). Job demands, job resources, and their relationship with burnout and engagement: A multi-sample study. Journal of Organizational Behavior, 25(3), 293–315. https://doi.org/10.1002/job.248');
   assert.deepEqual(velden(r), {
@@ -518,7 +608,7 @@ test('startcollectie (c, d): bron_details en geraadpleegd in de omgezette bron',
   assert.deepEqual(r.bron.details, { rapportnummer: 'TNO 2025 R11108' });
   assert.ok(!r.meldingen.some((m) => m.includes('geraadpleegd')));
   assert.equal(apaVerwijzing(r.bron),
-    'Heuvel, S. G. van den, Bouwens, L., & Vroome, E. M. M. de (2025). *Arbobalans 2024* (Rapportnr. TNO 2025 R11108). TNO. https://monitorarbeid.tno.nl/publicaties/arbobalans-2024/');
+    'Heuvel, S. G. van den, Bouwens, L., & Vroome, E. M. M. de. (2025). *Arbobalans 2024* (Rapportnr. TNO 2025 R11108). TNO. https://monitorarbeid.tno.nl/publicaties/arbobalans-2024/');
   // Een rapport zonder jaar: geraadpleegd kan nergens heen; dat wordt gemeld
   r = normaliseerStartbron({ titel: 'R', organisatie: 'TNO', soort: 'rapport', url: 'https://x.nl', onderwerpen: ['methode'], geraadpleegd: '2026-11-27' });
   assert.ok(r.meldingen.some((m) => m.includes('"geraadpleegd" hoort niet bij de soort "rapport"')));

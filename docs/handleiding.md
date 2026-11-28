@@ -115,10 +115,14 @@ Bovenin staat naast **Onderzoeken** en **Sjablonen** de **Bibliotheek**: één v
 1. Klik op **+ Bron toevoegen**.
 2. Het snelst: open **Plak een verwijzing** en plak een verwijzing, bijvoorbeeld uit Google Scholar (knop *Citeer*, kies *APA*). Klik op **Velden invullen**. De app vult soort, auteurs, jaar, titel, tijdschrift, jaargang, nummer, pagina's en DOI of link in. Wat hij niet herkent, staat eronder ("Deze velden zijn niet herkend: …"). **Controleer daarna alle velden**; de app zoekt niets op internet op.
 3. Is een organisatie de auteur, zoals CBS of TNO? Laat de auteurs leeg en vul de organisatie in, met een afkorting voor in de tekst (bijvoorbeeld CBS).
-4. Geen jaartal? Laat het jaar leeg; in de verwijzing staat dan *z.d.* (zonder datum).
-5. Een DOI heeft de voorkeur boven een link.
-6. Kies onderwerpen, de betrouwbaarheid en eventueel kernpunten (één per regel).
-7. Klik op **Opslaan**. De bron krijgt een vaste code voor rapporten, bijvoorbeeld `[@bakker2017]`. Staat de bron er al in (zelfde DOI, of zelfde titel en jaar), dan vraagt de app eerst of je hem toch apart wilt toevoegen.
+4. Een achternaam met *de*, *van* of *van der*?
+   - Bij een **Nederlandse** naam vul je dat apart in bij **Tussenvoegsel**, met een kleine letter (bijvoorbeeld *de* bij *Vroome*). In de literatuurlijst staat het dan achter de voorletters, met een punt erachter: *Vroome, E. M. M. de. (2025).* In je tekst begint de naam met een hoofdletter: *De Vroome (2025)*.
+   - Bij een **Vlaamse of buitenlandse** naam hoort het bij de achternaam. Vul dan bijvoorbeeld *De Witte* in bij **Achternaam** en laat het tussenvoegsel leeg: *De Witte, H. (2020).*
+   - Bij **Plak een verwijzing** ziet de app het verschil aan de hoofdletter: *de Vroome* of *Vroome, E. M. M. de* wordt een tussenvoegsel, *De Witte* blijft de achternaam. Controleer het even.
+5. Geen jaartal? Laat het jaar leeg; in de verwijzing staat dan *z.d.* (zonder datum).
+6. Een DOI heeft de voorkeur boven een link.
+7. Kies onderwerpen, de betrouwbaarheid en eventueel kernpunten (één per regel).
+8. Klik op **Opslaan**. De bron krijgt een vaste code voor rapporten, bijvoorbeeld `[@bakker2017]`. Staat de bron er al in (zelfde DOI, of zelfde titel en jaar), dan vraagt de app eerst of je hem toch apart wilt toevoegen.
 
 **Citeer**: bij elke bron laat **Citeer** zien hoe je ernaar verwijst, met een knop **Kopieer** per vorm:
 - in de literatuurlijst (APA, 7e editie, Nederlandse schrijfwijze), bijvoorbeeld *Bakker, A. B., & Demerouti, E. (2017). …*;

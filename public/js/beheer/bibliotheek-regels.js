@@ -4,8 +4,18 @@
 //
 // De Nederlandse afspraken staan in OPMAAK (BOUWPLAN B20): '&' in de literatuurlijst en tussen haakjes,
 // 'en' in een verwijzing in de lopende zin, een komma voor '&' in de literatuurlijst en het tussenvoegsel
-// achter de voorletters ("Vries, M. de"). Het onderzoeksteam bevestigt het tussenvoegsel nog; omzetten is één
-// regel ('voor' geeft "De Vries, M.").
+// achter de voorletters ("Vries, M. de"); omzetten is één regel ('voor' geeft "De Vries, M.").
+// Namen met een voorvoegsel (besluit 6 van het onderzoeksteam bij P7, volgens de APA 7-gids van de
+// Universiteitsbibliotheek Radboud Universiteit, "APA en Nederlandse conventies"):
+// - alleen bij een Nederlandse naam staat het tussenvoegsel achter de voorletters en sorteert de lijst op de
+//   hoofdnaam ("Meulen-de Vries, G. H. van der."); bij een Vlaamse of buitenlandse naam hoort het voorvoegsel bij
+//   de achternaam en sorteert de lijst onder D of V ("De Witte, H.", "Van Dyne, L.");
+// - zo lees je dat uit een naam (leesAuteur): een voorvoegsel met een hoofdletter vooraan de achternaam ("De Witte")
+//   hoort bij de achternaam; met een kleine letter ("de Vroome", "van der Meulen") is het een tussenvoegsel;
+// - na de auteurs staat altijd een punt, ook na een tussenvoegsel aan het eind: "Vroome, E. M. M. de. (2025).",
+//   "Ancona, J. d'. (2022).";
+// - in de tekst begint de naam altijd met een hoofdletter ("De Vroome (2025)", "(Van der Meulen, 2022)"), behalve
+//   d', dat klein blijft en vast aan de naam staat ("d'Ancona (2022)").
 //
 // Tekst met *sterretjes* is cursief (zoals overal in de rapporten: rapport-weergave.js inline() en maakDocx).
 
@@ -251,6 +261,12 @@ export function zonderSterren(t) {
 
 const eindPunt = (t) => (/[.?!]$/.test(t) ? t : `${t}.`);
 const hoofdletter = (t) => (t ? t[0].toUpperCase() + t.slice(1) : t);
+/** d' (zoals in d'Ancona) blijft klein en staat vast aan de naam; zie de kop van dit bestand. */
+const isDApostrof = (t) => /^d['’]/.test(t);
+/** Een naam die vooraan staat begint met een hoofdletter ("De Vries", "Van der Meulen"), behalve d' ("d'Ancona"). */
+const vooraan = (t) => (isDApostrof(t) ? t : hoofdletter(t));
+/** Tussenvoegsel en achternaam aan elkaar: "van der Berg", maar "d'Ancona" (zonder spatie). */
+const metTussenvoegsel = (tv, achternaam) => (tv && achternaam ? `${tv}${/['’]$/.test(tv) ? '' : ' '}${achternaam}` : tv || achternaam);
 /** 45-67 → 45–67 (een "en dash" tussen paginanummers). */
 export function paginaStreep(p) {
   return String(p ?? '').trim().replace(/\s*[-–—]+\s*/g, '–');
@@ -286,24 +302,26 @@ const NIET_CURSIEF = new Set(['artikel', 'hoofdstuk', 'wet']);
 
 const personenVan = (bron) => (Array.isArray(bron?.auteurs) ? bron.auteurs.filter((a) => a && zonderSterren(a.achternaam)) : []);
 
-/** Naam in de literatuurlijst: "Bakker, A. B." · "Vries, M. de" (of "De Vries, M." bij 'voor'). */
+/**
+ * Naam in de literatuurlijst: "Bakker, A. B." · "Vries, M. de" · "Ancona, J. d'" · "De Witte, H." (het voorvoegsel
+ * hoort bij de achternaam) · bij 'voor': "De Vries, M.".
+ */
 function lijstNaam(a) {
   const achternaam = zonderSterren(a.achternaam);
   const tv = zonderSterren(a.tussenvoegsel);
   const vl = zonderSterren(a.voorletters);
-  if (tv && OPMAAK.tussenvoegsel === 'voor') return `${hoofdletter(tv)} ${achternaam}${vl ? `, ${vl}` : ''}`;
+  if (tv && OPMAAK.tussenvoegsel === 'voor') return `${metTussenvoegsel(vooraan(tv), achternaam)}${vl ? `, ${vl}` : ''}`;
   return `${achternaam}${vl ? `, ${vl}` : ''}${tv ? `${vl ? ' ' : ', '}${tv}` : ''}`;
 }
 
-/** Naam van een redacteur: voorletters, dan tussenvoegsel en achternaam: "C. van den Berg". */
+/** Naam van een redacteur: voorletters, dan tussenvoegsel en achternaam: "C. van den Berg" · "J. d'Ancona". */
 function redacteurNaam(a) {
-  return [zonderSterren(a.voorletters), zonderSterren(a.tussenvoegsel), zonderSterren(a.achternaam)].filter(Boolean).join(' ');
+  return [zonderSterren(a.voorletters), metTussenvoegsel(zonderSterren(a.tussenvoegsel), zonderSterren(a.achternaam))].filter(Boolean).join(' ');
 }
 
-/** Naam in de lopende tekst: het tussenvoegsel krijgt een hoofdletter ("De Vries"). */
+/** Naam in de lopende tekst: altijd met een hoofdletter vooraan ("De Vries", "Van der Meulen"), behalve d' ("d'Ancona"). */
 function tekstNaam(a) {
-  const tv = zonderSterren(a.tussenvoegsel);
-  return tv ? `${hoofdletter(tv)} ${zonderSterren(a.achternaam)}` : zonderSterren(a.achternaam);
+  return vooraan(metTussenvoegsel(zonderSterren(a.tussenvoegsel), zonderSterren(a.achternaam)));
 }
 
 /** Auteurs in de literatuurlijst: "Bakker, A. B., & Demerouti, E."; 21 of meer: de eerste 19, "…" en de laatste. */
@@ -333,10 +351,10 @@ function auteurDeel(bron) {
   const personen = personenVan(bron);
   if (personen.length) {
     const t = lijstAuteurs(personen);
-    // Eindigt op een voorletter (met punt) of op een tussenvoegsel: dan geen extra punt (D3 §8.1, geval 4).
-    const laatste = personen[personen.length - 1];
-    const eindigtOpTussenvoegsel = OPMAAK.tussenvoegsel !== 'voor' && zonderSterren(laatste.tussenvoegsel) && personen.length < 21;
-    return { soort: 'personen', tekst: /\.$/.test(t) || eindigtOpTussenvoegsel ? t : `${t}.`, naam: t };
+    // Altijd een punt na de auteurs. Na een voorletter staat die er al ("Bakker, A. B."); na een tussenvoegsel aan het
+    // eind komt hij erbij: "Vroome, E. M. M. de.", "Ancona, J. d'." (besluit 6b van het onderzoeksteam bij P7, zoals in
+    // de Radboud-gids; dit vervangt "geen punt" van D3 §8.1, geval 4).
+    return { soort: 'personen', tekst: /\.$/.test(t) ? t : `${t}.`, naam: t };
   }
   const org = zonderSterren(bron.organisatie);
   if (org) return { soort: 'organisatie', tekst: eindPunt(org), naam: org };
@@ -668,10 +686,18 @@ const isInitialen = (t) => {
   return /^(?:[A-ZÀ-Ý](?:h|hr)?\.\s*(?:-\s*)?)+$/.test(s) || /^[A-Z]{1,4}$/.test(s);
 };
 
-/** Splitst een tussenvoegsel vooraan af: "van der Berg" → { tussenvoegsel: 'van der', achternaam: 'Berg' }. */
+/** Begint met een hoofdletter (dus niet met een kleine letter, een apostrof of een cijfer). */
+const metHoofdletter = (t) => /^\p{Lu}/u.test(t);
+
+/**
+ * Splitst een tussenvoegsel vooraan af: "van der Berg" → { tussenvoegsel: 'van der', achternaam: 'Berg' }. Alleen als
+ * het voorvoegsel in de bron met een kleine letter begint: met een hoofdletter ("De Witte", "Van Dyne", "D'Ancona")
+ * hoort het bij de achternaam (besluit 6a van het onderzoeksteam bij P7; zie de kop van dit bestand).
+ */
 function splitsVoorvoegsel(t) {
   const s = t.trim();
   const klein = s.toLowerCase();
+  if (metHoofdletter(s)) return { tussenvoegsel: '', achternaam: s };
   for (const tv of TUSSENVOEGSELS) {
     if (klein.startsWith(`${tv} `) && s.length > tv.length + 1) return { tussenvoegsel: tv, achternaam: s.slice(tv.length + 1).trim() };
     if (tv === "d'" && klein.startsWith(tv) && s.length > 2) return { tussenvoegsel: tv, achternaam: s.slice(2).trim() };
@@ -679,12 +705,17 @@ function splitsVoorvoegsel(t) {
   return { tussenvoegsel: '', achternaam: s };
 }
 
-/** Splitst een tussenvoegsel achteraan af: "J. de" → { rest: 'J.', tussenvoegsel: 'de' }. */
+/**
+ * Splitst een tussenvoegsel achteraan af: "J. de" → { rest: 'J.', tussenvoegsel: 'de' }. Ook met de punt die in een
+ * literatuurlijst na de auteurs staat: "E. M. M. de." → { rest: 'E. M. M.', tussenvoegsel: 'de' }.
+ */
 function splitsAchtervoegsel(t) {
   const s = t.trim();
   const klein = s.toLowerCase();
   for (const tv of TUSSENVOEGSELS) {
-    if (klein.endsWith(` ${tv}`) && s.length > tv.length + 1) return { rest: s.slice(0, s.length - tv.length - 1).trim(), tussenvoegsel: tv };
+    for (const eind of [` ${tv}`, ` ${tv}.`]) {
+      if (klein.endsWith(eind) && s.length > eind.length) return { rest: s.slice(0, s.length - eind.length).trim(), tussenvoegsel: tv };
+    }
   }
   return { rest: s, tussenvoegsel: '' };
 }
@@ -727,7 +758,9 @@ const isOrgWoord = (w) => {
 
 /**
  * Leest één auteur: "Bakker, A. B." · "Bakker, Arnold B." · "de Vries, J." · "Vries, J. de" · "Jan de Vries" ·
- * "van der Berg, K." · "Bakker A.B." → { achternaam, tussenvoegsel, voorletters }. Een organisatie (geen komma
+ * "van der Berg, K." · "Bakker A.B." → { achternaam, tussenvoegsel, voorletters }. Een voorvoegsel met een
+ * hoofdletter vooraan de achternaam hoort bij de achternaam: "De Witte, H." en "Hans De Witte" →
+ * { achternaam: 'De Witte', tussenvoegsel: '' } (besluit 6a, zie de kop van dit bestand). Een organisatie (geen komma
  * en een woord als Bureau of Ministerie, meer dan drie woorden die geen naam vormen, of één woord) →
  * { organisatie }. Lege tekst → null.
  */
@@ -758,13 +791,17 @@ export function leesAuteur(tekst) {
     return persoon(v.achternaam, v.tussenvoegsel, laatste);
   }
   // Voornamen of voorletters, dan eventueel een tussenvoegsel, dan de achternaam: "Jan de Vries", "C. van den Berg".
+  // Met een hoofdletter ("Hans De Witte") hoort het voorvoegsel bij de achternaam.
   const klein = t.toLowerCase();
   for (let i = 1; i < woorden.length - 1; i++) {
     const rest = woorden.slice(i).join(' ').toLowerCase();
     const tv = TUSSENVOEGSELS.find((x) => rest.startsWith(`${x} `));
     if (tv && woorden.slice(0, i).every((w) => /^[A-ZÀ-Ý]/.test(w))) {
       const achternaam = woorden.slice(i).join(' ').slice(tv.length + 1);
-      if (/^[A-ZÀ-Ý]/.test(achternaam)) return persoon(achternaam, tv, woorden.slice(0, i).join(' '));
+      if (/^[A-ZÀ-Ý]/.test(achternaam)) {
+        if (metHoofdletter(woorden[i])) return persoon(woorden.slice(i).join(' '), '', woorden.slice(0, i).join(' '));
+        return persoon(achternaam, tv, woorden.slice(0, i).join(' '));
+      }
     }
   }
   // Zonder tussenvoegsel: hooguit vier woorden die allemaal met een hoofdletter beginnen ("Arnold B. Bakker").

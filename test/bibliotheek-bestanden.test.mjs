@@ -48,6 +48,21 @@ test('criterium 4: RIS heen en terug geeft dezelfde zeven gouden bronnen (zonder
   });
 });
 
+test('besluit 6a (P7): namen met een voorvoegsel blijven gelijk in RIS heen en terug', () => {
+  const p = (achternaam, voorletters, tussenvoegsel = '') => ({ achternaam, tussenvoegsel, voorletters });
+  const auteurs = [p('Heuvel', 'S. G.', 'van den'), p('De Witte', 'H.'), p('Ancona', 'J.', "d'"), p('Vroome', 'E. M. M.', 'de')];
+  const b = volledig({ ...GOUDEN.bakker, auteurs, details: { ...GOUDEN.bakker.details, redacteuren: undefined } });
+  delete b.details.redacteuren;
+  const ris = naarRis([b]);
+  assert.ok(ris.includes('AU  - De Witte, H.\r\n') && ris.includes('AU  - Vroome, E. M. M. de\r\n') && ris.includes("AU  - Ancona, J. d'\r\n"), ris);
+  const [terug] = leesRis(ris).bronnen;
+  assert.deepEqual(terug.auteurs, auteurs);
+  assert.equal(apaVerwijzing(terug).slice(0, 77), "Heuvel, S. G. van den, De Witte, H., Ancona, J. d', & Vroome, E. M. M. de. (2");
+  // Zotero schrijft een Vlaamse naam met een hoofdletter en een Nederlandse met een kleine letter
+  const zotero = 'TY  - JOUR\r\nTI  - Titel\r\nAU  - De Witte, Hans\r\nAU  - van der Klink, J. J. L.\r\nPY  - 2020\r\nER  - \r\n';
+  assert.deepEqual(leesRis(zotero).bronnen[0].auteurs, [p('De Witte', 'H.'), p('Klink', 'J. J. L.', 'van der')]);
+});
+
 test('criterium 6: eigen notities staan alleen in RIS met de optie', () => {
   const b = volledig(GOUDEN.bakker);
   assert.ok(!naarRis([b]).includes('Geheime eigen notitie'));
@@ -84,7 +99,7 @@ test('criterium 4: het voorbeeldbestand uit Zotero', () => {
   assert.equal(a.taal, 'nl');
   assert.equal(a.notities, 'Verzonnen record voor de tests van de Onderzoeksomgeving.');
   assert.equal(apaVerwijzing(a),
-    'Hendriks, M., Dijk, P. J. van, & Oosterhout, K. de (2022). Werkdruk en herstel bij verpleegkundigen: een dagboekstudie. *Tijdschrift voor Arbeidsvraagstukken, 38*(2), 145–163. https://doi.org/10.5117/tva2022.2.004.hend');
+    'Hendriks, M., Dijk, P. J. van, & Oosterhout, K. de. (2022). Werkdruk en herstel bij verpleegkundigen: een dagboekstudie. *Tijdschrift voor Arbeidsvraagstukken, 38*(2), 145–163. https://doi.org/10.5117/tva2022.2.004.hend');
   assert.equal(boek.soort, 'boek');
   assert.equal(boek.details.druk, '2');
   assert.equal(boek.details.uitgever, 'Uitgeverij Voorbeeld');
