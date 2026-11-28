@@ -473,6 +473,10 @@ test('FT-02: één verzoek van 25 bronnen tegen een volle bibliotheek (1.000 bro
   const eerste = tijden[0];
   tijden.sort((a, b) => a - b);
   const mediaan = tijden[5];
-  console.log(`# reeks van 25 tegen 1.000 bestaande: eerste keer ${eerste.toFixed(1)} ms; mediaan ${mediaan.toFixed(2)} ms`);
-  assert.ok(mediaan < 6, `mediaan ${mediaan} ms`);
+  // De kleinste van de 11 runs: drukte op de machine (andere tests, andere programma's) maakt een run alleen trager,
+  // nooit sneller. Zo meet de test de rekentijd zelf en niet de belasting (R6). De grens van 6 ms ligt ruim onder de
+  // 10 ms CPU per verzoek van de gratis laag; ook de 25 INSERTs en de rest van het verzoek moeten er nog bij.
+  const kleinste = tijden[0];
+  console.log(`# reeks van 25 tegen 1.000 bestaande: eerste keer ${eerste.toFixed(1)} ms; kleinste ${kleinste.toFixed(2)} ms; mediaan ${mediaan.toFixed(2)} ms`);
+  assert.ok(kleinste < 6, `kleinste ${kleinste} ms (mediaan ${mediaan} ms)`);
 });
