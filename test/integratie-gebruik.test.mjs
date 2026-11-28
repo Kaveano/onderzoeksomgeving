@@ -1,6 +1,7 @@
-// Integratiebevindingen over bruikbaarheid (G5–G6):
+// Integratiebevindingen over bruikbaarheid (G5–G7):
 // - G5: "Alle resultaten" (ook bij een meelezer) gebruikt voor een verborgen cel overal ×, met VERBORGEN_UITLEG; nergens "<5";
 // - G6: een RIS-bestand zonder taal (LA) maakt een Engelse bron niet Nederlands: de taal wordt geraden, met een melding;
+// - G7: het advies in "Achtergrondvragen toevoegen" telt de achtergrondvragen die er al in staan mee;
 // Zuiver: geen server nodig. Uitvoeren: node --test test/integratie-gebruik.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -13,6 +14,7 @@ import { CIJFERSCHALEN } from '../src/lib/schalen.js';
 import { uitsplitsingTekst, uitsplitsingIetsVerborgen } from '../public/js/beheer/schermen/dashboard.js';
 import { leesRis, naarRis, taalGeradenTekst } from '../public/js/beheer/bibliotheek-bestanden.js';
 import { legeBron } from '../public/js/beheer/bibliotheek-regels.js';
+import { grootteAdvies, KLEIN_GRENS, KLEIN_MAX } from '../public/js/beheer/schermen/kenmerk-dialoog.js';
 
 const lees = (pad) => readFileSync(new URL(pad, import.meta.url), 'utf8');
 
@@ -163,4 +165,39 @@ test('G6: de melding bij het importeren', () => {
   assert.match(taalGeradenTekst(2, 5), /Pas hem dan aan bij de bron\.$/);
   const scherm = lees('../public/js/beheer/schermen/bibliotheek.js');
   assert.match(scherm, /taalGeraden \? melding\(taalGeradenTekst\(taalGeraden, bronnen\.length\)\)/, 'de importdialoog toont de melding');
+});
+
+// ---------- G7: het advies telt de achtergrondvragen die er al in staan ----------
+
+test('G7: "Er staan er al 2 in." en een waarschuwing zodra het er samen meer dan twee worden', () => {
+  assert.equal(KLEIN_GRENS, 50);
+  assert.equal(KLEIN_MAX, 2);
+  assert.deepEqual(grootteAdvies({ aanwezig: 0, gekozen: 0 }), { al: null, waarschuwing: null });
+  assert.equal(grootteAdvies({ aanwezig: 1 }).al, 'Er staat er al 1 in.');
+  assert.equal(grootteAdvies({ aanwezig: 2 }).al, 'Er staan er al 2 in.');
+  // De reviewer: al 2 (afdeling en diensttijd), er 2 bij (leeftijd en leidinggevend).
+  const klein = grootteAdvies({ aanwezig: 2, gekozen: 2, medewerkers: 30 });
+  assert.match(klein.waarschuwing, /^Met deze keuze zijn het 4 achtergrondvragen \(2 die er al in staan en 2 nieuwe\)\./);
+  assert.match(klein.waarschuwing, /Je hebt 30 mensen uitgenodigd\./);
+  const onbekend = grootteAdvies({ aanwezig: 2, gekozen: 2, medewerkers: null });
+  assert.match(onbekend.waarschuwing, /Heeft de organisatie minder dan 50 medewerkers\? Kies er dan hooguit twee/);
+  // 50 of meer uitgenodigd (de reviewer had er 120): het advies voor minder dan 50 geldt niet.
+  assert.equal(grootteAdvies({ aanwezig: 2, gekozen: 2, medewerkers: 120 }).waarschuwing, null);
+  assert.equal(grootteAdvies({ aanwezig: 2, gekozen: 2, medewerkers: 120 }).al, 'Er staan er al 2 in.');
+  // Twee in totaal is goed; nog niets gekozen geeft geen waarschuwing (wel de telling).
+  assert.equal(grootteAdvies({ aanwezig: 0, gekozen: 2, medewerkers: 20 }).waarschuwing, null);
+  assert.equal(grootteAdvies({ aanwezig: 1, gekozen: 1 }).waarschuwing, null);
+  assert.equal(grootteAdvies({ aanwezig: 3, gekozen: 0 }).waarschuwing, null);
+  assert.match(grootteAdvies({ aanwezig: 0, gekozen: 3 }).waarschuwing, /^Met deze keuze zijn het 3 achtergrondvragen\./);
+  assert.match(grootteAdvies({ aanwezig: 1, gekozen: 2, medewerkers: 12 }).waarschuwing, /\(1 die er al in staat en 2 nieuwe\)/);
+});
+
+test('G7: beide editors geven het aantal achtergrondvragen door, de vragenlijst ook het aantal uitgenodigden', () => {
+  const vl = lees('../public/js/beheer/schermen/vragenlijst-bewerken.js');
+  assert.match(vl, /aantalAanwezig: vragen\.filter\(\(q\) => q\.kenmerk \|\| q\.uitsplitsen\)\.length,/);
+  assert.match(vl, /medewerkers: vl\.aantal_uitgenodigd \|\| null,/);
+  const sj = lees('../public/js/beheer/sjabloon-editor.js');
+  assert.match(sj, /aantalAanwezig: model\.vragen\.filter\(\(v\) => v\.kenmerk \|\| v\.uitsplitsen\)\.length,/);
+  const dlg = lees('../public/js/beheer/schermen/kenmerk-dialoog.js');
+  assert.match(dlg, /vak\.addEventListener\('change', \(\) => tekenAdvies\(\)\)/, 'het advies verandert met de vinkjes');
 });

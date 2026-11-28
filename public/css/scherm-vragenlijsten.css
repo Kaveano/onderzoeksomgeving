@@ -670,6 +670,9 @@ dialog.vl-voorbeelddialoog { width: min(780px, calc(100vw - 24px)); }
 .km-al { font-weight: 400; color: var(--tekst-zacht); }
 .km-uitleg { font-size: 0.85rem; color: var(--tekst-zacht); line-height: 1.35; overflow-wrap: anywhere; }
 .km-vraag { color: var(--tekst); }
+/* Advies over het aantal achtergrondvragen (verschijnt zodra je er te veel kiest), vlak boven de knoppen. */
+.km-advies:empty { display: none; }
+.km-advies .melding { margin: var(--ruimte-3) 0 0; }
 .km-variant {
   margin: var(--ruimte-2) 0 0 28px;
   padding: 0;

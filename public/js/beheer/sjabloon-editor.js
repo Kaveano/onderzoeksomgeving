@@ -743,6 +743,7 @@ export function maakSjabloonEditor({
   async function achtergrondToevoegen() {
     const r = await kenmerkDialoog({
       aanwezig: model.vragen.map((v) => v.kenmerk).filter((k) => k && !kenmerken[k]?.meerdere),
+      aantalAanwezig: model.vragen.filter((v) => v.kenmerk || v.uitsplitsen).length,
       ruimte: MAX_VRAGEN - model.vragen.length,
       opslaan: async (keuzes) => {
         const nieuw = keuzes.map(({ kenmerk, variant }) => {

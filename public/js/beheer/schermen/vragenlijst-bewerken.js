@@ -676,6 +676,9 @@ export async function toon(container, ctx) {
   async function achtergrondToevoegen() {
     const r = await kenmerkDialoog({
       aanwezig: vragen.map((q) => q.kenmerk).filter((k) => k && !KENMERKEN[k]?.meerdere),
+      // Voor het advies: elke vraag over wie de respondent is (kenmerk of uitsplitsen) telt mee.
+      aantalAanwezig: vragen.filter((q) => q.kenmerk || q.uitsplitsen).length,
+      medewerkers: vl.aantal_uitgenodigd || null,
       bedrijf: ctx.onderzoek.onderzoek?.bedrijfsnaam || null,
       metAntwoorden: inzendingen > 0,
       ruimte: MAX_VRAGEN - vragen.length,

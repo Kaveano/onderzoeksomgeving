@@ -195,7 +195,7 @@ Een achtergrondvraag gaat over wie de respondent is: afdeling, leeftijd, dienstt
 
 **Achtergrondvragen toevoegen.** Met de knop **Achtergrondvragen toevoegen** (naast **+ Vraag toevoegen**) kies je uit kant-en-klare vragen met passende antwoorden. Ze komen in het thema *Achtergrond*, aan het eind van de vragenlijst. Kenmerken die er al in staan, kun je niet nog eens kiezen. Bij leeftijd kies je tussen 3 groepen (aangeraden bij minder dan 100 medewerkers) en 5 groepen. Dezelfde knop staat in de sjablooneditor.
 
-**Vraag niet meer dan nodig.** Hoe meer achtergrondvragen, hoe makkelijker iemand herkenbaar wordt, en hoe minder mensen eerlijk antwoorden. In een kleine organisatie zijn twee of drie achtergrondvragen meestal genoeg. **Minder dan 50 medewerkers: kies hooguit twee achtergrondvragen.** Leeftijd staat daarom niet standaard in de sjablonen.
+**Vraag niet meer dan nodig.** Hoe meer achtergrondvragen, hoe makkelijker iemand herkenbaar wordt, en hoe minder mensen eerlijk antwoorden. In een kleine organisatie zijn twee of drie achtergrondvragen meestal genoeg. **Minder dan 50 medewerkers: kies hooguit twee achtergrondvragen.** Leeftijd staat daarom niet standaard in de sjablonen. De dialoog telt de achtergrondvragen die er al in staan mee ("Er staan er al 2 in."). Kies je er zoveel bij dat het er samen meer dan twee worden, dan krijg je een waarschuwing. Heb je bij de vragenlijst ingevuld hoeveel mensen je uitnodigt en zijn dat er 50 of meer, dan blijft die waarschuwing weg.
 
 Voeg je achtergrondvragen toe aan een vragenlijst die al is ingevuld, dan hebben de eerdere respondenten die vragen niet gezien. Bij hen telt het antwoord als "niet ingevuld".
 
