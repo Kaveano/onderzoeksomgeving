@@ -24,6 +24,7 @@
 import { DREMPEL, verbergReeks, onderdrukKolom, maskeer, veiligAandeel, verzuimToonbaar } from './privacy.js';
 import { normaal, alsGetal, alsDatum, getalNotatie, verdachteKolommen } from './inlees-regels.js';
 import { KENMERKEN, klasseVan, isLieverNiet } from './kenmerken.js';
+import { ZWANGERSCHAPSVERLOF } from './hr-rapport.js';
 
 export const VERSIE = 1;
 /** Zoveel medewerkers moet een groep minstens hebben voor verzuimcijfers (instelbaar, nooit minder dan DREMPEL). */
@@ -44,6 +45,10 @@ export const REDENEN = {
   overig: 'Overig',
 };
 export const REDEN_SLEUTELS = [...Object.keys(REDENEN), 'onbekend'];
+
+// Tellen zwangerschaps- en bevallingsverlof mee in de verzuimdagen (K S4)? De keuzes en hun zinnen staan in
+// hr-rapport.js (dat rapporten en het Overzicht ook gebruiken); hier alleen doorgegeven.
+export { ZWANGERSCHAPSVERLOF };
 const REDEN_LABELS = { ...REDENEN, onbekend: 'Onbekend' };
 
 /**
@@ -644,7 +649,7 @@ function verzuimOk(personen, n, minN, d) {
  */
 export function verwerkPersoneel(kop, rijen, {
   rollen = {}, koppeling = {}, redenen = {}, periode, uren_per_fte = 36, minN = MIN_VERZUIM, naam = 'Personeelsbestand',
-  extraGrenzen = {}, d = DREMPEL,
+  extraGrenzen = {}, d = DREMPEL, zwangerschapsverlof = null,
 } = {}) {
   const urenPerFte = Number(uren_per_fte);
   if (!(urenPerFte >= 1 && urenPerFte <= 60)) throw new Error('Uren per fte moet tussen 1 en 60 liggen.');
@@ -772,6 +777,9 @@ export function verwerkPersoneel(kop, rijen, {
     totaal,
     dimensies,
   };
+  // Alleen met verzuimgegevens: telden zwangerschaps- en bevallingsverlof mee? (zie ZWANGERSCHAPSVERLOF)
+  const metVerzuim = gebruikt.has('verzuimdagen') || gebruikt.has('verzuimpercentage');
+  if (metVerzuim && Object.hasOwn(ZWANGERSCHAPSVERLOF, zwangerschapsverlof)) aggregaat.zwangerschapsverlof = zwangerschapsverlof;
   if (!personen.length) meldingen.push('Er is niemand gevonden die in de gekozen periode in dienst was.');
   return { aggregaat, meldingen, ontbreekt };
 }
@@ -815,6 +823,7 @@ export function personeelKpis(aggregaat, { d = DREMPEL } = {}) {
   const basis = {
     naam: aggregaat.naam, periode: { van: periode?.van, tot: periode?.tot }, peildatum: aggregaat.peildatum,
     uren_per_fte: aggregaat.uren_per_fte, ontbreekt: [...ontbreekt],
+    zwangerschapsverlof: Object.hasOwn(ZWANGERSCHAPSVERLOF, aggregaat.zwangerschapsverlof) ? aggregaat.zwangerschapsverlof : null,
   };
   const LEEG_TOTAAL = {
     medewerkers: null, fte: null, gem_leeftijd: null, pct_55plus: null, pct_60plus: null, pct_vrouw: null, gem_diensttijd_jaar: null,

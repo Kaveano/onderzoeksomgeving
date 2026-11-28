@@ -349,21 +349,31 @@ function spreidingPlan(fig, breedte) {
       afbreken(l, half, KLEIN, 2).forEach((r, k) => tekst(plan, hx, hy + k * (REGEL - 3), r, 'fig-tekst fig-kwadrant fig-klein', anker, KLEIN));
     });
   }
-  // Punten met hun naam; namen die over elkaar vallen, schuiven een regel op.
+  // Punten met hun naam. Een naam komt rechts of links van zijn punt, zo nodig een regel hoger of lager, op de eerste
+  // plek waar hij niet over een andere naam of een ander punt valt (en binnen het vlak blijft).
+  const bollen = punten.map((p) => ({ x: X(p.x), y: Y(p.y), label: p.label }));
   const bezet = [];
-  [...punten].sort((a, b) => b.y - a.y).forEach((p) => {
+  const raakt = (a, b) => !(a.x1 < b.x0 || a.x0 > b.x1 || a.y1 < b.y0 || a.y0 > b.y1);
+  const maxNaam = Math.min(200, (x1 - x0) * 0.45);
+  [...punten].sort((a, b) => b.y - a.y || a.x - b.x).forEach((p) => {
     const cx = X(p.x);
     const cy = Y(p.y);
     plan.elementen.push({ soort: 'cirkel', x: cx, y: cy, r: 5, klasse: 'fig-vlak fig-reeks-1 fig-punt' });
-    const regel = afbreken(p.label, Math.min(160, (x1 - x0) * 0.45), KLEIN, 1)[0];
+    const regel = afbreken(p.label, maxNaam, KLEIN, 1)[0];
     const b = tekstBreedte(regel, KLEIN);
-    const rechts = cx + 8 + b <= x1;
-    let ty = cy + 4;
-    const lx = rechts ? cx + 8 : cx - 8;
-    const overlapt = (yy) => bezet.some((o) => Math.abs(o.y - yy) < REGEL - 3 && !(lx + (rechts ? b : 0) < o.x0 || lx - (rechts ? 0 : b) > o.x1));
-    for (let poging = 0; poging < 6 && overlapt(ty); poging++) ty += REGEL - 3;
-    tekst(plan, lx, ty, regel, 'fig-tekst fig-klein', rechts ? 'start' : 'end', KLEIN);
-    bezet.push({ y: ty, x0: rechts ? lx : lx - b, x1: rechts ? lx + b : lx });
+    const vak = (rechts, dy) => {
+      const ty = cy + 4 + dy;
+      const lx = rechts ? cx + 8 : cx - 8;
+      return { rechts, ty, lx, x0: rechts ? lx : lx - b, x1: rechts ? lx + b : lx, y0: ty - 10, y1: ty + 3 };
+    };
+    const kandidaten = [];
+    for (const dy of [0, REGEL - 3, -(REGEL - 3), 2 * (REGEL - 3), -2 * (REGEL - 3), 3 * (REGEL - 3), -3 * (REGEL - 3)]) kandidaten.push(vak(true, dy), vak(false, dy));
+    const binnen = kandidaten.filter((k) => k.x0 >= x0 + 2 && k.x1 <= x1 - 2 && k.y0 >= top + 2 && k.y1 <= y1 - 2);
+    const vrij = (k) => !bezet.some((o) => raakt(k, o))
+      && !bollen.some((o) => (o.x !== cx || o.y !== cy) && raakt(k, { x0: o.x - 6, x1: o.x + 6, y0: o.y - 6, y1: o.y + 6 }));
+    const k = binnen.find(vrij) || binnen[0] || kandidaten[0];
+    tekst(plan, k.lx, k.ty, regel, 'fig-tekst fig-klein', k.rechts ? 'start' : 'end', KLEIN);
+    bezet.push(k);
     plan.punten.push({ label: p.label, x: p.x, y: p.y, cx, cy });
   });
   plan.hoogte = Math.ceil(y1 + (fig.asLabels?.x ? 38 : 24));

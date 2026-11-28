@@ -150,7 +150,16 @@ export const SAMENHANG_UITLEG = (uitkomst) => `Samenhang is geen oorzaak. Een st
 export const ENPS_UITLEG = 'Een eNPS loopt van −100 tot +100. Promotors gaven een 9 of 10, criticasters 0 tot en met 6.';
 export const TER_VERGELIJKING = 'Ter vergelijking';
 export const VERZUIM_VERBORGEN = 'Verzuim van deze groep niet getoond: te klein, of het cijfer zou vooral over één persoon gaan.';
+/** Uitleg bij × in personeelscijfers (aantallen medewerkers in plaats van respondenten). */
+export const PERSONEEL_VERBORGEN = `${VERBORGEN} = niet getoond: minder dan ${DREMPEL} medewerkers (bij verzuim: minder dan 10), of verborgen zodat een klein aantal niet terug te rekenen is.`;
 export const DAGEN_UITLEG = 'Verzuim in kalenderdagen, gewogen naar de deeltijdfactor; de dagen zijn gebruikt zoals ze in het bestand stonden.';
+/** De vraag bij het inlezen (K S4) en wat er bij het verzuim staat, per antwoord. */
+export const ZWANGERSCHAP_VRAAG = 'Tellen zwangerschapsverlof en bevallingsverlof mee? Volgens de gangbare norm niet.';
+export const ZWANGERSCHAPSVERLOF = {
+  telt_niet: 'Zwangerschaps- en bevallingsverlof tellen niet mee (de gangbare norm).',
+  telt_mee: 'Zwangerschaps- en bevallingsverlof tellen mee in het verzuim; volgens de gangbare norm horen ze er niet bij.',
+  onbekend: 'Niet bekend of zwangerschaps- en bevallingsverlof meetellen; volgens de gangbare norm horen ze er niet bij.',
+};
 
 /**
  * De zinnen bij de representativiteit (K S13): het oordeel, en bij een afwijking per groep met minstens 5 procentpunt
@@ -173,8 +182,56 @@ export function representativiteitZinnen(km) {
       ? `Naar ${naar} is niet getoetst of de respondenten op de organisatie lijken: daarvoor zijn de groepen te klein.`
       : `Naar ${naar} is niet getoetst of de respondenten op de organisatie lijken: daarvoor zijn er te weinig groepen met een bekend aantal medewerkers.`);
   }
-  if (r.niet_vergeleken?.length) uit.push(`${r.niet_vergeleken.join(', ')}: niet vergeleken, aantal medewerkers onbekend.`);
+  // Eén zin voor onbekend en verborgen: anders zou je zien welk aantal medewerkers te klein is om te tonen.
+  if (r.niet_vergeleken?.length) uit.push(`${r.niet_vergeleken.join(', ')}: niet vergeleken (aantal medewerkers onbekend of te klein om te tonen).`);
   return uit;
+}
+
+/** Uitleg onder de tabel "Wie deden mee" als er met de organisatie wordt vergeleken. */
+export const VERGELIJK_UITLEG = 'De percentages gaan over de groepen die met de organisatie vergeleken worden. Wie de vraag niet invulde of "Dat zeg ik liever niet" koos, telt daarbij niet mee. Het verschil is het percentage respondenten min het percentage medewerkers, in procentpunten.';
+export const NIET_INGEVULD_UITLEG = 'Ook wie deze vraag niet invulde, telt mee bij de groepen die niet apart getoond zijn.';
+
+/**
+ * De tabel "Wie deden mee" van één achtergrondvraag, voor het scherm, Word en Excel (overal dezelfde getallen).
+ * Zonder aantallen medewerkers: Groep, Respondenten, % (van alle respondenten, zoals op het dashboard).
+ * Met een vergelijking: de percentages gaan over de groepen die vergeleken worden (zonder "Niet ingevuld", "Dat zeg
+ * ik liever niet" en groepen zonder getoond aantal medewerkers); het verschil is het verschil van de twee afgeronde
+ * percentages, zodat de getallen in de tabel kloppen. Een verborgen aantal is ×.
+ * @returns {{ metOrganisatie, kop: string[], rijen: { cellen: string[], getallen: (number|string|null)[], vergeleken }[], noten: string[] }}
+ */
+export function samenstellingTabel(km) {
+  const metOrg = !!km?.representativiteit;
+  const naamVan = (g) => (g.samengevoegd ? `${LABEL_OVERIG} (${g.labels_samengevoegd.join(', ')})` : g.label);
+  const rijen = (km?.groepen || []).map((g) => {
+    const naam = naamVan(g);
+    if (!metOrg) return { vergeleken: false, cellen: [naam, aantal(g.n), procent(g.pct)], getallen: [naam, g.n ?? VERBORGEN, eindig(g.pct) ? Math.round(g.pct) : VERBORGEN] };
+    const vergeleken = g.populatie !== null && !g.niet_ingevuld && eindig(g.pct_vergelijk) && eindig(g.populatie_pct_vergelijk);
+    const pR = vergeleken ? Math.round(g.pct_vergelijk) : null;
+    const pM = vergeleken ? Math.round(g.populatie_pct_vergelijk) : null;
+    const org = g.niet_ingevuld || g.liever_niet ? '–' : g.populatie_verborgen ? VERBORGEN : g.populatie === null ? 'onbekend' : aantal(g.populatie);
+    const orgPct = vergeleken ? nlProcent(pM) : g.populatie_verborgen ? VERBORGEN : '–';
+    return {
+      vergeleken,
+      cellen: [naam, aantal(g.n), vergeleken ? nlProcent(pR) : '–', org, orgPct, vergeleken ? metTeken(pR - pM, 0) : '–'],
+      getallen: [naam, g.n ?? VERBORGEN, vergeleken ? pR : '', g.niet_ingevuld || g.liever_niet ? '' : g.populatie_verborgen ? VERBORGEN : g.populatie ?? '', vergeleken ? pM : g.populatie_verborgen ? VERBORGEN : '', vergeleken ? pR - pM : ''],
+    };
+  });
+  if (km?.verborgen_rest) {
+    const naam = `Niet apart getoond (${km.verborgen_rest.labels.join(', ')})`;
+    rijen.push(metOrg
+      ? { vergeleken: false, cellen: [naam, VERBORGEN, '–', VERBORGEN, VERBORGEN, '–'], getallen: [naam, VERBORGEN, '', VERBORGEN, VERBORGEN, ''] }
+      : { vergeleken: false, cellen: [naam, VERBORGEN, VERBORGEN], getallen: [naam, VERBORGEN, VERBORGEN] });
+  }
+  const noten = [];
+  if (metOrg) noten.push(VERGELIJK_UITLEG);
+  if ((km?.groepen || []).some((g) => g.samengevoegd && g.ook_niet_ingevuld) || km?.verborgen_rest?.ook_niet_ingevuld) noten.push(NIET_INGEVULD_UITLEG);
+  if (rijen.some((r) => r.cellen.includes(VERBORGEN))) noten.push(VERBORGEN_UITLEG);
+  return {
+    metOrganisatie: metOrg,
+    kop: metOrg ? ['Groep', 'Respondenten', '% respondenten', 'Medewerkers', '% medewerkers', 'Verschil (procentpunt)'] : ['Groep', 'Respondenten', '%'],
+    rijen,
+    noten,
+  };
 }
 
 /** "De eNPS is +20 (9 promotors, 6 passieven en 5 criticasters van 20 respondenten). Het 95%-interval loopt van −16 tot +56." */
@@ -188,7 +245,8 @@ function cijferZin(c) {
   const onv = eindig(c.pct_onvoldoende) ? ` ${nlProcent(c.pct_onvoldoende)} gaf een onvoldoende (5 of lager).` : '';
   return `"${c.tekst}": gemiddeld een ${getal(c.gemiddelde)}${ci}, van ${c.n} respondenten.${onv}`;
 }
-function signaalZin(s) {
+/** De zin bij een signaal (Overzicht, rapport, Excel en platte tekst). */
+export function signaalZin(s) {
   if (s.regel === 'enps_negatief') return `De eNPS is negatief (${score(s.waarde)}): er zijn meer criticasters dan promotors.`;
   if (s.regel === 'cijfer_onvoldoende') return `Het gemiddelde rapportcijfer is een onvoldoende (${getal(s.waarde)}).`;
   const welke = s.ongunstig?.length ? ` (${s.ongunstig.join(' of ')})` : '';
@@ -237,9 +295,11 @@ export function kerncijferFiguren(k) {
   const km = (k.kenmerken || []).find((x) => x.groepen.some((g) => eindig(g.respons_pct)));
   if (km) {
     const gs = km.groepen.filter((g) => !g.niet_ingevuld && (g.populatie !== null || g.populatie_verborgen));
-    const alt = `Respons per ${(km.kenmerk_naam || 'groep').toLowerCase()}: ${gs.map((g) => `${g.label} ${metKruis(g.respons_pct, nlProcent)}`).join(', ')}.`;
+    const alt = `Respons per ${(km.kenmerk_naam || 'groep').toLowerCase()}: ${gs.map((g) => `${g.label} ${g.controleer_aantallen ? 'meer respondenten dan medewerkers' : metKruis(g.respons_pct, nlProcent)}`).join(', ')}.`;
+    const controleer = gs.filter((g) => g.controleer_aantallen).map((g) => g.label);
     uit.push(fig(`respons-${km.vraag_id}`, 'staaf', `Respons per ${(km.kenmerk_naam || 'groep').toLowerCase()}`, alt, {
       eenheid: '%', schaal: { min: 0, max: 100 }, categorieen: gs.map((g) => g.label), reeksen: [{ label: 'Respons', waarden: gs.map((g) => (eindig(g.respons_pct) ? g.respons_pct : null)) }],
+      ...(controleer.length ? { noot: `${controleer.join(', ')}: meer respondenten dan medewerkers; controleer de aantallen.` } : {}),
     }));
   }
   // 2. Thema's: % gunstig, neutraal en ongunstig.
@@ -293,7 +353,7 @@ export function kerncijferFiguren(k) {
       eenheid: 'gem', schaal: { min: 1, max: 5 }, schaalY: { min: Math.min(0, ...punten.filter((p) => p.y !== null).map((p) => p.y)), max: 1 },
       categorieen: [], reeksen: [], punten, kruis: dr.kruis,
       kwadrantLabels: [KWADRANT.vasthouden, KWADRANT.verbeteren, KWADRANT.goed_genoeg, KWADRANT.later],
-      asLabels: { x: 'Gemiddelde score (1–5)', y: `Samenhang met ${dr.uitkomst.naam} (r)` },
+      asLabels: { x: 'Gemiddelde score (1–5)', y: 'Samenhang met de uitkomst (r)' },
       noot: 'Samenhang is geen oorzaak.',
     }));
   }
@@ -315,6 +375,20 @@ const alinea = (tekst) => ({ soort: 'alinea', tekst });
 const tabel = (kopRij, rijen, bijschrift = '') => ({ soort: 'tabel', kop: kopRij, rijen, bijschrift });
 const lijst = (items) => ({ soort: 'lijst', items });
 
+/** De zinnen over de kwaliteit van de gegevens: het deel beantwoorde vragen en de "rechte lijnen" (K S9). */
+export function kwaliteitZinnen(kw) {
+  if (!kw) return [];
+  const delen = [`Gemiddeld beantwoordde een respondent ${nlProcent(kw.gem_pct_beantwoord)} van de gesloten vragen.`];
+  if (kw.aantal_schaalvragen >= kw.rechte_lijn_min) {
+    delen.push(eindig(kw.rechte_lijn)
+      ? `${kw.rechte_lijn === 0 ? 'Niemand gaf' : `${aantal(kw.rechte_lijn)} ${kw.rechte_lijn === 1 ? 'respondent gaf' : 'respondenten gaven'}`} op alle ${kw.aantal_schaalvragen} schaalvragen hetzelfde antwoord.`
+      : `Minder dan 5 respondenten gaven op alle ${kw.aantal_schaalvragen} schaalvragen hetzelfde antwoord.`);
+  } else {
+    delen.push(`Of iemand overal hetzelfde antwoord gaf, tellen we pas bij minstens ${kw.rechte_lijn_min} schaalvragen; deze vragenlijst heeft er ${kw.aantal_schaalvragen}.`);
+  }
+  return delen;
+}
+
 function deelnameBlokken(k, figuren) {
   const uit = [];
   const ls = k.deelname?.lijsten || [];
@@ -330,31 +404,13 @@ function deelnameBlokken(k, figuren) {
   if (zin) uit.push(alinea(`${zin} ${FOUTMARGE_UITLEG}`));
   for (const km of k.kenmerken || []) {
     uit.push(kop(`Wie deden mee: ${(km.kenmerk_naam || km.tekst).toLowerCase()}`, 3));
-    const metOrg = km.groepen.some((g) => g.populatie !== null || g.populatie_verborgen);
-    const rijen = km.groepen.map((g) => {
-      const naam = g.samengevoegd ? `${LABEL_OVERIG} (${g.labels_samengevoegd.join(', ')})` : g.label;
-      const basis = [naam, aantal(g.n), procent(g.pct)];
-      if (!metOrg) return basis;
-      const org = g.niet_ingevuld ? ['–', '–', '–'] : g.populatie === null && !g.populatie_verborgen ? ['onbekend', '–', '–']
-        : [aantal(g.populatie), procent(g.populatie_pct), eindig(g.verschil_pp) ? metTeken(Math.round(g.verschil_pp), 0) : '–'];
-      return [...basis, ...org];
-    });
-    if (km.verborgen_rest) rijen.push([`Niet apart getoond (${km.verborgen_rest.labels.join(', ')})`, VERBORGEN, VERBORGEN, ...(metOrg ? [VERBORGEN, VERBORGEN, '–'] : [])]);
-    uit.push(tabel(metOrg ? ['Groep', 'Respondenten', '%', 'Medewerkers', '%', 'Verschil (procentpunt)'] : ['Groep', 'Respondenten', '%'], rijen, km.tekst));
-    const noten = [];
-    if (km.groepen.some((g) => g.samengevoegd && g.ook_niet_ingevuld) || km.verborgen_rest?.ook_niet_ingevuld) noten.push('Ook wie deze vraag niet invulde, telt mee bij de groepen die niet apart getoond zijn.');
-    if (rijen.some((r) => r.includes(VERBORGEN))) noten.push(VERBORGEN_UITLEG);
+    const t = samenstellingTabel(km);
+    uit.push(tabel(t.kop, t.rijen.map((r) => r.cellen), km.tekst));
     for (const z of representativiteitZinnen(km)) uit.push(alinea(z));
-    if (noten.length) uit.push(alinea(`*${noten.join(' ')}*`));
+    if (t.noten.length) uit.push(alinea(`*${t.noten.join(' ')}*`));
   }
   const kw = k.kwaliteit;
-  if (kw) {
-    const delen = [`Gemiddeld beantwoordde een respondent ${nlProcent(kw.gem_pct_beantwoord)} van de gesloten vragen.`];
-    if (kw.aantal_schaalvragen >= kw.rechte_lijn_min) {
-      delen.push(eindig(kw.rechte_lijn) ? `${kw.rechte_lijn === 0 ? 'Niemand' : `${aantal(kw.rechte_lijn)} ${kw.rechte_lijn === 1 ? 'respondent' : 'respondenten'}`} gaf op alle schaalvragen hetzelfde antwoord.` : 'Minder dan 5 respondenten gaven op alle schaalvragen hetzelfde antwoord.');
-    }
-    uit.push(kop('Kwaliteit van de gegevens', 3), alinea(delen.join(' ')));
-  }
+  if (kw) uit.push(kop('Kwaliteit van de gegevens', 3), alinea(kwaliteitZinnen(kw).join(' ')));
   for (const f of figuren.filter((x) => x.id.startsWith('respons-') || x.id.startsWith('samenstelling-'))) uit.push(f);
   return uit;
 }
@@ -425,7 +481,8 @@ function groepenBlokken(k) {
   return uit;
 }
 
-const KPI_NAMEN = [
+/** De kengetallen van het personeelsbestand: [sleutel, naam, opmaak] (scherm, Word en Excel). */
+export const KPI_NAMEN = [
   ['medewerkers', 'Medewerkers op de peildatum', aantal], ['fte', 'Fte', (x) => getal(x)], ['gem_leeftijd', 'Gemiddelde leeftijd', (x) => getal(x)],
   ['pct_55plus', '55 jaar of ouder', procent], ['pct_60plus', '60 jaar of ouder', procent], ['pct_vrouw', 'Vrouw', procent],
   ['gem_diensttijd_jaar', 'Gemiddelde diensttijd (jaar)', (x) => getal(x)], ['pct_deeltijd', 'Deeltijd', procent], ['pct_leidinggevend', 'Leidinggevend', procent],
@@ -443,8 +500,9 @@ function personeelBlokken(k, figuren, bronnen = {}) {
   const t = p.totaal;
   const rijen = KPI_NAMEN.filter(([s]) => !p.ontbreekt.includes(s)).map(([s, naam, f]) => [naam, f(t[s])]);
   uit.push(tabel(['Kengetal', 'Waarde'], rijen, 'HR-kengetallen van de organisatie'));
+  if (rijen.some((r) => r[1] === VERBORGEN)) uit.push(alinea(`*${PERSONEEL_VERBORGEN}*`));
   if (t.verzuim_reden) uit.push(alinea(`*${VERZUIM_VERBORGEN}*`));
-  else if (eindig(t.verzuim_pct)) uit.push(alinea(`*${DAGEN_UITLEG}*`));
+  else if (eindig(t.verzuim_pct)) uit.push(alinea(`*${DAGEN_UITLEG}${ZWANGERSCHAPSVERLOF[p.zwangerschapsverlof] ? ` ${ZWANGERSCHAPSVERLOF[p.zwangerschapsverlof]}` : ''}*`));
   for (const b of (k.benchmarks || []).filter(isPersoneelBenchmark)) uit.push(alinea(benchmarkZin(b, bronnen[b.citeersleutel] || '')));
   for (const g of p.per_groep || []) {
     if (!g.rijen.length) continue;
@@ -453,13 +511,23 @@ function personeelBlokken(k, figuren, bronnen = {}) {
       eindig(r.verzuim_pct) ? `${nlGetal(r.verzuim_pct, 1)}%` : VERBORGEN, getal(r.meldingsfrequentie, 2), procent(r.verloop_pct),
     ]), `Per ${g.dimensie_naam.toLowerCase()}`));
   }
-  if ((p.per_groep || []).some((g) => g.rijen.some((r) => r.verzuim_pct === null))) uit.push(alinea(`*${VERBORGEN_UITLEG} ${VERZUIM_VERBORGEN}*`));
+  if ((p.per_groep || []).some((g) => g.rijen.some((r) => r.verzuim_pct === null))) uit.push(alinea(`*${PERSONEEL_VERBORGEN} ${VERZUIM_VERBORGEN}*`));
   if (p.uitstroom_redenen?.length) {
     uit.push(tabel(['Reden van vertrek', 'Aantal'], p.uitstroom_redenen.map((r) => [r.label, aantal(r.aantal)]), 'Redenen van vertrek (hele organisatie)'));
   }
   const f = figuren.find((x) => x.id === 'leeftijdsopbouw');
   if (f) uit.push(f);
   return uit;
+}
+
+/** Per thema: is het verschil tussen het eerste en het laatste meetmoment statistisch significant (zoals het rapport)? */
+export function verloopZinnen(v) {
+  return (v?.toetsen || []).map((t) => {
+    if (t.verborgen) return `${t.thema_naam}: het verschil tussen ${t.van.naam} en ${t.naar.naam} is niet getoond: te weinig volledig ingevulde antwoorden om dit veilig naast het dashboard te tonen.`;
+    if (!eindig(t.p)) return `${t.thema_naam}: het verschil tussen ${t.van.naam} en ${t.naar.naam} is niet te toetsen.`;
+    const richting = eindig(t.verschil) && t.p < 0.05 ? ` (van ${nlGetal(t.van.gemiddelde, 1)} naar ${nlGetal(t.naar.gemiddelde, 1)})` : '';
+    return `${t.thema_naam}: het verschil tussen ${t.van.naam} en ${t.naar.naam} is ${t.p < 0.05 ? 'statistisch significant' : 'niet statistisch significant'}${richting} (${pTekst(t.p)}).`;
+  });
 }
 
 function verloopBlokken(k, figuren) {
@@ -469,11 +537,7 @@ function verloopBlokken(k, figuren) {
   const mm = v.meetmomenten;
   uit.push(tabel(['Thema', ...mm.map((m) => m.naam)], v.themas.map((t) => [t.naam, ...mm.map((m) => getal(t.punten.find((p) => p.meetmoment_id === m.id)?.gemiddelde))]), 'Ontwikkeling per meetmoment'));
   if (v.enps?.length) uit.push(tabel(['eNPS', ...mm.map((m) => m.naam)], [['eNPS', ...mm.map((m) => score(v.enps.find((p) => p.meetmoment_id === m.id)?.score))]]));
-  const zinnen = (v.toetsen || []).map((t) => {
-    if (t.verborgen) return `${t.thema_naam}: het verschil tussen ${t.van.naam} en ${t.naar.naam} is niet getoond: te weinig volledig ingevulde antwoorden om dit veilig naast het dashboard te tonen.`;
-    if (!eindig(t.p)) return `${t.thema_naam}: het verschil tussen ${t.van.naam} en ${t.naar.naam} is niet te toetsen.`;
-    return `${t.thema_naam}: het verschil tussen ${t.van.naam} en ${t.naar.naam} is ${t.p < 0.05 ? 'statistisch significant' : 'niet statistisch significant'} (${pTekst(t.p)}).`;
-  });
+  const zinnen = verloopZinnen(v);
   if (zinnen.length) uit.push(lijst(zinnen));
   const f = figuren.find((x) => x.id === 'verloop');
   if (f) uit.push(f);
@@ -532,14 +596,18 @@ export function kerncijferBladen(k) {
   bladen.push({ naam: 'Deelname', rijen: [['Vragenlijst', 'Meetmoment', 'Status', 'Uitgenodigd', 'Ingevuld', 'Respons (%)', 'Foutmarge (procentpunt)'],
     ...ls.map((l) => [l.titel, l.meetmoment_naam || '', l.status, l.uitgenodigd ?? '', l.klein ? VERBORGEN : l.n,
       l.controleer_aantallen ? 'controleer de aantallen' : l.klein ? VERBORGEN : l.respons_pct === null ? '' : xr(l.respons_pct, 0), l.foutmarge_pp === null ? '' : xr(l.foutmarge_pp, 1)]), ...uitleg] });
+  // Zelfde getallen als de tabel op het scherm en in Word (samenstellingTabel), plus de respons per groep.
   const samenstelling = [['Vraag', 'Groep', 'Respondenten', '% respondenten', 'Medewerkers', '% medewerkers', 'Verschil (procentpunt)', 'Respons (%)']];
   for (const km of k.kenmerken || []) {
-    for (const g of km.groepen) {
-      const naam = g.samengevoegd ? `${LABEL_OVERIG} (${g.labels_samengevoegd.join(', ')})` : g.label;
-      samenstelling.push([km.tekst, naam, x(g.n), xr(g.pct, 0), g.populatie_verborgen ? VERBORGEN : g.populatie ?? '', xr(g.populatie_pct, 0) === VERBORGEN && !g.populatie_verborgen ? '' : xr(g.populatie_pct, 0), g.verschil_pp === null ? '' : xr(g.verschil_pp, 0), g.respons_pct === null ? (g.populatie_verborgen ? VERBORGEN : '') : xr(g.respons_pct, 0)]);
-    }
-    if (km.verborgen_rest) samenstelling.push([km.tekst, `Niet apart getoond (${km.verborgen_rest.labels.join(', ')})`, VERBORGEN, VERBORGEN, VERBORGEN, VERBORGEN, '', VERBORGEN]);
+    const t = samenstellingTabel(km);
+    t.rijen.forEach((r, i) => {
+      const g = km.groepen[i];
+      const [naam, n, pR, pop, pM, verschil] = t.metOrganisatie ? r.getallen : [...r.getallen, '', '', ''];
+      const respons = !g ? VERBORGEN : g.controleer_aantallen ? 'controleer de aantallen' : g.respons_pct === null ? (g.populatie_verborgen ? VERBORGEN : '') : xr(g.respons_pct, 0);
+      samenstelling.push([km.tekst, naam, n, pR, pop, pM, verschil, respons]);
+    });
     for (const z of representativiteitZinnen(km)) samenstelling.push([km.tekst, z]);
+    for (const z of t.noten.filter((n) => n !== VERBORGEN_UITLEG)) samenstelling.push([km.tekst, z]);
   }
   bladen.push({ naam: 'Samenstelling', rijen: [...samenstelling, ...uitleg] });
   const s = k.scores || {};
@@ -580,10 +648,10 @@ export function kerncijferBladen(k) {
       for (const r of g.rijen) rijen.push([r.label, x(r.medewerkers), xr(r.fte), xr(r.gem_leeftijd), xr(r.pct_vrouw, 0), xr(r.verzuim_pct), xr(r.meldingsfrequentie, 2), xr(r.verloop_pct, 0)]);
     }
     if (p.uitstroom_redenen?.length) rijen.push([], ['Reden van vertrek', 'Aantal'], ...p.uitstroom_redenen.map((r) => [r.label, x(r.aantal)]));
-    bladen.push({ naam: 'Personeel', rijen: [...rijen, ...uitleg, [VERZUIM_VERBORGEN]] });
+    bladen.push({ naam: 'Personeel', rijen: [...rijen, [], [PERSONEEL_VERBORGEN], [VERZUIM_VERBORGEN]] });
   }
   if (k.benchmarks?.length) {
-    bladen.push({ naam: 'Benchmarks', rijen: [['Kengetal', 'Eigen waarde', 'Ter vergelijking', 'Omschrijving', 'Bron'], ...k.benchmarks.map((b) => [b.sleutel, b.eigen_waarde === null ? VERBORGEN : xr(b.eigen_waarde), b.waarde, b.omschrijving, b.citeersleutel ? `[@${b.citeersleutel}]` : ''])] });
+    bladen.push({ naam: 'Benchmarks', rijen: [['Kengetal', 'Eigen waarde', 'Ter vergelijking', 'Omschrijving', 'Bron'], ...k.benchmarks.map((b) => [benchmarkNaam({ ...b, eigen_waarde: null }, k), b.eigen_waarde === null ? VERBORGEN : xr(b.eigen_waarde), b.waarde, b.omschrijving, b.citeersleutel ? `[@${b.citeersleutel}]` : ''])] });
   }
   return bladen;
 }

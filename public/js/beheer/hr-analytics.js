@@ -299,14 +299,15 @@ function samenstelling(q, lijst, instellingen, personeel, d) {
   const basis = (velden) => ({
     label: '', optie_ids: [], niet_ingevuld: false, n: 0, pct: null, populatie: null, populatie_pct: null, respons_pct: null,
     controleer_aantallen: false, pct_vergelijk: null, populatie_pct_vergelijk: null, verschil_pp: null, foutmarge_pp: null,
-    populatie_verborgen: false, verborgen: false,
+    populatie_verborgen: false, verborgen: false, liever_niet: false,
     samengevoegd: false, labels_samengevoegd: [], ook_niet_ingevuld: false, ...velden,
   });
   for (const o of opties) {
-    if (zichtbaar.has(o.id)) groepen.push(basis({ label: o.label, optie_ids: [o.id], n: tel.get(o.id), populatie: lieverNiet.has(o.id) ? null : P(o.id) }));
+    const ln = lieverNiet.has(o.id);
+    if (zichtbaar.has(o.id)) groepen.push(basis({ label: o.label, optie_ids: [o.id], n: tel.get(o.id), populatie: ln ? null : P(o.id), liever_niet: ln }));
     else if (!ietsVerborgen && tel.get(o.id) === 0) {
       // Niets verborgen: een mogelijkheid zonder respondenten mag als 0 in beeld (zoals de verdeling op het dashboard).
-      groepen.push(basis({ label: o.label, optie_ids: [o.id], n: 0, populatie: lieverNiet.has(o.id) ? null : P(o.id) }));
+      groepen.push(basis({ label: o.label, optie_ids: [o.id], n: 0, populatie: ln ? null : P(o.id), liever_niet: ln }));
     }
   }
   if (nietIngevuldApart) groepen.push(basis({ label: 'Niet ingevuld', niet_ingevuld: true, n: leeg }));
@@ -355,7 +356,8 @@ function samenstelling(q, lijst, instellingen, personeel, d) {
 
   // Representativiteit: alleen getoonde categorieën met een getoonde populatie (nooit verborgen cellen).
   const vergelijk = groepen.filter((g) => g.populatie !== null && !g.niet_ingevuld);
-  const nietVergeleken = groepen.filter((g) => !g.niet_ingevuld && g.populatie === null).map((g) => g.label);
+  // "Niet ingevuld" en "Dat zeg ik liever niet" doen nooit mee (geen groep in de organisatie); die staan hier niet bij.
+  const nietVergeleken = groepen.filter((g) => !g.niet_ingevuld && !g.liever_niet && g.populatie === null).map((g) => g.label);
   let representativiteit = null;
   if (pop) {
     const nV = vergelijk.reduce((t, g) => t + g.n, 0);

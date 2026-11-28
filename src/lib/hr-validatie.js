@@ -10,7 +10,7 @@
 import { Fout } from './http.js';
 import { DREMPEL } from '../../public/js/beheer/privacy.js';
 import {
-  ROLLEN, DIMENSIES, KLASSEN, KENGETALLEN, REDEN_SLEUTELS, MIN_VERZUIM, MAX_MAANDEN, MAX_GROEPEN, ONBEKEND, maandNr, peildatumVan, periodeDagen,
+  ROLLEN, DIMENSIES, KLASSEN, KENGETALLEN, REDEN_SLEUTELS, MIN_VERZUIM, MAX_MAANDEN, MAX_GROEPEN, ONBEKEND, ZWANGERSCHAPSVERLOF, maandNr, peildatumVan, periodeDagen,
 } from '../../public/js/beheer/personeel-regels.js';
 
 export const MAX_INSTELLINGEN = 100_000; // tekens (JSON)
@@ -223,7 +223,7 @@ function controleerGroep(g, { totaal, wat, metVerzuim, dagenPeriode }) {
  */
 export function controleerPersoneelsaggregaat(a) {
   if (!isObject(a)) throw fout('De personeelscijfers zijn ongeldig.');
-  alleen(a, ['versie', 'naam', 'periode', 'peildatum', 'uren_per_fte', 'rollen', 'ontbreekt', 'totaal', 'dimensies'], 'De personeelscijfers');
+  alleen(a, ['versie', 'naam', 'periode', 'peildatum', 'uren_per_fte', 'rollen', 'ontbreekt', 'totaal', 'dimensies', 'zwangerschapsverlof'], 'De personeelscijfers');
   regel(a.versie === 1, 'onbekende versie.');
   regel(typeof a.naam === 'string' && schoon(a.naam).length >= 1 && schoon(a.naam).length <= 100, 'geef het bestand een naam (hooguit 100 tekens).');
   if (!isObject(a.periode)) throw fout('Personeelscijfers: de periode ontbreekt.');
@@ -288,6 +288,12 @@ export function controleerPersoneelsaggregaat(a) {
     versie: 1, naam: schoon(a.naam), periode: { van: a.periode.van, tot: a.periode.tot }, peildatum: a.peildatum, uren_per_fte: a.uren_per_fte,
     rollen: [...a.rollen], ontbreekt: [...a.ontbreekt], totaal, dimensies,
   };
+  // Optioneel, alleen bij verzuimgegevens: telden zwangerschaps- en bevallingsverlof mee (een vaste keuze, geen vrije tekst).
+  if (a.zwangerschapsverlof !== undefined && a.zwangerschapsverlof !== null) {
+    regel(typeof a.zwangerschapsverlof === 'string' && Object.hasOwn(ZWANGERSCHAPSVERLOF, a.zwangerschapsverlof), 'ongeldig antwoord bij zwangerschaps- en bevallingsverlof.');
+    regel(rollen.has('verzuimdagen') || rollen.has('verzuimpercentage'), 'zwangerschaps- en bevallingsverlof zonder verzuimkolom.');
+    uit.zwangerschapsverlof = a.zwangerschapsverlof;
+  }
   if (JSON.stringify(uit).length > MAX_AGGREGAAT) throw new Fout(413, 'De personeelscijfers zijn te groot.');
   return uit;
 }
