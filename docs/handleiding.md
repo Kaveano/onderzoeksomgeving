@@ -123,9 +123,10 @@ Bovenin staat naast **Onderzoeken** en **Sjablonen** de **Bibliotheek**: één v
    - Bij **Plak een verwijzing** ziet de app het verschil aan de hoofdletter: *de Vroome* of *Vroome, E. M. M. de* wordt een tussenvoegsel, *De Witte* blijft de achternaam. Controleer het even.
    - Let op: Google Scholar schrijft ook Nederlandse namen met een hoofdletter, bijvoorbeeld *Van Dierendonck, D. (2011).* Is het een Nederlandse auteur? Zet dan *Dierendonck* bij **Achternaam** en *van* bij **Tussenvoegsel**, met een kleine letter.
 5. Geen jaartal? Laat het jaar leeg; in de verwijzing staat dan *z.d.* (zonder datum). Dat geldt ook voor een webpagina waarop geen datum staat.
-6. Een webpagina of cijfers?
+6. Een webpagina, cijfers, een wet of een richtlijn?
    - Staat er een datum op de pagina, zoals bij een nieuwsbericht of "Pagina bijgewerkt op …"? Vul die in bij **Datum van de pagina** en laat **Geraadpleegd op** leeg.
    - Vul **Geraadpleegd op** alleen in bij een pagina zonder datum, of bij cijfers die steeds worden bijgewerkt (zoals een tabel van CBS StatLine). In de verwijzing staat dan *Geraadpleegd op … van …*. Zo doet APA het: alleen bij iets dat kan veranderen.
+   - Een wet of richtlijn? Vul **Geraadpleegd op** altijd in, ook als er een datum bij staat. Op wetten.overheid.nl staat de tekst die nu geldt, en die kan veranderen.
 7. Een DOI heeft de voorkeur boven een link.
 8. Kies onderwerpen, de betrouwbaarheid en eventueel kernpunten (één per regel).
 9. Klik op **Opslaan**. De bron krijgt een vaste code voor rapporten, bijvoorbeeld `[@bakker2017]`. Staat de bron er al in (zelfde DOI, of zelfde titel en jaar), dan vraagt de app eerst of je hem toch apart wilt toevoegen.

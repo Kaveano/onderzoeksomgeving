@@ -1517,8 +1517,8 @@ export function leesStartDetails(tekst, { soort, jaar = null, organisatie = '', 
  *   details.datum): zonder raadpleegdatum;
  * - een webpagina zonder eigen datum (z.d., of een datum die alleen in de metadata van de pagina staat; die krijgt
  *   "z.d.", zie leesStartDetails): met raadpleegdatum.
- * Een wet of richtlijn houdt de raadpleegdatum uit het record, ook met een eigen datum: besluit 7 noemt die soorten
- * niet, en de geldende tekst van een wet (wetten.overheid.nl) verandert wel. Zo was het ook vóór besluit 7.
+ * Een wet of richtlijn houdt de raadpleegdatum uit het record, ook met een eigen datum: de geldende tekst van een wet
+ * (wetten.overheid.nl) verandert wel (bevestigd door het onderzoeksteam bij P7). Zo was het ook vóór besluit 7.
  * Bij andere soorten (artikel, rapport, boek …) is er geen veld voor; zie normaliseerStartbron.
  */
 function metRaadpleegdatum(bron) {
