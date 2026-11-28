@@ -221,6 +221,12 @@ test('APA 7 §8.12 en §8.20 in de collectie: tussen haakjes de volgorde van de 
     '(Van Dierendonck, 2011; Van den Heuvel et al., 2025; Schaufeli et al., 2020)');
   // De hele collectie als literatuurlijst: in de lijst staan "Heuvel, S. van den" (records 8 en 29) en "Heuvel, S. G. van den"
   // (record 76): voor APA andere mensen, dus in de tekst met voorletters. Verder heeft geen bron voorletters nodig.
+  // Zo staan de namen op de werken zelf (APA 7 §9.8; nagekeken op 28 november 2026, besluit van het onderzoeksteam):
+  // record 8 Crossref "Sjoerd van den Heuvel" (een ander dan de TNO-auteur); record 29 omslag en colofon van het rapport
+  // "Swenneke van den Heuvel" (dus S.); record 76 omslag en colofon "S.G. van den Heuvel" (dus S. G.).
+  assert.deepEqual(['vandenheuvel-bondarouk-2017-toekomst-hr-analytics', 'tno-2021-duurzame-inzetbaarheid-nl', 'tno-2025-arbobalans-2024']
+    .map((s) => opSleutel(s).auteurs[0]), [{ achternaam: 'Heuvel', tussenvoegsel: 'van den', voorletters: 'S.' },
+    { achternaam: 'Heuvel', tussenvoegsel: 'van den', voorletters: 'S.' }, { achternaam: 'Heuvel', tussenvoegsel: 'van den', voorletters: 'S. G.' }]);
   const lijst = sorteerLiteratuur(RECORDS.map((r) => opSleutel(r.sleutel)));
   assert.equal(lijst.length, N);
   const heuvel = ['vandenheuvel-bondarouk-2017-toekomst-hr-analytics', 'tno-2021-duurzame-inzetbaarheid-nl', 'tno-2025-arbobalans-2024']
