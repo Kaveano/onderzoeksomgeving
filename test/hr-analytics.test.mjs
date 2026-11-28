@@ -674,6 +674,17 @@ test('een groep met aantallen die niet kloppen telt niet mee in de percentages, 
   }
 });
 
+test('Word: de noot van een figuur staat onder de afbeelding (wordBlokken)', async () => {
+  const { wordBlokken } = await import('../public/js/beheer/schermen/overzicht.js');
+  const k = kern(kenmerkExport([20, 15, 10], { populatie: [30, 20, 0] }));
+  const uit = await wordBlokken(R.kerncijferBlokken(k, 'alles'), async (f) => ({ soort: 'afbeelding', id: f.id }));
+  const i = uit.findIndex((b) => b.soort === 'afbeelding' && b.id.startsWith('samenstelling-'));
+  assert.ok(i >= 0);
+  assert.deepEqual(uit[i + 1], { soort: 'alinea', tekst: '*Groep C: niet in de figuur, want er zijn meer respondenten dan medewerkers; controleer de aantallen.*' });
+  const j = uit.findIndex((b) => b.soort === 'afbeelding' && b.id.startsWith('respons-'));
+  assert.match(uit[j + 1].tekst, /^\*Groep C: meer respondenten dan medewerkers; controleer de aantallen\.\*$/);
+});
+
 test('niet-gekoppelde groepen in het personeelsbestand: een eigen reden en een zin op het scherm, in Word en in Excel', () => {
   const periode = { van: '2025-11', tot: '2026-10' };
   const bestand = (groepen) => verwerkPersoneel(['Afdeling', 'In dienst'], groepen.flatMap(([label, n]) => Array.from({ length: n }, () => [label, '2020-01'])),

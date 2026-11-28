@@ -1002,13 +1002,17 @@ export async function toon(container, ctx) {
 
 /**
  * De blokken van kerncijferBlokken klaarmaken voor Word: een figuur wordt een afbeelding (PNG via canvas, met de
- * alt-tekst in wp:docPr descr), en het bijschrift van een tabel komt er als korte regel boven.
+ * alt-tekst in wp:docPr descr) met de noot eronder, en het bijschrift van een tabel komt er als korte regel boven.
  */
 export async function wordBlokken(blokken, figuurVoorWord) {
   const uit = [];
   let vorigeKop = '';
   for (const b of blokken) {
-    if (b.soort === 'figuur') uit.push(await figuurVoorWord(b));
+    if (b.soort === 'figuur') {
+      uit.push(await figuurVoorWord(b));
+      // De noot van een figuur (bijv. een groep die er niet in staat) ook in Word, onder het bijschrift.
+      if (b.noot) uit.push({ soort: 'alinea', tekst: `*${b.noot}*` });
+    }
     else if (b.soort === 'tabel') {
       if (b.bijschrift && b.bijschrift !== vorigeKop) uit.push({ soort: 'alinea', tekst: `**${b.bijschrift}**` });
       const { bijschrift, ...rest } = b;
