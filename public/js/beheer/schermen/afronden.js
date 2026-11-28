@@ -137,13 +137,14 @@ export async function toon(container, ctx) {
       'Notities, bevindingen en rapport, plus de actielijst, in één tekstbestand.',
       h('button', { type: 'button', class: 'knop', onclick: () => download(downloadUrl(`/onderzoeken/${onderzoekId}/export/stukken.txt`)) }, 'Downloaden')),
     exportRegel('Alles samen (JSON)',
-      'Volledige kopie van dit onderzoek, voor je eigen archief. Bevat alles: opzet, vragen, antwoorden, eigen invoer, stukken, rapporten, acties en eigen datasets.',
+      'Volledige kopie van dit onderzoek, voor je eigen archief. Bevat alles: opzet, vragen, antwoorden, eigen invoer, stukken, rapporten, acties, eigen datasets, de werkbank (eigen variabelen, selecties en bewaarde analyses), codes en citaten bij open antwoorden, HR-instellingen, personeelscijfers (alleen groepscijfers) en de gekoppelde bronnen.',
       exportKnop('Downloaden', async (d) => {
-        // Eigen datasets staan apart opgeslagen; voor de volledige kopie halen we ze erbij.
+        // Eigen datasets en de gekoppelde bronnen staan apart opgeslagen; voor de volledige kopie halen we ze erbij.
         const { datasets } = await api.get(`/onderzoeken/${onderzoekId}/datasets`);
         d.datasets = [];
         for (const ds of datasets) d.datasets.push((await api.get(`/datasets/${ds.id}`)).dataset);
-        return [exp.volledigeJson(d), exp.bestandsnaam(d, 'volledig', 'json'), 'application/json;charset=utf-8'];
+        const { bronnen } = await api.get(`/onderzoeken/${onderzoekId}/bronnen`);
+        return [exp.volledigeJson(d, { bronnen }), exp.bestandsnaam(d, 'volledig', 'json'), 'application/json;charset=utf-8'];
       }, { ruw: true })),
   ]);
 
@@ -209,7 +210,7 @@ export async function toon(container, ctx) {
         const ok = await bevestig({
           titel: 'Onderzoek definitief verwijderen?',
           tekst: [
-            `Alles van "${o.titel}" (${o.bedrijfsnaam}) wordt definitief verwijderd: vragenlijsten, antwoorden, eigen invoer, stukken, rapporten, eigen datasets, acties en deellinks. Dit kan niet ongedaan worden gemaakt.`,
+            `Alles van "${o.titel}" (${o.bedrijfsnaam}) wordt definitief verwijderd: vragenlijsten, antwoorden, eigen invoer, stukken, rapporten, eigen datasets, acties, deellinks, de werkbank (eigen variabelen en analyses), codes en citaten, HR-instellingen en personeelscijfers. De bronnen in de bibliotheek blijven staan; alleen de koppeling met dit onderzoek gaat weg. Dit kan niet ongedaan worden gemaakt.`,
             'Download eerst een volledige kopie (JSON) als je die wilt bewaren.',
           ],
           knop: 'Definitief verwijderen',

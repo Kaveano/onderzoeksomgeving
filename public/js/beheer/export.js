@@ -3,6 +3,8 @@
 // dezelfde inhoud geeft plus het id van elke inzending.
 // De functies hieronder gebruiken geen DOM (behalve bewaar()), zodat ze ook te testen zijn.
 
+import { apaVerwijzing } from './bibliotheek-regels.js';
+
 const WEET_NIET = 'weet_niet';
 
 /** Veilige bestandsnaam. */
@@ -160,18 +162,38 @@ function respondentVerwijzing(data) {
   };
 }
 
-/** Volledige, overzichtelijk geordende kopie van het onderzoek (JSON-tekst). */
-export function volledigeJson(data) {
+/** De velden van een bron die in een literatuurlijst komen (APA), met de verwijzing zelf; nooit de notities. */
+function apaVelden(b) {
+  const velden = ['citeersleutel', 'collectie', 'soort', 'titel', 'auteurs', 'organisatie', 'afkorting', 'jaar', 'taal', 'url', 'doi', 'details'];
+  const uit = Object.fromEntries(velden.filter((k) => b[k] !== undefined).map((k) => [k, b[k]]));
+  try {
+    uit.verwijzing = apaVerwijzing(b);
+  } catch { /* een onvolledige bron: dan zonder verwijzing */ }
+  return uit;
+}
+
+/**
+ * Volledige, overzichtelijk geordende kopie van het onderzoek (JSON-tekst).
+ * bronnen: de gekoppelde bronnen (GET /onderzoeken/:id/bronnen); dan staan hun APA-velden bij bronnen_gekoppeld (J6).
+ */
+export function volledigeJson(data, { bronnen = null } = {}) {
   const vlag = (x) => !!x;
   const verwijs = respondentVerwijzing(data);
+  const bronPerId = new Map((bronnen || []).map((b) => [b.id, b]));
   const uit = {
     export: {
       ...data.export,
       toelichting:
         'Volledige export van één onderzoek. Antwoorden zijn anoniem; schaalantwoorden zijn 1 t/m 5 of "weet_niet". ' +
-        'Meerkeuze-antwoorden verwijzen naar de id van een antwoordmogelijkheid (zie "opties" bij de vraag).',
+        'Een cijfervraag (type "cijfer") heeft als antwoord een geheel getal: van 0 t/m 10 (schaal_soort "nps", aanbevelen) of ' +
+        'van 1 t/m 10 (schaal_soort "rapport", rapportcijfer), of "weet_niet" als die keuze aan stond; zie "cijferschalen". ' +
+        'Meerkeuze-antwoorden verwijzen naar de id van een antwoordmogelijkheid (zie "opties" bij de vraag). ' +
+        'Een achtergrondvraag heeft bij "kenmerk" de sleutel van een achtergrondkenmerk (zoals afdeling of leeftijd; zie "kenmerken"). ' +
+        'Werkbank, codes en citaten, HR-instellingen, personeelscijfers (alleen groepscijfers) en gekoppelde bronnen staan onderaan.',
     },
     schalen: data.lijsten.schalen,
+    cijferschalen: data.lijsten.cijferschalen || {},
+    kenmerken: data.lijsten.kenmerken || {},
     onderzoek: data.onderzoek,
     themas: data.themas.map((t) => ({ ...t, meetpunten: data.meetpunten.filter((m) => m.thema_id === t.id) })),
     meetmomenten: data.meetmomenten,
@@ -212,7 +234,7 @@ export function volledigeJson(data) {
       coderingen: (data.coderingen || []).map(verwijs),
       citaten: (data.citaten || []).map(verwijs),
     },
-    bronnen_gekoppeld: data.bronnen_gekoppeld || [],
+    bronnen_gekoppeld: (data.bronnen_gekoppeld || []).map((k) => (bronPerId.has(k.bron_id) ? { ...k, bron: apaVelden(bronPerId.get(k.bron_id)) } : k)),
   };
   return JSON.stringify(uit, null, 2);
 }
