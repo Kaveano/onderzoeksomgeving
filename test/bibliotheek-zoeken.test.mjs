@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { performance } from 'node:perf_hooks';
 
 import { normaliseer, normaliseerMetKaart, stam, SYNONIEMEN, MIN_BEGIN, zoek, markeringen, zoekBijOnderzoek, leesZoekvraag } from '../public/js/beheer/bibliotheek-zoeken.js';
+import { OPMAAK } from '../public/js/beheer/bibliotheek-regels.js';
 
 let teller = 0;
 const bron = (velden) => ({
@@ -224,6 +225,22 @@ test('auteurs ook op de naam zoals in de tekst: "d\'Ancona" uit Citeer vindt "An
   assert.deepEqual(ids('De Witte'), [witte.id]);
   // De markering staat op de regel uit de lijst ("Ancona, J. d'"); daar staat de naam
   assert.deepEqual(markeringen(ancona, 'Ancona').auteurs, [[0, 6]]);
+  // Met de naam uit de tekst ("d'Ancona") krijgen beide delen een markering: "Ancona" en "d'"
+  for (const q of ["d'Ancona", 'd’Ancona', "D'Ancona", 'dAncona', "d'ancona 2022"]) {
+    assert.deepEqual(markeringen(ancona, q).auteurs, [[0, 6], [11, 13]], q);
+  }
+  assert.deepEqual(markeringen(bron({ auteurs: [p('Smit', 'A.'), p('Ancona', 'J.', "d'"), p('Dekker', 'F.')] }), "d'Ancona").auteurs, [[10, 16], [21, 23]],
+    '"Smit, A., Ancona, J. d\', & Dekker, F.": alleen de tweede persoon');
+  assert.deepEqual(markeringen(bron({ auteurs: [p('Ancona', '', "d'")] }), "d'Ancona").auteurs, [[0, 6], [8, 10]], 'zonder voorletters: "Ancona, d\'"');
+  // Andere tussenvoegsels blijven zoals ze waren: "De Vroome" markeert alleen "Vroome"
+  assert.deepEqual(markeringen(vroome, 'De Vroome').auteurs, [[25, 31]]);
+  // Met het tussenvoegsel vooraan ('voor') staat "d'Ancona" al als één woord in de regel
+  OPMAAK.tussenvoegsel = 'voor';
+  try {
+    assert.deepEqual(markeringen(ancona, "d'Ancona").auteurs, [[0, 8]]);
+  } finally {
+    OPMAAK.tussenvoegsel = 'achter';
+  }
 });
 
 test('criterium 3: 1.000 bronnen van ongeveer 2 KB, mediaan van zoek onder 15 ms', () => {

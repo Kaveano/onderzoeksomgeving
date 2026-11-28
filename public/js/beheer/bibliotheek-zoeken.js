@@ -14,9 +14,11 @@
 // - "…" zoekt een woordgroep;
 // - eerst bronnen met alle woorden; zijn die er niet, dan bronnen met een deel van de woorden;
 // - filters en facetten (per facet de aantallen met alle andere filters aan);
-// - markeringen: waar de treffers in de oorspronkelijke tekst staan.
+// - markeringen: waar de treffers in de oorspronkelijke tekst staan; bij "d'Ancona" ook "Ancona" en "d'" in "Ancona, J. d'".
 
-import { normaliseer, normaliseerMetKaart, ONDERWERPEN, BETROUWBAARHEID_RANG, vergelijkBronnen, auteursRegel, namenInTekst } from './bibliotheek-regels.js';
+import {
+  normaliseer, normaliseerMetKaart, ONDERWERPEN, BETROUWBAARHEID_RANG, vergelijkBronnen, auteursRegel, namenInTekst, zonderSterren,
+} from './bibliotheek-regels.js';
 
 export { normaliseer, normaliseerMetKaart };
 
@@ -307,6 +309,12 @@ function samenvoegen(stukken) {
   return uit;
 }
 
+/** Past een zoekwoord op dit ene (genormaliseerde) woord? */
+function pastOpWoord(woord, vraag) {
+  const veld = { vormen: new Set([woord, stam(woord)]), vormTekst: ` ${woord} ${stam(woord)} `, tekst: ` ${woord} ` };
+  return vraag.termen.some((t) => factor(veld, t) > 0);
+}
+
 /** De stukken van een tekst die bij de zoekvraag horen, in plaatsen van de oorspronkelijke tekst. */
 function treffersIn(tekst, vraag) {
   const { norm, kaart, lengte } = normaliseerMetKaart(tekst);
@@ -317,10 +325,7 @@ function treffersIn(tekst, vraag) {
   let begin = 0;
   for (const woord of norm.split(' ')) {
     const eind = begin + woord.length;
-    if (woord) {
-      const veld = { vormen: new Set([woord, stam(woord)]), vormTekst: ` ${woord} ${stam(woord)} `, tekst: ` ${woord} ` };
-      if (vraag.termen.some((t) => factor(veld, t) > 0)) stukken.push(terug(begin, eind));
-    }
+    if (woord && pastOpWoord(woord, vraag)) stukken.push(terug(begin, eind));
     begin = eind + 1;
   }
   // Woordgroepen (ook synoniemen met een spatie, zoals "duurzame inzetbaarheid")
@@ -338,6 +343,35 @@ function treffersIn(tekst, vraag) {
 }
 
 /**
+ * Markeringen op de regel met auteurs voor een naam zoals in de tekst die in de lijst in twee delen staat: "d'Ancona"
+ * (genormaliseerd één woord, 'dancona') staat in de lijst als "Ancona, J. d'". Past een zoekwoord op zo'n naam en
+ * niet al op de achternaam alleen, dan krijgen de achternaam en het tussenvoegsel van die persoon een markering.
+ * Het tussenvoegsel staat in de lijst direct voor de achternaam (OPMAAK 'voor') of na de voorletters ('achter').
+ */
+function naamTreffers(bron, regel, vraag) {
+  const stukken = [];
+  const personen = (Array.isArray(bron.auteurs) ? bron.auteurs : []).filter((a) => a && zonderSterren(a.achternaam));
+  const inTekst = namenInTekst(bron);
+  let vanaf = 0;
+  personen.forEach((a, i) => {
+    const achternaam = zonderSterren(a.achternaam);
+    const tv = zonderSterren(a.tussenvoegsel);
+    const plek = regel.indexOf(achternaam, vanaf);
+    if (plek === -1) return;
+    vanaf = plek + achternaam.length;
+    if (!tv || normaliseer(achternaam).split(' ').some((w) => pastOpWoord(w, vraag))) return;
+    const delen = new Set(normaliseer(`${tv} ${achternaam}`).split(' '));
+    if (!normaliseer(inTekst[i]).split(' ').some((w) => w && !delen.has(w) && pastOpWoord(w, vraag))) return;
+    stukken.push([plek, vanaf]);
+    const vl = zonderSterren(a.voorletters);
+    const tvPlek = [plek - tv.length, vanaf + (vl ? vl.length + 3 : 2)]
+      .find((p) => p >= 0 && regel.slice(p, p + tv.length).toLowerCase() === tv.toLowerCase());
+    if (tvPlek !== undefined) stukken.push([tvPlek, tvPlek + tv.length]);
+  });
+  return stukken;
+}
+
+/**
  * Waar de zoekwoorden in de getoonde velden staan: { titel, samenvatting, auteurs, notities: [[van, tot]],
  * kernpunten: [[[van, tot]] per kernpunt] }, in plaatsen van de oorspronkelijke tekst. auteurs gaat over
  * auteursRegel(bron) (of de organisatie als er geen personen zijn).
@@ -349,9 +383,14 @@ export function markeringen(bron, zoekvraag) {
     titel: treffersIn(bron.titel || '', vraag),
     samenvatting: treffersIn(bron.samenvatting || '', vraag),
     kernpunten: (bron.kernpunten || []).map((k) => treffersIn(k, vraag)),
-    auteurs: treffersIn(auteursRegel(bron) || bron.organisatie || '', vraag),
+    auteurs: auteurMarkeringen(bron, vraag),
     notities: treffersIn(bron.notities || '', vraag),
   };
+}
+
+function auteurMarkeringen(bron, vraag) {
+  const regel = auteursRegel(bron) || bron.organisatie || '';
+  return samenvoegen([...treffersIn(regel, vraag), ...naamTreffers(bron, regel, vraag)]);
 }
 
 /** De zoekvraag bij een onderzoek: de namen van de thema's en de onderzoeksvraag (zonder dubbele woorden). */
