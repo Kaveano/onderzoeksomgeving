@@ -14,7 +14,9 @@
 // - Van een groep met minder dan 5 medewerkers gaan alleen de aantallen mee (geen leeftijden, fte of verloop).
 // - personeelKpis maakt van het aggregaat de kengetallen voor het scherm en het rapport, met de privacyregels voor
 //   het tonen (PR-16): aantallen onder de 5 verborgen, aandelen alleen als beide delen minstens 5 zijn, vertrek-
-//   redenen en verloop in het eerste jaar alleen voor de hele organisatie.
+//   redenen en verloop in het eerste jaar alleen voor de hele organisatie. Uitzondering (besluit R18): het verloop en
+//   de instroom van de hele organisatie (aantal en percentage) staan er altijd, ook onder de 5; wat daaruit terug te
+//   rekenen zou zijn, wordt aanvullend verborgen.
 // - populatieVoorVraag geeft per antwoordmogelijkheid van een achtergrondvraag het aantal medewerkers (voor de
 //   respons per groep en de vergelijking met de organisatie).
 //
@@ -834,13 +836,76 @@ function kolomVerborgen(aantallen, vooraf, d) {
   return cellen.map((c) => c.verborgen);
 }
 
+/** Het aantal maanden van de periode van een aggregaat (of null). */
+function periodeMaanden(periode) {
+  const v = maandNr(periode?.van);
+  const t = maandNr(periode?.tot);
+  return v === null || t === null ? null : t - v + 1;
+}
+
+/**
+ * Aanvullend verbergen tegenover een bekend deeltotaal (R18). De cellen vallen in twee delen (zijde[i] true of false)
+ * waarvan elk totaal bekend is. In elk deel met een verborgen cel dat niet helemaal verborgen is, moeten minstens twee
+ * cellen verborgen zijn die samen minstens d tellen; anders gaat de kleinste zichtbare cel van dat deel er ook bij.
+ * Anders volgt één verborgen cel uit het deeltotaal min de getoonde cellen. Is een deel helemaal verborgen, dan is
+ * alleen zijn totaal te zien, en dat is al bekend. Geeft een nieuwe lijst (true = verborgen); weg blijft zoals het was.
+ */
+export function deelVerborgen(aantallen, weg, zijde, d = DREMPEL) {
+  const uit = aantallen.map((_, i) => !!weg[i]);
+  const n = aantallen.map((x) => (Number.isFinite(x) ? x : 0));
+  for (const kant of [true, false]) {
+    const deel = n.map((_, i) => i).filter((i) => !!zijde[i] === kant);
+    for (;;) {
+      const verborgen = deel.filter((i) => uit[i]);
+      const zichtbaar = deel.filter((i) => !uit[i]);
+      if (!verborgen.length || !zichtbaar.length) break;
+      if (verborgen.length >= 2 && verborgen.reduce((s, i) => s + n[i], 0) >= d) break;
+      uit[zichtbaar.sort((a, b) => n[a] - n[b] || a - b)[0]] = true;
+    }
+  }
+  return uit;
+}
+
+/**
+ * Diensttijdklassen die helemaal korter zijn dan de periode (tot ≤ lengte van de periode in maanden): daarin staan op
+ * de peildatum precies de nieuwe medewerkers die nog in dienst zijn. Geeft per groep true/false, of null als de
+ * instroom niet getoond wordt (geen kolom met de datum in dienst) of de periode onbekend is.
+ */
+function nieuwKlassen(aggregaat, gs) {
+  const dd = aggregaat?.dimensies?.diensttijd;
+  const lengte = periodeMaanden(aggregaat?.periode);
+  if (!dd || (aggregaat.ontbreekt || []).includes('instroom_pct') || !Number.isInteger(lengte)) return null;
+  const klassen = new Map((dd.klassen || []).map((c) => [c.label, c]));
+  return gs.map((g) => {
+    const c = klassen.get(g.label);
+    return !!c && c.tot !== null && c.tot <= lengte;
+  });
+}
+
+/** Groepen onder de d medewerkers, met aanvullend verbergen tegenover het totaal (de regel van vóór R18). */
+const basisGroepWeg = (gs, d) => kolomVerborgen(gs.map((g) => g.medewerkers), gs.map(() => false), d).map((w, i) => w || !!gs[i].klein);
+
+/**
+ * Welke groepen van een indeling in de tabel per groep verborgen zijn (true): minder dan d medewerkers, met aanvullend
+ * verbergen tegenover het totaal. Bij de diensttijd ook tegenover de instroom van de organisatie, die altijd getoond
+ * wordt (R18): de klassen korter dan de periode bevatten precies de nieuwe medewerkers die er nog zijn, dus hun aantal
+ * volgt (bijna) uit de instroom. Daarom gelden de regels van deelVerborgen voor die klassen en voor de andere klassen.
+ */
+function groepWegVan(aggregaat, dim, d) {
+  const gs = aggregaat?.dimensies?.[dim]?.groepen || [];
+  const weg = basisGroepWeg(gs, d);
+  if (dim !== 'diensttijd') return weg;
+  const nieuw = nieuwKlassen(aggregaat, gs);
+  return nieuw ? deelVerborgen(gs.map((g) => g.medewerkers), weg, nieuw, d) : weg;
+}
+
 /**
  * De groepen van een indeling die in de tabel per groep niet getoond worden (zoals personeelKpis ze verbergt): een Map
  * label → aantal medewerkers. Ook populatieVoorVraag en de aandelen van de organisatie houden hier rekening mee.
  */
 export function verborgenGroepen(aggregaat, dim, d = DREMPEL) {
   const gs = aggregaat?.dimensies?.[dim]?.groepen || [];
-  const weg = kolomVerborgen(gs.map((g) => g.medewerkers), gs.map(() => false), d).map((w, i) => w || !!gs[i].klein);
+  const weg = groepWegVan(aggregaat, dim, d);
   return new Map(gs.filter((_, i) => weg[i]).map((g) => [g.label, g.medewerkers]));
 }
 
@@ -888,11 +953,16 @@ function verdeling(labels, aantallen, totaal, d) {
 
 /**
  * De kengetallen van het personeelsbestand voor het scherm en het rapport, met de privacyregels (PR-16):
- * - organisatie: alleen bij minstens d medewerkers; aandelen (vrouw, deeltijd, 55+, verloop …) alleen als beide delen
- *   minstens d zijn (veiligAandeel); verdelingen met verbergReeks; verzuim zoals bij het inlezen bepaald;
+ * - organisatie: alleen bij minstens d medewerkers; aandelen (vrouw, deeltijd, 55+ …) alleen als beide delen minstens d
+ *   zijn (veiligAandeel); verdelingen met verbergReeks; verzuim zoals bij het inlezen bepaald;
+ * - verloop en instroom van de hele organisatie (aantal en percentage) altijd, ook bij minder dan d vertrekkers of nieuwe
+ *   medewerkers en bij 0 (besluit R18): wie kwam of ging, weet iedereen in de organisatie al, en een totaal van de
+ *   organisatie is geen uitsplitsing. Vrijwillig verloop en de redenen van vertrek zijn wel een uitsplitsing en houden
+ *   de regel van 5 (bij 0 vertrekkers is alles 0 en valt er niets te verbergen). De tabel per diensttijdklasse is ook
+ *   tegenover de instroom afgeschermd (groepWegVan);
  * - per groep: een groep met minder dan d medewerkers (en zo nodig de kleinste andere) wordt niet getoond; aandelen
- *   per groep volgen de regel voor kruistabellen; verzuim per groep zoals bij het inlezen bepaald, en niet als het aantal
- *   medewerkers van de groep verborgen is;
+ *   per groep volgen de regel voor kruistabellen (ook het verloop per groep tegenover het getoonde aantal vertrekkers);
+ *   verzuim per groep zoals bij het inlezen bepaald, en niet als het aantal medewerkers van de groep verborgen is;
  * - vertrekredenen alleen voor de hele organisatie.
  * Verborgen getallen zijn null (verborgen: true); getallen zijn niet afgerond.
  */
@@ -910,7 +980,7 @@ export function personeelKpis(aggregaat, { d = DREMPEL } = {}) {
   const LEEG_TOTAAL = {
     medewerkers: null, fte: null, gem_leeftijd: null, pct_55plus: null, pct_60plus: null, pct_vrouw: null, gem_diensttijd_jaar: null,
     pct_deeltijd: null, pct_leidinggevend: null, verzuim_pct: null, meldingsfrequentie: null, gem_duur_per_melding: null, nulverzuim_pct: null,
-    verloop_pct: null, verloop_vrijwillig_pct: null, instroom_pct: null, pct_eerste_jaar: null, gem_aantal: null,
+    verloop_pct: null, verloop_vrijwillig_pct: null, instroom_pct: null, pct_eerste_jaar: null, gem_aantal: null, uitstroom: null, instroom: null,
     geslacht: [], leeftijd: [], contract: [], verborgen: true, reden: 'klein', verzuim_reden: null,
   };
   if (!(t.medewerkers >= d) || t.klein) return { ...basis, totaal: LEEG_TOTAAL, per_groep: [], uitstroom_redenen: [] };
@@ -931,6 +1001,10 @@ export function personeelKpis(aggregaat, { d = DREMPEL } = {}) {
     ? verdeling(REDEN_SLEUTELS.map((s) => REDEN_LABELS[s]), REDEN_SLEUTELS.map((s) => t.uitstroom_reden[s] || 0), t.uitstroom, d)
     : [];
   const eigenVerzoekZichtbaar = redenen.length > 0 && !redenen[0].verborgen;
+  // Vrijwillig verloop is een uitsplitsing naar reden: alleen bij minstens d vertrekkers op eigen verzoek (en d andere),
+  // zoals de redenen zelf. Is er niemand vertrokken, dan is het 0 (de redenen staan dan ook allemaal op 0).
+  const vrijwilligZichtbaar = redenen.length > 0 && (t.uitstroom === 0
+    || (eigenVerzoekZichtbaar && veiligAandeel(t.uitstroom_reden.eigen_verzoek, t.in_periode, d)));
   // Aandelen van de organisatie mogen een verborgen groep uit de tabel per groep (of de leeftijdsopbouw) niet los laten
   // zien: "55 jaar of ouder" min "60 jaar of ouder" zou anders de verborgen klasse 55–60 geven, en daarmee ook de kleine
   // klasse die zij beschermt. Dat geldt voor de teller en voor de noemer (iedereen van wie het gegeven bekend is).
@@ -946,15 +1020,14 @@ export function personeelKpis(aggregaat, { d = DREMPEL } = {}) {
   const verborgenLeiding = verborgenGroepen(aggregaat, 'leidinggevend', d);
   const deelVeilig = (verborgen, label) => !splitstVerborgen(verborgen, (l) => l === label) && !splitstVerborgen(verborgen, bekend);
   // Deeltijd (minder dan 1 fte) is precies "minder uren dan uren_per_fte": de klassen van de arbeidsuren onder die grens.
-  // Instroom: wie in de periode kwam en er op de peildatum nog is, staat in de diensttijdklassen onder de lengte van de
-  // periode (in maanden). Beide aandelen mogen de verborgen klassen dus net zo min splitsen als 55+ de leeftijdsklassen.
+  // Dat aandeel mag de verborgen klassen dus net zo min splitsen als 55+ de leeftijdsklassen. (De instroom staat er
+  // altijd; daar wordt in plaats daarvan de tabel per diensttijdklasse tegenover afgeschermd, zie groepWegVan.)
   const klassenVan = (dim) => new Map((aggregaat.dimensies?.[dim]?.klassen || []).map((c) => [c.label, c]));
   const klasseVeilig = (dim, grens) => {
     if (!aggregaat.dimensies?.[dim]) return true;
     const verborgen = verborgenGroepen(aggregaat, dim, d);
     return !splitstVerborgen(verborgen, vanafGrens(klassenVan(dim), grens)) && !splitstVerborgen(verborgen, bekend);
   };
-  const periodeMaanden = maandNr(periode?.tot) - maandNr(periode?.van) + 1;
   const totaal = {
     medewerkers: t.medewerkers,
     fte: zeker(t.fte, kan('fte')),
@@ -969,9 +1042,12 @@ export function personeelKpis(aggregaat, { d = DREMPEL } = {}) {
     meldingsfrequentie: zeker(k.meldingsfrequentie, !!v),
     gem_duur_per_melding: zeker(k.gem_duur_per_melding, !!v),
     nulverzuim_pct: zeker(k.nulverzuim_pct, !!v && veiligAandeel(v.n_nulverzuim, v.n_hele_periode, d)),
-    verloop_pct: zeker(k.verloop_pct, kan('verloop_pct') && veiligAandeel(t.uitstroom, t.in_periode, d)),
-    verloop_vrijwillig_pct: zeker(k.verloop_vrijwillig_pct, eigenVerzoekZichtbaar && veiligAandeel(t.uitstroom_reden.eigen_verzoek, t.in_periode, d)),
-    instroom_pct: zeker(k.instroom_pct, kan('instroom_pct') && veiligAandeel(t.instroom, t.in_periode, d) && Number.isInteger(periodeMaanden) && klasseVeilig('diensttijd', periodeMaanden)),
+    // R18: verloop en instroom van de hele organisatie altijd, ook onder de 5 en bij 0.
+    uitstroom: kan('verloop_pct') && Number.isInteger(t.uitstroom) ? t.uitstroom : null,
+    verloop_pct: zeker(k.verloop_pct, kan('verloop_pct')),
+    verloop_vrijwillig_pct: zeker(k.verloop_vrijwillig_pct, vrijwilligZichtbaar),
+    instroom: kan('instroom_pct') && Number.isInteger(t.instroom) ? t.instroom : null,
+    instroom_pct: zeker(k.instroom_pct, kan('instroom_pct')),
     pct_eerste_jaar: zeker(k.pct_eerste_jaar, kan('pct_eerste_jaar') && veiligAandeel(t.uitstroom_eerste_jaar, t.uitstroom, d)),
     gem_aantal: zeker(k.gem_aantal, t.begin >= d),
     geslacht,
@@ -987,16 +1063,29 @@ export function personeelKpis(aggregaat, { d = DREMPEL } = {}) {
   for (const [dim, dd] of Object.entries(aggregaat.dimensies || {})) {
     const gs = dd.groepen || [];
     if (!gs.length) continue;
-    const groepWeg = kolomVerborgen(gs.map((g) => g.medewerkers), gs.map(() => false), d).map((w, i) => w || !!gs[i].klein);
-    const leeftijdWeg = kolomVerborgen(gs.map((g) => g.leeftijd_n ?? 0), groepWeg, d);
+    const groepWeg = groepWegVan(aggregaat, dim, d);
+    // Verbergt de diensttijdtabel tegenover de instroom meer groepen (R18), dan kunnen de kolommen hieronder met die
+    // groepen vooraf verborgen een andere cel als aanvulling kiezen. Wat met de regel van vóór R18 verborgen was, blijft
+    // dan ook verborgen: beide uitkomsten samen (twee geldige patronen samen zijn weer geldig).
+    const basis = basisGroepWeg(gs, d);
+    const ookBasis = groepWeg.some((w, i) => w !== basis[i]);
+    const beide = (f) => {
+      const a = f(groepWeg);
+      if (!ookBasis) return a;
+      const b = f(basis);
+      return a.map((w, i) => w || b[i]);
+    };
+    const leeftijdWeg = beide((vooraf) => kolomVerborgen(gs.map((g) => g.leeftijd_n ?? 0), vooraf, d));
     // Aandelen per groep: kruistabelregel (nullen tellen als klein), met de verborgen groepen vooraf verborgen.
     // Van een kleine groep zijn alleen de aantallen bewaard: die cellen tellen als 0 en zijn vooraf verborgen (dat is
-    // voorzichtig: er wordt dan eerder te veel dan te weinig verborgen).
-    const kruis = (a, b) => {
+    // voorzichtig: er wordt dan eerder te veel dan te weinig verborgen). Het verloop per groep ook tegenover het aantal
+    // vertrekkers van de organisatie, dat sinds R18 altijd zichtbaar is: in de kolom vertrekkers zijn er dan minstens
+    // twee verborgen cellen die samen minstens d tellen, of alles is verborgen (bij minder dan d vertrekkers altijd).
+    const kruis = (a, b) => beide((vooraf) => {
       const tabel = gs.map((g) => [Math.max(0, a(g) || 0), Math.max(0, b(g) || 0)]);
-      const weg = maskeer([tabel], d, gs.map((_, i) => [groepWeg[i], groepWeg[i]]));
+      const weg = maskeer([tabel], d, gs.map((_, i) => [vooraf[i], vooraf[i]]));
       return weg.map((rij) => rij[0] || rij[1]);
-    };
+    });
     const vrouwWeg = kan('pct_vrouw')
       ? kruis((g) => g.geslacht?.Vrouw ?? 0, (g) => (g.geslacht ? g.geslacht.Man + g.geslacht.Anders : 0))
       : gs.map(() => true);

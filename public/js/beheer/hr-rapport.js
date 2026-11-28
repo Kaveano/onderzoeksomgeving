@@ -21,7 +21,9 @@ export const ONDERDELEN = ['versie', 'peildatum', 'drempel', 'onderzoek', 'lijst
 export const MIN_VERZUIM = 10;
 const GEZONDHEID = ['verzuim_pct', 'meldingsfrequentie', 'gem_duur_per_melding', 'nulverzuim_pct'];
 // Aantallen van personen: getoond alleen 0 of minstens d.
-const AANTALLEN = new Set(['n', 'medewerkers', 'populatie', 'aantal', 'n_beantwoord', 'n_lijst', 'rechte_lijn', 'antwoorden']);
+const AANTALLEN = new Set(['n', 'medewerkers', 'populatie', 'aantal', 'n_beantwoord', 'n_lijst', 'rechte_lijn', 'antwoorden', 'uitstroom', 'instroom']);
+// Besluit R18: alleen hier mag een aantal onder de d staan (vertrekkers en nieuwe medewerkers van de hele organisatie).
+const KLEIN_TOEGESTAAN = new Set(['kerncijfers.personeel.totaal.uitstroom', 'kerncijfers.personeel.totaal.instroom']);
 // Getallen die ook in een verborgen onderdeel mogen staan (namen en kenmerken van het onderdeel zelf, geen uitkomsten).
 // n_lijst: het aantal respondenten van de vragenlijst (staat ook bij een verborgen vraag; wordt wel als aantal gecontroleerd).
 const SLEUTELGETALLEN = new Set(['id', 'vraag_id', 'thema_id', 'meetmoment_id', 'stam', 'aantal_vragen', 'drempel', 'versie', 'grens', 'rechte_lijn_min', 'aantal_schaalvragen', 'uren_per_fte', 'n_lijst']);
@@ -97,7 +99,10 @@ export function kerncijfersVoorKijker(k, { tussenstand = false, metPersoneel = f
  * - een getoond aantal (n, medewerkers, populatie, aantal …) tussen 0 en d ligt (behalve de verdeling van een
  *   rapportcijfer: een mening, zoals op het dashboard);
  * - een verborgen onderdeel toch een getal bevat;
- * - verzuimcijfers getoond worden van een groep met minder dan 10 medewerkers.
+ * - verzuimcijfers getoond worden van een groep met minder dan 10 medewerkers;
+ * - er minder dan d vertrekkers zijn (dat aantal mag sinds R18 wel zichtbaar zijn) en toch het verloop van een groep,
+ *   een reden van vertrek of het vrijwillig verloop zichtbaar is; of het vrijwillig verloop zichtbaar is terwijl de
+ *   reden "Eigen verzoek" verborgen is of onder de d ligt.
  */
 export function controleerKerncijfers(k, d = DREMPEL) {
   const fout = (m) => { throw new Error(`De kerncijfers zijn niet veilig: ${m}`); };
@@ -118,7 +123,7 @@ export function controleerKerncijfers(k, d = DREMPEL) {
       if (eindig(w)) {
         if (hier && !SLEUTELGETALLEN.has(s)) fout(`een verborgen onderdeel bevat een getal (${p}).`);
         const meningsverdeling = /\.scores\.cijfers\[\d+\]\.verdeling\[\d+\]$/.test(pad);
-        if (AANTALLEN.has(s) && !meningsverdeling && w > 0 && w < d) fout(`een aantal onder de ${d} is zichtbaar (${p} = ${w}).`);
+        if (AANTALLEN.has(s) && !meningsverdeling && !KLEIN_TOEGESTAAN.has(p) && w > 0 && w < d) fout(`een aantal onder de ${d} is zichtbaar (${p} = ${w}).`);
       } else if (w !== null && typeof w === 'object') loop(w, p, hier);
     }
   };
@@ -133,6 +138,19 @@ export function controleerKerncijfers(k, d = DREMPEL) {
     };
     gezond(p.totaal, 'de organisatie');
     for (const g of p.per_groep || []) for (const r of g.rijen || []) gezond(r, `de groep "${r.label}"`);
+    // R18: het aantal vertrekkers van de organisatie staat er altijd; een uitsplitsing ervan pas vanaf d vertrekkers.
+    const u = p.totaal?.uitstroom;
+    if (eindig(u) && u < d) {
+      for (const g of p.per_groep || []) {
+        for (const r of g.rijen || []) if (eindig(r?.verloop_pct)) fout(`verloop van de groep "${r.label}" bij minder dan ${d} vertrekkers.`);
+      }
+      if (u > 0 && (p.uitstroom_redenen || []).some((r) => eindig(r?.aantal))) fout(`een reden van vertrek bij minder dan ${d} vertrekkers.`);
+      if (u > 0 && eindig(p.totaal.verloop_vrijwillig_pct)) fout(`vrijwillig verloop bij minder dan ${d} vertrekkers.`);
+    }
+    if (eindig(p.totaal?.verloop_vrijwillig_pct) && u !== 0) {
+      const eigen = (p.uitstroom_redenen || []).find((r) => r?.label === 'Eigen verzoek');
+      if (!eigen || !eindig(eigen.aantal) || eigen.aantal < d) fout('vrijwillig verloop terwijl "Eigen verzoek" verborgen is.');
+    }
   }
   return true;
 }
@@ -145,6 +163,8 @@ if (VERBORGEN_ZIN !== VERBORGEN_UITLEG) throw new Error('VERBORGEN_UITLEG verand
 const getal = (x, dec = 1) => (eindig(x) ? nlGetal(x, dec) : VERBORGEN);
 const procent = (x) => (eindig(x) ? nlProcent(x) : VERBORGEN);
 const aantal = (x) => (eindig(x) ? nlGetal(x, 0) : VERBORGEN);
+/** "1 vertrekker", "3 vertrekkers", "0 vertrekkers" (verborgen: "×"). */
+export const aantalTekst = (x, enkelvoud, meervoud) => (eindig(x) ? `${nlGetal(x, 0)} ${x === 1 ? enkelvoud : meervoud}` : VERBORGEN);
 const score = (x) => (eindig(x) ? metTeken(Math.round(x), 0) : VERBORGEN);
 const NAAR = {
   afdeling: 'afdeling', leeftijd: 'leeftijd', geslacht: 'geslacht', diensttijd: 'diensttijd', contract: 'soort dienstverband',
@@ -197,7 +217,18 @@ export const TER_VERGELIJKING = 'Ter vergelijking';
 export const VERZUIM_VERBORGEN = 'Verzuim van deze groep niet getoond: te klein, of het cijfer zou vooral over één persoon gaan.';
 export const VERZUIM_VERBORGEN_ORGANISATIE = VERZUIM_VERBORGEN.replace('van deze groep', 'van de organisatie');
 /** Uitleg bij × in personeelscijfers (aantallen medewerkers in plaats van respondenten). */
-export const PERSONEEL_VERBORGEN = `${VERBORGEN} = niet getoond: minder dan ${DREMPEL} medewerkers (bij verzuim: minder dan 10; bij verloop en instroom: minder dan ${DREMPEL} vertrekkers of nieuwe medewerkers, ook 0), of verborgen zodat een klein aantal niet terug te rekenen is.`;
+export const PERSONEEL_VERBORGEN = `${VERBORGEN} = niet getoond: minder dan ${DREMPEL} medewerkers (bij verzuim: minder dan 10; bij vrijwillig verloop, redenen van vertrek en verloop per groep: minder dan ${DREMPEL} vertrekkers, ook 0), of verborgen zodat een klein aantal niet terug te rekenen is.`;
+/**
+ * Besluit R18: het verloop en de instroom van de hele organisatie staan er altijd, ook bij 1 tot 4 vertrekkers of nieuwe
+ * medewerkers. Deze noot staat eronder als dat zo is (scherm, Word en Excel).
+ */
+export const KLEIN_VERLOOP_UITLEG = `Minder dan ${DREMPEL} vertrekkers of nieuwe medewerkers: wie dat zijn, weet iedereen in de organisatie al. Daarom tonen we alleen het totaal van de organisatie, niet per groep of per reden.`;
+/** Moet de noot KLEIN_VERLOOP_UITLEG bij deze personeelscijfers (1 tot 4 vertrekkers of nieuwe medewerkers)? */
+export function kleinVerloop(p) {
+  const t = p?.totaal;
+  const klein = (x) => eindig(x) && x > 0 && x < DREMPEL;
+  return !!t && !t.verborgen && (klein(t.uitstroom) || klein(t.instroom));
+}
 export const DAGEN_UITLEG = 'Verzuim in kalenderdagen, gewogen naar de deeltijdfactor; de dagen zijn gebruikt zoals ze in het bestand stonden.';
 /** De vraag bij het inlezen (K S4) en wat er bij het verzuim staat, per antwoord. */
 export const ZWANGERSCHAP_VRAAG = 'Tellen zwangerschapsverlof en bevallingsverlof mee? Volgens de gangbare norm niet.';
@@ -668,9 +699,14 @@ export const KPI_NAMEN = [
   ['gem_diensttijd_jaar', 'Gemiddelde diensttijd (jaar)', (x) => getal(x)], ['pct_deeltijd', 'Deeltijd', procent], ['pct_leidinggevend', 'Leidinggevend', procent],
   ['verzuim_pct', 'Verzuimpercentage', (x) => (eindig(x) ? `${nlGetal(x, 1)}%` : VERBORGEN)], ['meldingsfrequentie', 'Meldingsfrequentie (per medewerker per jaar)', (x) => getal(x, 2)],
   ['gem_duur_per_melding', 'Gemiddelde duur per melding (kalenderdagen, benadering)', (x) => getal(x)], ['nulverzuim_pct', 'Nulverzuim', procent],
-  ['verloop_pct', 'Verloop', procent], ['verloop_vrijwillig_pct', 'Vrijwillig verloop (eigen verzoek)', procent], ['instroom_pct', 'Instroom', procent],
+  ['uitstroom', 'Vertrekkers in de periode', aantal], ['verloop_pct', 'Verloop', procent], ['verloop_vrijwillig_pct', 'Vrijwillig verloop (eigen verzoek)', procent],
+  ['instroom', 'Nieuwe medewerkers in de periode', aantal], ['instroom_pct', 'Instroom', procent],
   ['pct_eerste_jaar', 'Vertrekkers in hun eerste jaar', procent],
 ];
+// De aantallen vertrekkers en nieuwe medewerkers hangen af van dezelfde kolom als het percentage.
+const KPI_KOLOM = { uitstroom: 'verloop_pct', instroom: 'instroom_pct' };
+/** Staat dit kengetal in de personeelscijfers (had het bestand de kolom ervoor)? */
+export const heeftKpi = (p, sleutel) => !(p?.ontbreekt || []).includes(KPI_KOLOM[sleutel] || sleutel);
 
 /** De kolommen van de tabel per groep van het personeelsbestand: [sleutel, kop, tekst (scherm/Word), waarde (Excel)]. */
 const GROEP_KOLOMMEN = [
@@ -707,8 +743,9 @@ function personeelBlokken(k, figuren, bronnen = {}) {
   const uit = [];
   uit.push(alinea(`Uit het personeelsbestand "${p.naam}" (${p.periode.van} tot en met ${p.periode.tot}; peildatum ${nlDatum(p.peildatum)}). Alleen groepscijfers; geen gegevens per medewerker.`));
   const t = p.totaal;
-  const rijen = KPI_NAMEN.filter(([s]) => !p.ontbreekt.includes(s)).map(([s, naam, f]) => [naam, f(t[s])]);
+  const rijen = KPI_NAMEN.filter(([s]) => heeftKpi(p, s)).map(([s, naam, f]) => [naam, f(t[s])]);
   uit.push(tabel(['Kengetal', 'Waarde'], rijen, 'HR-kengetallen van de organisatie'));
+  if (kleinVerloop(p)) uit.push(alinea(`*${KLEIN_VERLOOP_UITLEG}*`));
   if (rijen.some((r) => r[1] === VERBORGEN)) uit.push(alinea(`*${PERSONEEL_VERBORGEN}*`));
   if (t.verzuim_reden) uit.push(alinea(`*${VERZUIM_VERBORGEN_ORGANISATIE}*`));
   else if (eindig(t.verzuim_pct)) uit.push(alinea(`*${DAGEN_UITLEG}${ZWANGERSCHAPSVERLOF[p.zwangerschapsverlof] ? ` ${ZWANGERSCHAPSVERLOF[p.zwangerschapsverlof]}` : ''}*`));
@@ -853,8 +890,9 @@ export function kerncijferBladen(k) {
   }
   if (k.personeel) {
     const p = k.personeel;
-    const rijen = [['Kengetal', 'Waarde'], ...KPI_NAMEN.filter(([sl]) => !p.ontbreekt.includes(sl)).map(([sl, naam]) => [naam, xr(p.totaal[sl], sl === 'meldingsfrequentie' ? 2 : 1)])];
+    const rijen = [['Kengetal', 'Waarde'], ...KPI_NAMEN.filter(([sl]) => heeftKpi(p, sl)).map(([sl, naam]) => [naam, xr(p.totaal[sl], sl === 'meldingsfrequentie' ? 2 : 1)])];
     const noten = new Set();
+    if (kleinVerloop(p)) noten.add(KLEIN_VERLOOP_UITLEG);
     if (p.totaal?.verzuim_reden) noten.add(VERZUIM_VERBORGEN_ORGANISATIE);
     for (const g of p.per_groep || []) {
       if (!g.rijen.length) continue;
@@ -907,7 +945,8 @@ export function kerncijferTekst(k, { metPersoneel = false } = {}) {
   if (p && !p.verborgen) {
     const delen = [`${aantal(p.medewerkers)} medewerkers`];
     if (eindig(p.verzuim_pct)) delen.push(`verzuim ${nlGetal(p.verzuim_pct, 1)}%`);
-    if (eindig(p.verloop_pct)) delen.push(`verloop ${nlProcent(p.verloop_pct)}`);
+    if (eindig(p.verloop_pct)) delen.push(`verloop ${nlProcent(p.verloop_pct)}${eindig(p.uitstroom) ? ` (${aantalTekst(p.uitstroom, 'vertrekker', 'vertrekkers')})` : ''}`);
+    if (eindig(p.instroom_pct)) delen.push(`instroom ${nlProcent(p.instroom_pct)}${eindig(p.instroom) ? ` (${aantalTekst(p.instroom, 'nieuwe medewerker', 'nieuwe medewerkers')})` : ''}`);
     r.push(`Personeel: ${delen.join(', ')}.`);
   }
   if (r.some((z) => z.includes(VERBORGEN))) r.push(VERBORGEN_UITLEG);

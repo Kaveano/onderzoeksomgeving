@@ -6,6 +6,8 @@ import assert from 'node:assert/strict';
 import * as P from '../public/js/beheer/personeel-regels.js';
 import { KENMERKVRAGEN, KLASSEGRENZEN, klasseVan } from '../public/js/beheer/kenmerken.js';
 import { controleerPersoneelsaggregaat } from '../src/lib/hr-validatie.js';
+import { onderdrukKolom, maskeer } from '../public/js/beheer/privacy.js';
+import * as R from '../public/js/beheer/hr-rapport.js';
 
 const PERIODE = { van: '2025-11', tot: '2026-10' };
 const KOP = ['Naam', 'Personeelsnummer', 'Geboortedatum', 'Afdeling', 'Geslacht', 'Fte', 'Datum in dienst', 'Datum uit dienst',
@@ -67,7 +69,11 @@ test('D1 §5.4: verzuim 3,36026%, meldingsfrequentie 1,44841, diensttijd 6,2333 
   const kpis = P.personeelKpis(aggregaat);
   assert.equal(kpis.totaal.medewerkers, 5);
   assert.equal(kpis.totaal.verzuim_pct, null);
-  assert.equal(kpis.totaal.verloop_pct, null, 'één vertrekker: het verloop zou dat ene aantal verraden');
+  // Besluit R18 (was: verborgen bij één vertrekker): het verloop en de instroom van de hele organisatie staan er altijd.
+  assert.equal(kpis.totaal.verloop_pct, 20, 'R18: één vertrekker (D) op gemiddeld 5 medewerkers');
+  assert.equal(kpis.totaal.uitstroom, 1);
+  assert.equal(kpis.totaal.instroom_pct, 20, 'R18: één nieuwe medewerker (C)');
+  assert.equal(kpis.totaal.instroom, 1);
   assert.equal(kpis.totaal.gem_leeftijd, 39);
 });
 
@@ -363,8 +369,11 @@ test('deeltijd, leeftijd en diensttijd van de organisatie; vertrek telt mee in d
   assert.equal(k.pct_deeltijd, 50);
   assert.equal(k.pct_60plus, 50);
   assert.equal(k.gem_leeftijd, (10 * 66 + 10 * 31) / 20);
-  assert.equal(k.verloop_pct, null, '3 vertrekkers');
-  assert.equal(k.instroom_pct, null, 'niemand kwam in de periode');
+  // Besluit R18 (was: beide verborgen): ook 3 vertrekkers en 0 nieuwe medewerkers staan er voor de hele organisatie.
+  assert.equal(k.verloop_pct, (3 / ((23 + 20) / 2)) * 100, '3 vertrekkers');
+  assert.equal(k.uitstroom, 3);
+  assert.equal(k.instroom_pct, 0, 'niemand kwam in de periode');
+  assert.equal(k.instroom, 0);
   assert.equal(k.fte, 16);
   assert.equal(Math.round(k.gem_diensttijd_jaar * 1000) / 1000, Math.round(((10 * 141 + 10 * 23) / 20 / 12) * 1000) / 1000);
   // De leeftijdsopbouw uit de klassen.
@@ -576,7 +585,7 @@ test('aandeel deeltijd splitst de verborgen urenklassen niet (uren per fte 35 is
   assert.equal(scheef.totaal.pct_deeltijd, null);
 });
 
-test('aandeel instroom splitst de verborgen diensttijdklassen niet (een periode van 12 maanden = "Korter dan 1 jaar")', () => {
+test('R18: de instroom staat er altijd; de diensttijdklassen worden daartegenover afgeschermd (12 maanden = "Korter dan 1 jaar")', () => {
   const kop = ['Afdeling', 'In dienst sinds', 'Uit dienst per'];
   const rollen = { 0: 'afdeling', 1: 'datum_in', 2: 'datum_uit' };
   const maak = (eenTotVijf) => [
@@ -586,8 +595,11 @@ test('aandeel instroom splitst de verborgen diensttijdklassen niet (een periode 
     ...Array.from({ length: 40 }, () => ['Staf', '2010-01', '']),
   ];
   const k = P.personeelKpis(P.verwerkPersoneel(kop, maak(3), { rollen, periode: PERIODE }).aggregaat);
-  assert.deepEqual(rijenVan(k, 'diensttijd').map((r) => r.medewerkers), [null, null, 30, 40]);
-  assert.equal(k.totaal.instroom_pct, null, 'instroom 6 = "Korter dan 1 jaar"; de verborgen 9 min 6 zou "1 tot 5 jaar" geven');
+  // Was: [null, null, 30, 40] en geen instroom. Nu staat de instroom (6) er; "Korter dan 1 jaar" (precies die 6) en
+  // "1 tot 5 jaar" (3) samen verbergen is dan niet genoeg (79 − 30 − 40 − 6 = 3), dus ook "5 tot 10 jaar" gaat weg.
+  assert.deepEqual(rijenVan(k, 'diensttijd').map((r) => r.medewerkers), [null, null, null, 40]);
+  assert.equal(k.totaal.instroom, 6);
+  assert.equal(k.totaal.instroom_pct, (6 / ((73 + 79) / 2)) * 100);
   const ruim = P.personeelKpis(P.verwerkPersoneel(kop, maak(8), { rollen, periode: PERIODE }).aggregaat);
   assert.deepEqual(rijenVan(ruim, 'diensttijd').map((r) => r.medewerkers), [6, 8, 30, 40]);
   assert.equal(ruim.totaal.instroom_pct, (6 / ((78 + 84) / 2)) * 100);
@@ -596,9 +608,10 @@ test('aandeel instroom splitst de verborgen diensttijdklassen niet (een periode 
 /**
  * Eigenschap: een aandeel van de organisatie, maal zijn noemer, min de getoonde groepen, mag nooit een deel van de
  * verborgen groepen opleveren. Voor elk aandeel dat bij een indeling hoort (55+ en 60+ bij leeftijd, vrouw bij geslacht,
- * leidinggevend, deeltijd bij arbeidsuren, instroom bij diensttijd) en elk willekeurig bestand: wat na aftrek overblijft
- * is 0 of alles wat verborgen is, zowel voor de teller als voor de noemer (iedereen van wie het gegeven bekend is).
- * Uitgegaan wordt van de slechtste lezer: die kent de noemer, en bij de instroom ook wie in de periode kwam en weer ging.
+ * leidinggevend, deeltijd bij arbeidsuren) en elk willekeurig bestand: wat na aftrek overblijft is 0 of alles wat
+ * verborgen is, zowel voor de teller als voor de noemer (iedereen van wie het gegeven bekend is). Uitgegaan wordt van de
+ * slechtste lezer: die kent de noemer. De instroom stond hier ook; sinds besluit R18 staat die er altijd en wordt in
+ * plaats daarvan de tabel per diensttijdklasse afgeschermd (zie de eigenschapstest bij R18 hieronder).
  */
 test('eigenschap: aandeel × noemer min de getoonde groepen laat nooit een deel van de verborgen groepen zien', () => {
   const kop = ['Afdeling', 'Geslacht', 'Leidinggevend', 'Leeftijd', 'Uren', 'In dienst', 'Uit dienst'];
@@ -637,12 +650,10 @@ test('eigenschap: aandeel × noemer min de getoonde groepen laat nooit een deel 
     const urn = verdeel([16, 28, 35.5, 38, '']);
     const dienst = verdeel(['nieuw', 'kort', 'midden', 'lang', '']);
     const rijen = [];
-    let nieuwWeg = 0;
     for (let i = 0; i < n; i++) {
       const d = dienst();
       const inNr = d === 'nieuw' ? vM + Math.floor(r() * L) : d === 'kort' ? tM - 12 - Math.floor(r() * 40) : d === 'midden' ? tM - 70 - Math.floor(r() * 40) : tM - 130 - Math.floor(r() * 60);
       const weg = r() < 0.12 ? Math.max(vM, inNr) + Math.floor(r() * (tM - Math.max(vM, inNr) + 1)) : null;
-      if (d === 'nieuw' && weg !== null) nieuwWeg++;
       rijen.push([afd(), gesl(), lg(), lft(), urn(), d === '' ? '' : mnd(inNr), weg === null ? '' : mnd(weg)]);
     }
     const { aggregaat } = P.verwerkPersoneel(kop, rijen, { rollen, periode, uren_per_fte: upf });
@@ -668,7 +679,6 @@ test('eigenschap: aandeel × noemer min de getoonde groepen laat nooit een deel 
       ['pct_vrouw', 'geslacht', (l) => l === 'Vrouw', t.geslacht.Vrouw, t.geslacht.Man + t.geslacht.Vrouw + t.geslacht.Anders],
       ['pct_leidinggevend', 'leidinggevend', (l) => l === 'Ja', t.n_leidinggevend, t.leidinggevend_n],
       ['pct_deeltijd', 'uren', klasse('uren', upf, true), t.n_deeltijd, t.deeltijd_n],
-      ['instroom_pct', 'diensttijd', klasse('diensttijd', L, true), t.instroom - nieuwWeg, t.diensttijd_n],
     ];
     for (const [sleutel, dim, inS, teller, noemer] of aandelen) {
       if (!aggregaat.dimensies[dim]) continue;
@@ -686,7 +696,7 @@ test('eigenschap: aandeel × noemer min de getoonde groepen laat nooit een deel 
       assert.ok(!lekt, `${sleutel} (proef ${proef}): rest ${rest}, noemer-rest ${restNoemer}, verborgen samen ${H}`);
     }
   }
-  for (const s of ['pct_55plus', 'pct_60plus', 'pct_vrouw', 'pct_leidinggevend', 'pct_deeltijd', 'instroom_pct']) {
+  for (const s of ['pct_55plus', 'pct_60plus', 'pct_vrouw', 'pct_leidinggevend', 'pct_deeltijd']) {
     assert.ok((getoond[s] || 0) >= 20, `${s} te weinig getoond: ${getoond[s] || 0}`);
     assert.ok((gelekt[s] || 0) >= 5, `${s}: de test vindt geen enkel geval dat zonder afscherming zou lekken (${gelekt[s] || 0})`);
   }
@@ -811,4 +821,282 @@ test('populatie per mogelijkheid: een mogelijkheid zonder groep is onbekend (nie
   // Gekoppeld bij het inlezen: dan wel een aantal.
   const goed = verwerk([...groep(38, { afdeling: 'Keukenteam' }), ...groep(20, { afdeling: 'Zorg' }), ...groep(12, { afdeling: 'Staf' })], { koppeling: { afdeling: { Keukenteam: 'Keuken' } } }).aggregaat;
   assert.deepEqual(P.populatieVoorVraag(goed, q), { o1: 20, o2: 12, o3: 38 });
+});
+
+// ---------- Besluit R18: verloop en instroom van de hele organisatie altijd, ook onder de 5 ----------
+
+const eindig = (x) => typeof x === 'number' && Number.isFinite(x);
+
+/**
+ * Welke verborgen cellen zijn uit getoonde getallen af te leiden? cellen: [{ waarde, verborgen }] (de echte waarden);
+ * delen: lijsten met indexen waarvan het totaal bekend is, genest (zoals alles, en daarbinnen twee delen die elkaar niet
+ * overlappen). Een verborgen cel is af te leiden als hij in het kleinste bekende deel waar hij in zit de enige verborgen
+ * cel is, of als de verborgen cellen daar samen 0 zijn (alleen met nullen: true, zoals bij een kruistabel waar een 0
+ * ook klein is; bij een verdeling zoals het aantal medewerkers per groep mag een 0 er staan als er verder niets verborgen
+ * is). Geen lek: als dat deel alleen uit die cel bestaat of het totaal van het deel 0 is; dan volgt de waarde al uit het
+ * totaal van de organisatie zelf en niet uit de tabel. Geeft de indexen van de cellen die lekken.
+ */
+function afleidbaar(cellen, delen, { nullen = true } = {}) {
+  const lek = [];
+  cellen.forEach((c, i) => {
+    if (!c.verborgen) return;
+    const deel = delen.filter((x) => x.includes(i)).sort((a, b) => a.length - b.length)[0];
+    const totaal = deel.reduce((s, j) => s + cellen[j].waarde, 0);
+    if (deel.length === 1 || totaal === 0) return;
+    const verborgen = deel.filter((j) => cellen[j].verborgen);
+    const rest = verborgen.reduce((s, j) => s + cellen[j].waarde, 0);
+    if (verborgen.length === 1 ? nullen || rest > 0 : nullen && rest === 0) lek.push(i);
+  });
+  return lek;
+}
+
+test('afleidbaar: de controle zelf (één verborgen cel, verborgen nullen, een deel van één cel)', () => {
+  const c = (...xs) => xs.map(([waarde, verborgen]) => ({ waarde, verborgen }));
+  assert.deepEqual(afleidbaar(c([3, true], [7, false]), [[0, 1]]), [0]);
+  assert.deepEqual(afleidbaar(c([3, true], [0, true], [7, false]), [[0, 1, 2]]), [], '[3, 0] samen verborgen: de verdeling is niet te zien');
+  assert.deepEqual(afleidbaar(c([0, true], [0, true], [7, false]), [[0, 1, 2]]), [0, 1], 'verborgen nullen naast een getoond totaal');
+  assert.deepEqual(afleidbaar(c([0, true], [0, true], [7, false]), [[0, 1, 2]], { nullen: false }), [], 'een verdeling: een 0 mag er staan');
+  assert.deepEqual(afleidbaar(c([0, true], [0, true]), [[0, 1]]), [], 'totaal 0: volgt uit het totaal zelf');
+  assert.deepEqual(afleidbaar(c([2, true], [8, true], [20, false]), [[0, 1, 2], [0], [1, 2]]), [1], 'deel {0} is bekend, dus 8 = 28 − 20');
+  assert.deepEqual(afleidbaar(c([2, true], [8, true], [20, true]), [[0, 1, 2], [0], [1, 2]]), []);
+});
+
+/** Een organisatie van 30 die blijven (18 Zorg, 12 Staf), met vertrekkers en nieuwe medewerkers. */
+function organisatie(vertrek, nieuw, reden = () => 'Eigen verzoek') {
+  return [
+    ...groep(18, (i) => ({ afdeling: 'Zorg', geslacht: i % 3 ? 'V' : 'M' })),
+    ...groep(12, (i) => ({ afdeling: 'Staf', geslacht: i % 2 ? 'V' : 'M' })),
+    ...groep(vertrek, (i) => ({ afdeling: i % 2 ? 'Staf' : 'Zorg', geslacht: i % 2 ? 'M' : 'V', uit: '2026-05', reden: reden(i) })),
+    ...groep(nieuw, () => ({ afdeling: 'Zorg', in: '2026-03' })),
+  ];
+}
+const kerncijfersMet = (personeel) => ({ versie: 1, drempel: 5, personeel, benchmarks: [] });
+
+test('R18: verloop en instroom van de organisatie bij 0, 1, 3, 4, 5 en 20 (aantal en percentage, zonder ×)', () => {
+  for (const n of [0, 1, 3, 4, 5, 20]) {
+    const reden = n === 20 ? (i) => (i < 12 ? 'Eigen verzoek' : 'Reorganisatie') : () => 'Eigen verzoek';
+    const { aggregaat } = verwerk(organisatie(n, n, reden));
+    assert.ok(controleerPersoneelsaggregaat(aggregaat), 'de server neemt het aggregaat aan');
+    const k = P.personeelKpis(aggregaat);
+    const t = k.totaal;
+    // Begin: 30 + n (de vertrekkers waren er al); einde: 30 + n (de nieuwe medewerkers); gemiddeld 30 + n.
+    assert.equal(t.uitstroom, n, `${n}: aantal vertrekkers`);
+    assert.equal(t.instroom, n, `${n}: aantal nieuwe medewerkers`);
+    assert.equal(t.verloop_pct, (n / (30 + n)) * 100, `${n}: verloop`);
+    assert.equal(t.instroom_pct, (n / (30 + n)) * 100, `${n}: instroom`);
+    // Uitsplitsingen houden de regel van 5.
+    const redenen = k.uitstroom_redenen.map((r) => r.aantal);
+    const verloopPerGroep = k.per_groep.flatMap((g) => g.rijen.map((r) => r.verloop_pct));
+    if (n === 0) {
+      assert.deepEqual(redenen, [0, 0, 0, 0, 0, 0], '0 vertrekkers: alle redenen 0 (zoals vóór R18)');
+      assert.equal(t.verloop_vrijwillig_pct, 0, 'niemand vertrokken: vrijwillig verloop is ook 0');
+      assert.ok(verloopPerGroep.every((x) => x === null), 'per groep blijft verborgen (0 telt als klein)');
+    } else if (n < 5) {
+      assert.deepEqual(redenen, [null, null, null, null, null, null], `${n}: geen reden zichtbaar`);
+      assert.equal(t.verloop_vrijwillig_pct, null, `${n}: geen vrijwillig verloop`);
+      assert.ok(verloopPerGroep.every((x) => x === null), `${n}: geen verloop per groep`);
+    } else if (n === 5) {
+      assert.deepEqual(redenen, [5, 0, 0, 0, 0, 0]);
+      assert.equal(t.verloop_vrijwillig_pct, (5 / 35) * 100);
+    } else {
+      assert.deepEqual(redenen, [12, 8, 0, 0, 0, 0]);
+      assert.equal(t.verloop_vrijwillig_pct, (12 / 50) * 100);
+      // Staf: begin 12 + 10, einde 12; Zorg: begin 18 + 10, einde 18 + 20.
+      assert.deepEqual(rijenVan(k, 'afdeling').map((r) => [r.label, r.verloop_pct]), [['Staf', (10 / ((22 + 12) / 2)) * 100], ['Zorg', (10 / ((28 + 38) / 2)) * 100]]);
+    }
+    // De noot onder de tegel alleen bij 1 tot 4; de server-controle neemt het kleine aantal aan.
+    assert.equal(R.kleinVerloop(k), n > 0 && n < 5, `${n}: noot`);
+    assert.equal(R.controleerKerncijfers(kerncijfersMet(k)), true, `${n}: controleerKerncijfers`);
+    // Word en Excel: aantal en percentage, geen ×.
+    const blokken = R.kerncijferBlokken(kerncijfersMet(k), 'personeel');
+    const tabel = blokken.find((b) => b.soort === 'tabel' && b.bijschrift === 'HR-kengetallen van de organisatie');
+    const waarde = (naam) => tabel.rijen.find((r) => r[0] === naam)?.[1];
+    assert.equal(waarde('Vertrekkers in de periode'), String(n));
+    assert.equal(waarde('Nieuwe medewerkers in de periode'), String(n));
+    assert.notEqual(waarde('Verloop'), '×');
+    assert.notEqual(waarde('Instroom'), '×');
+    const noot = blokken.some((b) => b.soort === 'alinea' && b.tekst.includes(R.KLEIN_VERLOOP_UITLEG));
+    assert.equal(noot, n > 0 && n < 5);
+    const blad = R.kerncijferBladen(kerncijfersMet(k)).find((b) => b.naam === 'Personeel').rijen;
+    assert.deepEqual(blad.find((r) => r[0] === 'Vertrekkers in de periode'), ['Vertrekkers in de periode', n]);
+    assert.ok(eindig(blad.find((r) => r[0] === 'Verloop')[1]));
+    assert.ok(eindig(blad.find((r) => r[0] === 'Instroom')[1]));
+    assert.equal(blad.some((r) => r[0] === R.KLEIN_VERLOOP_UITLEG), n > 0 && n < 5);
+  }
+});
+
+test('R18: 3 vertrekkers die alle 3 uit Zorg komen ([3, 0]): het totaal staat er, de verdeling niet', () => {
+  const rijen = [
+    ...groep(20, (i) => ({ afdeling: 'Zorg', geslacht: i % 2 ? 'M' : 'V' })),
+    ...groep(10, (i) => ({ afdeling: 'Staf', geslacht: i % 2 ? 'M' : 'V' })),
+    ...groep(2, { afdeling: 'Zorg', uit: '2026-05', reden: 'Eigen verzoek' }),
+    rij({ afdeling: 'Zorg', geslacht: 'M', uit: '2026-06', reden: 'Reorganisatie' }),
+    ...groep(3, (i) => ({ afdeling: 'Zorg', geslacht: i ? 'V' : 'M', in: '2026-03' })),
+  ];
+  const { aggregaat } = verwerk(rijen);
+  const k = P.personeelKpis(aggregaat);
+  assert.equal(k.totaal.uitstroom, 3);
+  assert.equal(k.totaal.instroom, 3);
+  assert.deepEqual(aggregaat.dimensies.afdeling.groepen.map((g) => [g.label, g.uitstroom]), [['Staf', 0], ['Zorg', 3]]);
+  assert.deepEqual(rijenVan(k, 'afdeling').map((r) => [r.label, r.medewerkers, r.verloop_pct]), [['Staf', 10, null], ['Zorg', 23, null]]);
+  for (const g of k.per_groep) assert.ok(g.rijen.every((r) => r.verloop_pct === null), g.dimensie);
+  const uit = aggregaat.dimensies.afdeling.groepen.map((g) => ({ waarde: g.uitstroom, verborgen: true }));
+  assert.deepEqual(afleidbaar(uit, [[0, 1]]), [], '3 = Staf + Zorg, maar niet hoe');
+  // De redenen (2 eigen verzoek, 1 werkgever) en het vrijwillig verloop: niets.
+  assert.ok(k.uitstroom_redenen.every((r) => r.aantal === null));
+  assert.equal(k.totaal.verloop_vrijwillig_pct, null);
+  // De instroom (3, alle in "Korter dan 1 jaar"): die klasse en de klasse ernaast zijn allebei verborgen.
+  assert.deepEqual(rijenVan(k, 'diensttijd').map((r) => [r.label, r.medewerkers]), [['Korter dan 1 jaar', null], ['10 jaar of langer', null]]);
+  assert.equal(R.controleerKerncijfers(kerncijfersMet(k)), true);
+  // De server-controle weigert het verloop van een groep, een reden of vrijwillig verloop bij minder dan 5 vertrekkers.
+  const fout = (wijzig, patroon) => {
+    const x = structuredClone(k);
+    wijzig(x);
+    assert.throws(() => R.controleerKerncijfers(kerncijfersMet(x)), patroon);
+  };
+  fout((x) => { rijenVan(x, 'afdeling')[1].verloop_pct = 13; }, /verloop van de groep "Zorg" bij minder dan 5 vertrekkers/);
+  fout((x) => { x.uitstroom_redenen[1].aantal = 0; x.uitstroom_redenen[1].verborgen = false; }, /reden van vertrek bij minder dan 5/);
+  fout((x) => { x.totaal.verloop_vrijwillig_pct = 6; }, /vrijwillig verloop bij minder dan 5/);
+  fout((x) => { x.per_groep[0].rijen[0].uitstroom = 3; }, /aantal onder de 5 is zichtbaar/);
+});
+
+test('R18: vrijwillig verloop blijft verborgen bij 1 tot 4 vertrekkers op eigen verzoek, en niet af te leiden uit de andere redenen', () => {
+  const met = (eigen, werkgever, pensioen = 0) => P.personeelKpis(verwerk([
+    ...groep(30),
+    ...groep(eigen, { uit: '2026-04', reden: 'Eigen verzoek' }),
+    ...groep(werkgever, { uit: '2026-05', reden: 'Reorganisatie' }),
+    ...groep(pensioen, { uit: '2026-06', reden: 'Pensioen' }),
+  ]).aggregaat);
+  for (const e of [1, 2, 3, 4]) {
+    for (const [w, pen] of [[0, 0], [8, 0], [6, 6], [2, 0]]) {
+      const k = met(e, w, pen);
+      assert.equal(k.totaal.verloop_vrijwillig_pct, null, `eigen verzoek ${e}, werkgever ${w}, pensioen ${pen}`);
+      assert.equal(k.uitstroom_redenen[0].aantal, null);
+      assert.equal(k.totaal.uitstroom, e + w + pen);
+      // Totaal min de getoonde redenen geeft nooit één reden.
+      const t = verwerk([...groep(30), ...groep(e, { uit: '2026-04', reden: 'Eigen verzoek' }), ...groep(w, { uit: '2026-05', reden: 'Reorganisatie' }), ...groep(pen, { uit: '2026-06', reden: 'Pensioen' })]).aggregaat.totaal;
+      const cellen = P.REDEN_SLEUTELS.map((s, i) => ({ waarde: t.uitstroom_reden[s], verborgen: k.uitstroom_redenen[i].aantal === null }));
+      assert.deepEqual(afleidbaar(cellen, [cellen.map((_, i) => i)], { nullen: false }), [], `eigen verzoek ${e}, werkgever ${w}, pensioen ${pen}`);
+    }
+  }
+  // 3 vertrekkers, geen enkele op eigen verzoek: "vrijwillig 0%" zou zeggen dat ze alle drie niet zelf weggingen.
+  assert.equal(met(0, 3).totaal.verloop_vrijwillig_pct, null);
+  // Vanaf 5 op eigen verzoek (en de andere redenen samen groot genoeg): wel.
+  assert.equal(met(5, 8).totaal.verloop_vrijwillig_pct, (5 / ((43 + 30) / 2)) * 100);
+});
+
+test('R18 eigenschap: in willekeurige kleine organisaties is geen verborgen cel het verschil van getoonde getallen', () => {
+  const kop = ['Afdeling', 'Geslacht', 'Leeftijd', 'Contract', 'In dienst', 'Uit dienst', 'Reden uit dienst'];
+  const rollen = { 0: 'afdeling', 1: 'geslacht', 2: 'leeftijd', 3: 'contract', 4: 'datum_in', 5: 'datum_uit', 6: 'reden_uit' };
+  const r = lcg(1818);
+  const kies = (lijst) => lijst[Math.floor(r() * lijst.length)];
+  const verdeel = (opties) => {
+    const w = opties.map(() => 0.05 + r() ** 3);
+    const t = w.reduce((a, b) => a + b, 0);
+    return () => {
+      let x = r() * t;
+      for (let i = 0; i < opties.length; i++) { x -= w[i]; if (x <= 0) return opties[i]; }
+      return opties[opties.length - 1];
+    };
+  };
+  const mnd = (nr) => `${Math.floor(nr / 12)}-${String((nr % 12) + 1).padStart(2, '0')}`;
+  const oudWeg = (gs) => {
+    const cellen = gs.map((g) => ({ n: g.medewerkers, verborgen: false }));
+    onderdrukKolom(cellen, 5);
+    return cellen.map((c, i) => c.verborgen || !!gs[i].klein);
+  };
+  const tel = { klein: 0, nul: 0, lektZonderR18: 0, diensttijd: 0, verloopGetoond: 0, redenGetoond: 0 };
+  for (let proef = 0; proef < 700; proef++) {
+    const n = 5 + Math.floor(r() * 36);
+    const L = kies([12, 12, 12, 6, 18, 24]);
+    const tM = P.maandNr('2026-10');
+    const vM = tM - L + 1;
+    const periode = { van: mnd(vM), tot: mnd(tM) };
+    const pNieuw = r() * 0.3;
+    const pWeg = r() * (proef % 4 === 0 ? 0.5 : 0.25);
+    const afd = verdeel(['A', 'B', 'C', 'D'].slice(0, 1 + Math.floor(r() * 4)));
+    const gesl = verdeel(['M', 'V', 'X', '']);
+    const lft = verdeel([22, 30, 40, 50, 57, 62, '']);
+    const con = verdeel(['Vast', 'Tijdelijk', 'Oproep']);
+    const reden = verdeel(['Eigen verzoek', 'Reorganisatie', 'Contract niet verlengd', 'Pensioen', 'Verhuizing', '']);
+    const rijen = [];
+    let nieuwBlijft = 0;
+    for (let i = 0; i < n; i++) {
+      const nieuw = r() < pNieuw;
+      const zonderIn = !nieuw && r() < 0.05;
+      const inNr = nieuw ? vM + Math.floor(r() * L) : tM - L - Math.floor(r() * 200);
+      const vanaf = Math.max(vM, inNr);
+      const weg = r() < pWeg ? vanaf + Math.floor(r() * (tM - vanaf + 1)) : null;
+      if (nieuw && weg === null) nieuwBlijft++;
+      rijen.push([afd(), gesl(), lft(), con(), zonderIn ? '' : mnd(inNr), weg === null ? '' : mnd(weg), weg === null ? '' : reden()]);
+    }
+    const { aggregaat } = P.verwerkPersoneel(kop, rijen, { rollen, periode });
+    assert.ok(controleerPersoneelsaggregaat(aggregaat), `proef ${proef}: aggregaat`);
+    const k = P.personeelKpis(aggregaat);
+    if (k.totaal.verborgen) continue;
+    const t = aggregaat.totaal;
+    const wat = `proef ${proef} (n ${n}, periode ${L} mnd, ${t.uitstroom} weg, ${t.instroom} nieuw)`;
+    // De organisatie: verloop en instroom altijd, met het aantal.
+    assert.equal(k.totaal.uitstroom, t.uitstroom, wat);
+    assert.equal(k.totaal.instroom, t.instroom, wat);
+    assert.ok(eindig(k.totaal.verloop_pct) && eindig(k.totaal.instroom_pct), wat);
+    if ((t.uitstroom > 0 && t.uitstroom < 5) || (t.instroom > 0 && t.instroom < 5)) tel.klein++;
+    if (t.uitstroom === 0 || t.instroom === 0) tel.nul++;
+    if (t.uitstroom > 0 && t.uitstroom < 5) {
+      assert.ok(k.uitstroom_redenen.every((x) => x.aantal === null), `${wat}: reden`);
+      assert.equal(k.totaal.verloop_vrijwillig_pct, null, `${wat}: vrijwillig`);
+      assert.ok(k.per_groep.every((g) => g.rijen.every((x) => x.verloop_pct === null)), `${wat}: verloop per groep`);
+    }
+    assert.equal(R.controleerKerncijfers(kerncijfersMet(k)), true, wat);
+    for (const [dim, dd] of Object.entries(aggregaat.dimensies)) {
+      const gs = dd.groepen;
+      const rijenK = k.per_groep.find((g) => g.dimensie === dim)?.rijen || [];
+      const verdeling = { leeftijd: k.totaal.leeftijd, geslacht: k.totaal.geslacht, contract: k.totaal.contract }[dim] || [];
+      const zichtbaar = (label) => rijenK.some((x) => x.label === label && !x.verborgen) || verdeling.some((x) => x.label === label && !x.verborgen && x.n !== null);
+      const cellen = gs.map((g) => ({ waarde: g.medewerkers, verborgen: !zichtbaar(g.label) }));
+      const alle = gs.map((_, i) => i);
+      const delen = [alle];
+      if (dim === 'diensttijd') {
+        // De slechtste lezer kent de nieuwe medewerkers: het aantal in de klassen korter dan de periode is bekend.
+        const kort = gs.map((g) => { const c = dd.klassen.find((x) => x.label === g.label); return !!c && c.tot !== null && c.tot <= L; });
+        const A = alle.filter((i) => kort[i]);
+        const B = alle.filter((i) => !kort[i]);
+        if (L === 12) assert.equal(A.reduce((s, i) => s + gs[i].medewerkers, 0), nieuwBlijft, `${wat}: "Korter dan 1 jaar" zijn precies de nieuwe medewerkers die er nog zijn`);
+        for (const x of [A, B]) if (x.length) delen.push(x);
+        tel.diensttijd++;
+        const oud = oudWeg(gs);
+        if (afleidbaar(gs.map((g, i) => ({ waarde: g.medewerkers, verborgen: oud[i] })), delen, { nullen: false }).length) tel.lektZonderR18++;
+      }
+      assert.deepEqual(afleidbaar(cellen, delen, { nullen: false }), [], `${wat}: medewerkers per ${dim}`);
+      // Wat vóór R18 in de tabel per groep verborgen was, blijft verborgen.
+      oudWeg(gs).forEach((w, i) => { if (w) assert.ok(rijenK[i].verborgen, `${wat}: ${dim} "${gs[i].label}" was verborgen`); });
+      // Verloop per groep tegenover het getoonde aantal vertrekkers (een getoond percentage telt als getoond aantal).
+      if (rijenK.length) {
+        const vertrek = gs.map((g) => ({ waarde: g.klein ? g.in_periode - g.medewerkers : g.uitstroom, verborgen: rijenK.find((x) => x.label === g.label).verloop_pct === null }));
+        assert.equal(vertrek.reduce((s, c) => s + c.waarde, 0), t.uitstroom, wat);
+        assert.deepEqual(afleidbaar(vertrek, [alle]), [], `${wat}: verloop per ${dim}`);
+        if (vertrek.some((c) => !c.verborgen)) tel.verloopGetoond++;
+        // Ook het verloop per groep dat vóór R18 verborgen was, blijft verborgen (zelfde kruistabelregel).
+        const oud = oudWeg(gs);
+        const tabel = gs.map((g) => [Math.max(0, g.uitstroom || 0), Math.max(0, (g.in_periode || 0) - (g.uitstroom || 0))]);
+        maskeer([tabel], 5, gs.map((_, i) => [oud[i], oud[i]])).forEach((rij, i) => {
+          if (rij[0] || rij[1]) assert.ok(vertrek[i].verborgen, `${wat}: verloop ${dim} "${gs[i].label}" was verborgen`);
+        });
+      }
+    }
+    // Redenen van vertrek (een getoond vrijwillig verloop telt als getoond aantal op eigen verzoek).
+    if (k.uitstroom_redenen.length) {
+      const cellen = P.REDEN_SLEUTELS.map((s, i) => ({ waarde: t.uitstroom_reden[s], verborgen: k.uitstroom_redenen[i].aantal === null && !(i === 0 && k.totaal.verloop_vrijwillig_pct !== null) }));
+      assert.deepEqual(afleidbaar(cellen, [cellen.map((_, i) => i)], { nullen: false }), [], `${wat}: redenen`);
+      if (k.totaal.verloop_vrijwillig_pct !== null && t.uitstroom > 0) assert.ok(t.uitstroom_reden.eigen_verzoek >= 5, `${wat}: vrijwillig`);
+      if (k.uitstroom_redenen.some((x) => x.aantal > 0)) tel.redenGetoond++;
+    }
+  }
+  // De proeven dekken wat ze moeten dekken, en zonder de afscherming tegenover de instroom zou het vaak lekken.
+  assert.ok(tel.klein >= 150, `kleine aantallen: ${tel.klein}`);
+  assert.ok(tel.nul >= 30, `0 vertrekkers of nieuwe medewerkers: ${tel.nul}`);
+  assert.ok(tel.diensttijd >= 300, `diensttijd: ${tel.diensttijd}`);
+  assert.ok(tel.lektZonderR18 >= 20, `zonder de afscherming tegenover de instroom: ${tel.lektZonderR18}`);
+  assert.ok(tel.verloopGetoond >= 20, `verloop per groep getoond: ${tel.verloopGetoond}`);
+  assert.ok(tel.redenGetoond >= 15, `redenen getoond: ${tel.redenGetoond}`);
 });
