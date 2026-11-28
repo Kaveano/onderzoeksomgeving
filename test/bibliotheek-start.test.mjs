@@ -6,7 +6,7 @@
 // - op een verse lokale D1 met alle migraties (0001–0017) geeft GET /bibliotheek precies de 89 startbronnen;
 // - zoeken in deze collectie: de rangorde bij de woorden uit de review van P7 (wetgeving, WOR, diversiteit, loon);
 // - de besluiten 5, 6 en 7 van het onderzoeksteam in deze collectie (titel van west2021, namen met een voorvoegsel,
-//   raadpleegdatum en z.d.).
+//   raadpleegdatum en z.d.), en de volgorde van meerdere bronnen tussen haakjes (APA 7 §8.12, §8.20).
 // Er draait geen testserver (dus geen vaste poort): Wrangler voert de migraties uit in een tijdelijke map en de test
 // leest de database via getPlatformProxy, net als test/migratie.test.mjs, en roept de route lijst() rechtstreeks aan.
 // Uitvoeren: node --test test/bibliotheek-start.test.mjs
@@ -19,7 +19,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getPlatformProxy } from 'wrangler';
 
-import { CITEERSLEUTEL, ONDERWERPEN, onderwerpUitTekst, apaVerwijzing, apaKort, apaInTekst } from '../public/js/beheer/bibliotheek-regels.js';
+import { CITEERSLEUTEL, ONDERWERPEN, onderwerpUitTekst, apaVerwijzing, apaKort, apaInTekst, sorteerLiteratuur } from '../public/js/beheer/bibliotheek-regels.js';
 import { zoek } from '../public/js/beheer/bibliotheek-zoeken.js';
 import { controleerRecords, wijsSleutelsToe, maakMigratie, MAX_STATEMENT, SLEUTEL_PATROON } from '../scripts/startcollectie.mjs';
 import { lijst } from '../src/routes/bibliotheek.js';
@@ -202,6 +202,27 @@ test('besluit 6: namen met een voorvoegsel in de literatuurlijst en in de tekst'
   // Geen andere bron in de collectie heeft een voorvoegsel (dan stond hij hierboven)
   const metVoorvoegsel = omgezet.bronnen.filter(({ bron }) => bron.auteurs.some((a) => a.tussenvoegsel || /^(?:De|Van|Ten|Ter|Von|Le|La|Du|D') /.test(a.achternaam)));
   assert.deepEqual(metVoorvoegsel.length, Object.keys(verwacht).length);
+});
+
+test('APA 7 §8.12 en §8.20 in de collectie: tussen haakjes de volgorde van de lijst; voorletters bij twee eerste auteurs Van den Heuvel', () => {
+  const items = (...sleutels) => sleutels.map((s) => ({ bron: opSleutel(s) }));
+  assert.equal(apaInTekst(items('schaufeli-desart-dewitte-2020-bat', 'tno-2025-arbobalans-2024', 'van-dierendonck-2011-dienend-leiderschap')),
+    '(Van Dierendonck, 2011; Van den Heuvel et al., 2025; Schaufeli et al., 2020)');
+  // De hele collectie als literatuurlijst: in de lijst staan "Heuvel, S. van den" (records 8 en 29) en "Heuvel, S. G. van den"
+  // (record 76): voor APA andere mensen, dus in de tekst met voorletters. Verder heeft geen bron voorletters nodig.
+  const lijst = sorteerLiteratuur(RECORDS.map((r) => opSleutel(r.sleutel)));
+  assert.equal(lijst.length, N);
+  const heuvel = ['vandenheuvel-bondarouk-2017-toekomst-hr-analytics', 'tno-2021-duurzame-inzetbaarheid-nl', 'tno-2025-arbobalans-2024']
+    .map((s) => opSleutel(s).citeersleutel);
+  assert.deepEqual(lijst.filter((l) => l.voorletters).map((l) => l.bron.citeersleutel), heuvel);
+  const item = (c) => { const l = lijst.find((x) => x.bron.citeersleutel === c); return { bron: l.bron, suffix: l.suffix, voorletters: l.voorletters }; };
+  assert.equal(apaInTekst([...heuvel].reverse().map(item)),
+    '(S. van den Heuvel & Bondarouk, 2017; S. van den Heuvel et al., 2021; S. G. van den Heuvel et al., 2025)');
+  assert.equal(apaInTekst([item(heuvel[2])], { verhalend: true }), 'S. G. van den Heuvel et al. (2025)');
+  // a, b … krijgen in deze collectie alleen organisaties met meer bronnen in één jaar (AP, CBS, ministerie, NLA, SER)
+  const metSuffix = lijst.filter((l) => l.suffix);
+  assert.equal(metSuffix.length, 17);
+  assert.ok(metSuffix.every((l) => !l.bron.auteurs.length && l.bron.organisatie), 'geen persoon met a/b');
 });
 
 test('besluit 7: een raadpleegdatum alleen bij inhoud die verandert; z.d. bij een datum die alleen in de metadata staat', () => {

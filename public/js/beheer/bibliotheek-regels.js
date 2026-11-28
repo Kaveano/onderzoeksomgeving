@@ -324,6 +324,17 @@ function tekstNaam(a) {
   return vooraan(metTussenvoegsel(zonderSterren(a.tussenvoegsel), zonderSterren(a.achternaam)));
 }
 
+/**
+ * Naam in de tekst met voorletters ervoor (APA 7 §8.20, zie sorteerLiteratuur): "H. De Witte", "J. de Witte",
+ * "J. d'Ancona". Na de voorletters blijft een tussenvoegsel klein, zoals bij een redacteur.
+ */
+function tekstNaamMetVoorletters(a) {
+  return zonderSterren(a.voorletters) ? redacteurNaam(a) : tekstNaam(a);
+}
+
+/** Wie iemand is, om te vergelijken: hoofdnaam, tussenvoegsel en voorletters. "De Witte, H." is een ander dan "Witte, J. de". */
+const persoonSleutel = (a) => [a.achternaam, a.tussenvoegsel, a.voorletters].map((x) => normaliseer(zonderSterren(x))).join('|');
+
 /** Auteurs in de literatuurlijst: "Bakker, A. B., & Demerouti, E."; 21 of meer: de eerste 19, "…" en de laatste. */
 function lijstAuteurs(personen) {
   const namen = personen.map(lijstNaam);
@@ -497,19 +508,33 @@ function korteTitel(bron) {
  * Het naamdeel in de tekst. eerste: eerste keer genoemd (dan bij een organisatie met afkorting de volle naam).
  * → { naam, volledig?, afkorting? }
  */
-function tekstNamen(bron, { verhalend, eerste }) {
+function tekstNamen(bron, { verhalend, eerste, voorletters = false }) {
   const personen = personenVan(bron);
   if (personen.length) {
     const amp = verhalend ? OPMAAK.amp.verhalend : OPMAAK.amp.haakjes;
-    if (personen.length === 1) return { naam: tekstNaam(personen[0]) };
-    if (personen.length === 2) return { naam: `${tekstNaam(personen[0])} ${amp} ${tekstNaam(personen[1])}` };
-    return { naam: `${tekstNaam(personen[0])} et al.` };
+    // Voorletters alleen bij de eerste auteur (APA 7 §8.20).
+    const eersteNaam = voorletters ? tekstNaamMetVoorletters(personen[0]) : tekstNaam(personen[0]);
+    if (personen.length === 1) return { naam: eersteNaam };
+    if (personen.length === 2) return { naam: `${eersteNaam} ${amp} ${tekstNaam(personen[1])}` };
+    return { naam: `${eersteNaam} et al.` };
   }
   const org = zonderSterren(bron.organisatie);
   const afk = zonderSterren(bron.afkorting);
   if (org && afk) return eerste ? { naam: org, volledig: org, afkorting: afk } : { naam: afk };
   if (org) return { naam: org };
   return { naam: korteTitel(bron) || 'Zonder titel' };
+}
+
+/**
+ * Wie een bron in de tekst aanwijst: de personen die in de tekst staan (één, twee, of de eerste met "et al."), elk met
+ * hoofdnaam, tussenvoegsel en voorletters; zonder personen de naam uit de tekst. Twee bronnen met dezelfde naam in de
+ * tekst maar andere mensen ("De Witte, H." en "Witte, J. de.") hebben zo een andere identiteit.
+ */
+function tekstIdentiteit(bron) {
+  const personen = personenVan(bron);
+  if (!personen.length) return `o:${normaliseer(tekstNamen(bron, { verhalend: false, eerste: false }).naam)}`;
+  const getoond = personen.length > 2 ? [personen[0]] : personen;
+  return `p:${getoond.map(persoonSleutel).join(';')}${personen.length > 2 ? ';et al.' : ''}`;
 }
 
 /** '12' → 'p. 12'; '12-14' → 'pp. 12–14'; andere tekst ('hoofdstuk 3', 'p. 4') blijft zoals hij is. */
@@ -522,13 +547,16 @@ export function paginaTekst(pagina) {
 }
 
 // Eén vaste sorteerder (localeCompare met opties maakt er elke keer een nieuwe; dat is traag bij veel bronnen).
-const SORTEERDER = new Intl.Collator('nl', { sensitivity: 'base' });
+// Letter voor letter (APA 7 §9.44): spaties, koppeltekens en apostrofs tellen niet mee, dus "DeBase" en "Dekker" komen
+// voor "De Vries" en "De Witte", en "MacNeil" voor "M'Carthy". Hoofdletters en accenten tellen ook niet mee.
+const SORTEERDER = new Intl.Collator('nl', { sensitivity: 'base', ignorePunctuation: true });
 const vergelijk = (a, b) => SORTEERDER.compare(a, b);
 
 /**
- * Verwijzing in de tekst voor één of meer bronnen: items = [{ bron, pagina?, suffix? }].
- * Tussen haakjes: "(Bakker & Demerouti, 2017, p. 12; Centraal Bureau voor de Statistiek [CBS], 2024b)";
- * verhalend (in de zin): "Bakker en Demerouti (2017)".
+ * Verwijzing in de tekst voor één of meer bronnen: items = [{ bron, pagina?, suffix?, voorletters? }].
+ * Tussen haakjes: "(Bakker & Demerouti, 2017, p. 12; Centraal Bureau voor de Statistiek [CBS], 2024b)", in de volgorde
+ * van de literatuurlijst (APA 7 §8.12); verhalend (in de zin): "Bakker en Demerouti (2017)", in de volgorde die je geeft.
+ * suffix en voorletters: zoals sorteerLiteratuur ze geeft (a, b …; voorletters bij dezelfde achternaam, APA 7 §8.20).
  * eersteKeer: de verzameling citeersleutels die al eerder genoemd zijn. Een bron die er nog niet in staat, wordt
  * als eerste vermelding geschreven (een organisatie met afkorting dan voluit); daarna komt hij erin te staan.
  * Geef dezelfde Set mee voor het hele rapport, in de volgorde van de tekst.
@@ -537,24 +565,27 @@ export function apaInTekst(items, { verhalend = false, eersteKeer = new Set() } 
   const lijst = (Array.isArray(items) ? items : []).filter((i) => i && i.bron);
   const delen = lijst.map((item) => {
     const sleutel = sleutelVan(item.bron);
-    const namen = tekstNamen(item.bron, { verhalend, eerste: !eersteKeer.has(sleutel) });
-    return { ...namen, jaar: jaarTekst(item.bron, item.suffix || ''), pagina: paginaTekst(item.pagina), sleutel, bron: item.bron };
+    const namen = tekstNamen(item.bron, { verhalend, eerste: !eersteKeer.has(sleutel), voorletters: !!item.voorletters });
+    return {
+      ...namen, jaar: jaarTekst(item.bron, item.suffix || ''), pagina: paginaTekst(item.pagina), sleutel, bron: item.bron,
+      wie: `${tekstIdentiteit(item.bron)}|${item.voorletters ? 'v' : ''}`,
+    };
   });
   for (const d of delen) eersteKeer.add(d.sleutel);
   if (!delen.length) return '';
 
   if (!verhalend) {
-    // Op naam (en daarna jaar; zonder datum eerst), dezelfde naam met meerdere jaren samengevoegd: (Bakker, 2017, 2019).
-    const gesorteerd = [...delen].sort((a, b) => vergelijk(a.naam, b.naam)
-      || (Number.isInteger(a.bron.jaar) ? a.bron.jaar : -1) - (Number.isInteger(b.bron.jaar) ? b.bron.jaar : -1)
-      || vergelijk(a.jaar, b.jaar));
+    // In de volgorde van de literatuurlijst (APA 7 §8.12): dezelfde sleutel als sorteerLiteratuur, dus op de hoofdnaam
+    // ("Van Dierendonck" onder de D, "De Vroome" onder de V), daarna jaar (zonder datum eerst) en titel (a voor b).
+    // Dezelfde auteur(s) met meerdere jaren samengevoegd: (Bakker, 2017, 2019); twee mensen met dezelfde naam niet.
+    const gesorteerd = [...delen].sort((a, b) => vergelijkBronnen(a.bron, b.bron) || vergelijk(a.jaar, b.jaar));
     const groepen = [];
     for (const d of gesorteerd) {
       const naam = d.afkorting ? `${d.volledig} [${d.afkorting}]` : d.naam;
       const jaar = `${d.jaar}${d.pagina ? `, ${d.pagina}` : ''}`;
       const vorige = groepen[groepen.length - 1];
-      if (vorige && vorige.naam === naam) vorige.jaren.push(jaar);
-      else groepen.push({ naam, jaren: [jaar] });
+      if (vorige && vorige.naam === naam && vorige.wie === d.wie) vorige.jaren.push(jaar);
+      else groepen.push({ naam, wie: d.wie, jaren: [jaar] });
     }
     return `(${groepen.map((g) => `${g.naam}, ${g.jaren.join(', ')}`).join('; ')})`;
   }
@@ -564,8 +595,8 @@ export function apaInTekst(items, { verhalend = false, eersteKeer = new Set() } 
   for (const d of delen) {
     const jaar = `${d.jaar}${d.pagina ? `, ${d.pagina}` : ''}`;
     const vorige = groepen[groepen.length - 1];
-    if (vorige && vorige.naam === d.naam && !d.afkorting && !vorige.afkorting) vorige.jaren.push(jaar);
-    else groepen.push({ naam: d.naam, afkorting: d.afkorting, jaren: [jaar] });
+    if (vorige && vorige.naam === d.naam && vorige.wie === d.wie && !d.afkorting && !vorige.afkorting) vorige.jaren.push(jaar);
+    else groepen.push({ naam: d.naam, wie: d.wie, afkorting: d.afkorting, jaren: [jaar] });
   }
   const teksten = groepen.map((g) => `${g.naam} (${g.afkorting ? `${g.afkorting}, ` : ''}${g.jaren.join(', ')})`);
   if (teksten.length === 1) return teksten[0];
@@ -608,23 +639,40 @@ export function vergelijkBronnen(a, b) {
 }
 
 /**
- * De literatuurlijst in APA-volgorde, met a, b … bij dezelfde naam (zoals in de tekst) en hetzelfde jaar:
- * → [{ bron, suffix }]. Gebruik dezelfde suffixen in de tekst, zodat tekst en lijst altijd kloppen.
+ * De literatuurlijst in APA-volgorde → [{ bron, suffix, voorletters }]. Geef suffix en voorletters door aan apaInTekst,
+ * zodat tekst en lijst altijd kloppen.
+ * - suffix: a, b … bij dezelfde auteur(s) in hetzelfde jaar (APA 7 §9.47): dezelfde mensen die in de tekst staan (één,
+ *   twee, of de eerste met "et al."), op hoofdnaam, tussenvoegsel en voorletters. "De Witte, H." en "Witte, J. de." zijn
+ *   twee mensen en krijgen geen a en b. Bij "et al." met andere medeauteurs schrijft APA meer namen in de tekst
+ *   (§8.18); wij geven dan a en b, zodat de tekst toch niet dubbelzinnig is.
+ * - voorletters: true als een andere bron in de lijst een eerste auteur heeft met dezelfde naam in de tekst die een
+ *   ander mens is (APA 7 §8.20). In de tekst staan dan de voorletters ervoor: "(H. De Witte, 2020; J. de Witte, 2020)".
  */
 export function sorteerLiteratuur(bronnen) {
   const lijst = (Array.isArray(bronnen) ? bronnen : []).filter(Boolean);
   const uniek = [...new Map(lijst.map((b) => [sleutelVan(b), b])).values()];
   const gesorteerd = uniek.sort(vergelijkBronnen);
-  const groep = (b) => `${normaliseer(tekstNamen(b, { verhalend: false, eerste: false }).naam)}|${Number.isInteger(b.jaar) ? b.jaar : 'zd'}`;
+  const groep = (b) => `${tekstIdentiteit(b)}|${Number.isInteger(b.jaar) ? b.jaar : 'zd'}`;
   const tellers = new Map();
   for (const b of gesorteerd) tellers.set(groep(b), (tellers.get(groep(b)) || 0) + 1);
+  // Per naam van de eerste auteur in de tekst: welke mensen dat zijn.
+  const eersteNaam = (b) => (personenVan(b).length ? normaliseer(tekstNaam(personenVan(b)[0])) : null);
+  const mensen = new Map();
+  for (const b of gesorteerd) {
+    const n = eersteNaam(b);
+    if (n === null) continue;
+    if (!mensen.has(n)) mensen.set(n, new Set());
+    mensen.get(n).add(persoonSleutel(personenVan(b)[0]));
+  }
   const volgnummer = new Map();
   return gesorteerd.map((bron) => {
     const g = groep(bron);
-    if (tellers.get(g) < 2) return { bron, suffix: '' };
+    const n = eersteNaam(bron);
+    const voorletters = n !== null && mensen.get(n).size > 1;
+    if (tellers.get(g) < 2) return { bron, suffix: '', voorletters };
     const i = volgnummer.get(g) || 0;
     volgnummer.set(g, i + 1);
-    return { bron, suffix: String.fromCharCode(97 + Math.min(i, 25)) };
+    return { bron, suffix: String.fromCharCode(97 + Math.min(i, 25)), voorletters };
   });
 }
 

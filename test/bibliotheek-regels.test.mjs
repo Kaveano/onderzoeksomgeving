@@ -190,6 +190,75 @@ test('besluiten 6a en 6b (P7): de voorbeelden van de Radboud-gids in de lijst en
   }
 });
 
+test('APA 7 §9.44: letter voor letter sorteren (DeBase en Dekker voor De Vries), spaties en apostrofs tellen niet mee', () => {
+  const boek = (achternaam, vl, jaar, titel, tv = '') => ({ soort: 'boek', titel, jaar, auteurs: [A(achternaam, vl, tv)], citeersleutel: titel.toLowerCase() });
+  const bronnen = [boek('De Witte', 'H.', 2020, 'Een'), boek('Dekker', 'F.', 2019, 'Twee'), boek('De Vries', 'R. E.', 2012, 'Drie'),
+    boek('DeBase', 'A.', 2018, 'Vier'), boek('MacNeil', 'K.', 2010, 'Vijf'), boek("M'Carthy", 'L.', 2010, 'Zes'), boek('Devos', 'P.', 2011, 'Zeven')];
+  assert.deepEqual(sorteerLiteratuur(bronnen).map((l) => l.bron.auteurs[0].achternaam),
+    ['DeBase', 'Dekker', 'Devos', 'De Vries', 'De Witte', 'MacNeil', "M'Carthy"]);
+  // "Nothing precedes something" blijft: Brown voor Browning, en dezelfde naam met minder voorletters eerst
+  assert.deepEqual(sorteerLiteratuur([boek('Browning', 'A. R.', 2010, 'A'), boek('Brown', 'J. R.', 2010, 'B'), boek('Brown', 'J.', 2010, 'C')])
+    .map((l) => `${l.bron.auteurs[0].achternaam} ${l.bron.auteurs[0].voorletters}`), ['Brown J.', 'Brown J. R.', 'Browning A. R.']);
+});
+
+test('APA 7 §8.12: meerdere bronnen tussen haakjes in de volgorde van de literatuurlijst', () => {
+  const boek = (auteurs, jaar, titel) => ({ soort: 'boek', titel, jaar, auteurs, citeersleutel: titel.toLowerCase(), details: { uitgever: 'U' } });
+  const dierendonck = boek([A('Dierendonck', 'D.', 'van')], 2011, 'Dienend');
+  const heuvel = boek([A('Heuvel', 'S. G.', 'van den'), A('Bouwens', 'L.'), A('Vroome', 'E. M. M.', 'de')], 2025, 'Arbobalans');
+  const schaufeli = boek([A('Schaufeli', 'W. B.'), A('Desart', 'S.'), A('De Witte', 'H.')], 2020, 'BAT');
+  assert.equal(apaInTekst([{ bron: schaufeli }, { bron: heuvel }, { bron: dierendonck }]),
+    '(Van Dierendonck, 2011; Van den Heuvel et al., 2025; Schaufeli et al., 2020)');
+  assert.deepEqual(sorteerLiteratuur([schaufeli, heuvel, dierendonck]).map((l) => l.bron), [dierendonck, heuvel, schaufeli]);
+  const abbing = boek([A('Abbing', 'J.')], 2020, 'Een');
+  const vroome = boek([A('Vroome', 'E. M. M.', 'de')], 2025, 'Twee');
+  const witte = boek([A('De Witte', 'H.')], 2020, 'Drie');
+  const smit = boek([A('Smit', 'P.')], 2020, 'Vier');
+  assert.equal(apaInTekst([vroome, witte, smit, abbing].map((bron) => ({ bron }))), '(Abbing, 2020; De Witte, 2020; Smit, 2020; De Vroome, 2025)');
+  // Een organisatie op de volle naam, ook als de tekst de afkorting gebruikt; dezelfde auteur blijft samengevoegd
+  const cbs = { soort: 'rapport', titel: 'Cijfers', jaar: 2024, organisatie: 'Centraal Bureau voor de Statistiek', afkorting: 'CBS', citeersleutel: 'cbs2024' };
+  const bakker = boek([A('Bakker', 'A. B.')], 2019, 'Werk');
+  const bakker2 = boek([A('Bakker', 'A. B.')], 2017, 'Druk');
+  const dekker = boek([A('Dekker', 'F.')], 2019, 'Dekker');
+  assert.equal(apaInTekst([{ bron: dekker }, { bron: cbs }, { bron: bakker }, { bron: bakker2 }], { eersteKeer: new Set(['cbs2024']) }),
+    '(Bakker, 2017, 2019; CBS, 2024; Dekker, 2019)');
+  // In de zin blijft de volgorde waarin je ze noemt
+  assert.equal(apaInTekst([{ bron: schaufeli }, { bron: dierendonck }], { verhalend: true }), 'Schaufeli et al. (2020) en Van Dierendonck (2011)');
+});
+
+test('APA 7 §9.47 en §8.20: a en b alleen bij dezelfde mensen; dezelfde naam in de tekst bij twee mensen krijgt voorletters', () => {
+  const boek = (auteurs, jaar, titel) => ({ soort: 'boek', titel, jaar, auteurs, citeersleutel: titel.toLowerCase().replace(/\W/g, ''), details: { uitgever: 'U' } });
+  const hWitte = boek([A('De Witte', 'H.')], 2020, 'Drie');
+  const jWitte = boek([A('Witte', 'J.', 'de')], 2020, 'Vijf');
+  const vriesBe = boek([A('De Vries', 'R. E.')], 2012, 'Acht');
+  const vriesNl = boek([A('Vries', 'R. E.', 'de')], 2012, 'Negen');
+  const hWitte2 = boek([A('De Witte', 'H.')], 2020, 'Een ander boek');
+  const lijst = sorteerLiteratuur([jWitte, hWitte, vriesNl, vriesBe, hWitte2]);
+  assert.deepEqual(lijst.map((l) => [l.bron.titel, l.suffix, l.voorletters]), [
+    ['Acht', '', true], ['Drie', 'a', true], ['Een ander boek', 'b', true], ['Negen', '', true], ['Vijf', '', true]]);
+  assert.deepEqual(lijst.map((l) => apaVerwijzing(l.bron, { suffix: l.suffix }).split(' *')[0]), [
+    'De Vries, R. E. (2012).', 'De Witte, H. (2020a).', 'De Witte, H. (2020b).', 'Vries, R. E. de. (2012).', 'Witte, J. de. (2020).']);
+  // In de tekst met de voorletters uit de lijst: "H. De Witte" en "J. de Witte" (tussenvoegsel klein na de voorletters)
+  const item = (bron) => { const l = lijst.find((x) => x.bron === bron); return { bron, suffix: l.suffix, voorletters: l.voorletters }; };
+  assert.equal(apaInTekst([item(jWitte), item(hWitte)]), '(H. De Witte, 2020a; J. de Witte, 2020)');
+  assert.equal(apaInTekst([item(jWitte)], { verhalend: true }), 'J. de Witte (2020)');
+  assert.equal(apaInTekst([item(hWitte), item(hWitte2)]), '(H. De Witte, 2020a, 2020b)', 'dezelfde mens: samengevoegd');
+  // Zonder voorletters (zoals in Citeer voor één bron) worden twee mensen met dezelfde naam niet samengevoegd
+  assert.equal(apaInTekst([{ bron: jWitte }, { bron: hWitte }]), '(De Witte, 2020; De Witte, 2020)');
+  // Voorletters alleen bij de eerste auteur; d' vast aan de naam
+  const anconaJ = boek([A('Ancona', 'J.', "d'"), A('Smit', 'P.')], 2022, 'Elf');
+  const anconaM = boek([A('Ancona', 'M.', "d'")], 2021, 'Twaalf');
+  const l2 = sorteerLiteratuur([anconaJ, anconaM]);
+  assert.deepEqual(l2.map((l) => l.voorletters), [true, true]);
+  assert.equal(apaInTekst(l2.map(({ bron, suffix, voorletters }) => ({ bron, suffix, voorletters }))), "(J. d'Ancona & Smit, 2022; M. d'Ancona, 2021)");
+  // Dezelfde eerste auteur met "et al." en andere medeauteurs in hetzelfde jaar: a en b (anders is de tekst dubbelzinnig)
+  const s1 = boek([A('Schaufeli', 'W. B.'), A('Bakker', 'A. B.'), A('Taris', 'T.')], 2020, 'Een');
+  const s2 = boek([A('Schaufeli', 'W. B.'), A('Desart', 'S.'), A('De Witte', 'H.')], 2020, 'Twee');
+  const s3 = boek([A('Schaufeli', 'W. B.')], 2020, 'Drie');
+  assert.deepEqual(sorteerLiteratuur([s1, s2, s3]).map((l) => [l.bron.titel, l.suffix, l.voorletters]), [['Drie', '', false], ['Een', 'a', false], ['Twee', 'b', false]]);
+  // Eén mens, één naam: geen voorletters
+  assert.deepEqual(sorteerLiteratuur([GOUDEN.bakker, GOUDEN.cbs]).map((l) => l.voorletters), [false, false]);
+});
+
 test('besluiten 6a en 6b (P7): "Plak een verwijzing" leest de nieuwe vorm terug', () => {
   let r = leesApaVerwijzing('Heuvel, S. G. van den, Bouwens, L., & Vroome, E. M. M. de. (2025). Arbobalans 2024 (Rapportnr. TNO 2025 R11108). TNO. https://monitorarbeid.tno.nl/publicaties/arbobalans-2024/');
   assert.deepEqual(r.bron.auteurs, [A('Heuvel', 'S. G.', 'van den'), A('Bouwens', 'L.'), A('Vroome', 'E. M. M.', 'de')]);
