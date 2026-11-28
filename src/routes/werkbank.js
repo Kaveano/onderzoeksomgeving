@@ -77,7 +77,12 @@ async function leesContext(env, { onderzoekSql, waarde, datasetId, definitieId =
   const viaDefinitie = definitieId !== null;
   const p = (sql) => env.DB.prepare(sql.replaceAll('{O}', onderzoekSql)).bind(...Array.from({ length: (sql.match(/\{O\}/g) || []).length }, () => waarde));
   const opdrachten = [
-    p('SELECT id, status FROM onderzoeken WHERE id = {O}'),
+    // Met de codes en per code de vragen waarbij hij gegeven is (als JSON, in dezelfde opdracht): de namen van de
+    // codevariabelen zijn ook gereserveerd (J7). Zo blijft het bij één batch van hooguit 10 opdrachten.
+    p(`SELECT id, status, (SELECT json_group_array(json_object('id', c.id, 'naam', c.naam, 'volgorde', c.volgorde,
+         'vragen', json((SELECT json_group_array(DISTINCT k.vraag_id) FROM coderingen k WHERE k.code_id = c.id AND k.inzending_id IS NOT NULL))))
+       FROM (SELECT id, naam, volgorde FROM codes WHERE onderzoek_id = {O} ORDER BY volgorde, id) c) AS codes
+       FROM onderzoeken WHERE id = {O}`),
     p('SELECT id, dataset_id, soort, naam, verwijderd_op, bijgewerkt_op FROM werkbank_definities WHERE onderzoek_id = {O} ORDER BY id'),
     // Alleen de verwijzingen naar eigen variabelen (w:…), niet de hele definities: die kunnen groot zijn.
     p(`SELECT d.id AS id, j.value AS ref FROM werkbank_definities d, json_tree(d.definitie) j
@@ -88,9 +93,6 @@ async function leesContext(env, { onderzoekSql, waarde, datasetId, definitieId =
     p('SELECT id, titel, meetmoment_id FROM vragenlijsten WHERE onderzoek_id = {O} ORDER BY id'),
     p(`SELECT q.* FROM vragen q JOIN vragenlijsten vl ON vl.id = q.vragenlijst_id JOIN themas t ON t.id = q.thema_id
        WHERE vl.onderzoek_id = {O} ORDER BY t.volgorde, t.id, q.volgorde, q.id`),
-    // Codes en de (code, vraag)-paren die gegeven zijn: de namen van de codevariabelen zijn ook gereserveerd (J7).
-    p('SELECT id, naam, volgorde FROM codes WHERE onderzoek_id = {O} ORDER BY volgorde, id'),
-    p('SELECT DISTINCT code_id, vraag_id, 1 AS inzending_id FROM coderingen WHERE onderzoek_id = {O} AND inzending_id IS NOT NULL'),
   ];
   if (viaDefinitie) {
     // Bij wijzigen: de definitie zelf en (als die bij een dataset hoort) de kolomnamen van die dataset.
@@ -100,8 +102,12 @@ async function leesContext(env, { onderzoekSql, waarde, datasetId, definitieId =
     opdrachten.push(env.DB.prepare(`SELECT id, kolommen FROM datasets WHERE id = ? AND onderzoek_id = ${onderzoekSql}`).bind(datasetId, waarde));
   }
   const uit = await env.DB.batch(opdrachten);
-  const [onderzoek, definities, refs, themas, meetpunten, meetmomenten, vragenlijsten, vragen, codes, coderingen] = uit;
-  const rest = uit.slice(10);
+  const [onderzoek, definities, refs, themas, meetpunten, meetmomenten, vragenlijsten, vragen] = uit;
+  const rest = uit.slice(8);
+  let codes = [];
+  try {
+    codes = JSON.parse(onderzoek.results[0]?.codes || '[]');
+  } catch { /* geen codes */ }
   const rij = viaDefinitie ? rest.shift().results[0] || null : undefined;
   const dataset = viaDefinitie || (datasetId !== null && datasetId !== undefined) ? rest.shift().results[0] || null : null;
   return {
@@ -112,7 +118,8 @@ async function leesContext(env, { onderzoekSql, waarde, datasetId, definitieId =
       lijsten: { schalen: SCHALEN, cijferschalen: CIJFERSCHALEN, kenmerken: KENMERKEN },
       themas: themas.results, meetpunten: meetpunten.results, meetmomenten: meetmomenten.results,
       vragenlijsten: vragenlijsten.results, vragen: vragen.results, inzendingen: [],
-      codes: codes.results, coderingen: coderingen.results,
+      codes: codes.map(({ id, naam, volgorde }) => ({ id, naam, volgorde })),
+      coderingen: codes.flatMap((c) => (Array.isArray(c.vragen) ? c.vragen : []).map((vraag_id) => ({ code_id: c.id, vraag_id, inzending_id: 1 }))),
     },
     dataset,
     rij,

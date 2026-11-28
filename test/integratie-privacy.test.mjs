@@ -434,3 +434,46 @@ test('P5: Eigen dataset – verdeling, min/max, groepen en kruistabel volgen de 
   const groot = rijen.filter((r) => r[0] !== 'Stage');
   assert.deepEqual(datasetGroepen(groot, 2, 0).mee.map((x) => x.naam).sort(), ['Kantoor', 'Lab', 'Productie']);
 });
+
+test('J7 op de server: POST van een eigen variabele met de naam van een codevariabele geeft 400 (één batch van hooguit 10 opdrachten)', async () => {
+  const { DatabaseSync } = await import('node:sqlite');
+  const { readdirSync, readFileSync } = await import('node:fs');
+  const werkbankRoutes = await import('../src/routes/werkbank.js');
+  const db = new DatabaseSync(':memory:');
+  const dir = new URL('../migrations/', import.meta.url);
+  for (const f of readdirSync(dir).filter((x) => x.endsWith('.sql')).sort()) db.exec(readFileSync(new URL(f, dir), 'utf8'));
+  const nu = '2026-11-27T10:00:00.000Z';
+  db.exec(`INSERT INTO onderzoeken (id, bedrijfsnaam, titel, status, aangemaakt_op) VALUES (1, 'Een BV', 'Codes', 'actief', '${nu}');
+    INSERT INTO themas (id, onderzoek_id, naam, volgorde) VALUES (11, 1, 'Werk', 1);
+    INSERT INTO vragenlijsten (id, onderzoek_id, meetmoment_id, titel, code, status, aangemaakt_op) VALUES (10, 1, NULL, 'Lijst', 'zaadcode-integratie-0000001', 'gesloten', '${nu}');
+    INSERT INTO vragen (id, vragenlijst_id, thema_id, type, tekst, opties, volgorde) VALUES (101, 10, 11, 'schaal', 'Tempo', '[]', 1), (102, 10, 11, 'open', 'Wat kan beter?', '[]', 2);
+    INSERT INTO inzendingen (id, vragenlijst_id, datum, antwoorden) VALUES (1001, 10, '2026-10-01', '{"101":3,"102":"Meer tijd"}');
+    INSERT INTO codes (id, onderzoek_id, naam, volgorde, aangemaakt_op) VALUES (5, 1, 'werkdruk', 1, '${nu}');
+    INSERT INTO coderingen (id, onderzoek_id, code_id, inzending_id, vraag_id) VALUES (1, 1, 5, 1001, 102);`);
+  const batches = [];
+  const opdracht = (sql, params = []) => ({
+    sql, params,
+    bind: (...p) => opdracht(sql, p),
+    async all() { return { results: db.prepare(sql).all(...params) }; },
+    async first() { return db.prepare(sql).get(...params) ?? null; },
+    async run() { db.prepare(sql).run(...params); return { meta: {} }; },
+  });
+  const env = {
+    DB: {
+      prepare: (sql) => opdracht(sql),
+      async batch(lijst) {
+        batches.push(lijst.length);
+        return lijst.map((o) => ({ results: db.prepare(o.sql).all(...o.params) }));
+      },
+    },
+  };
+  const post = (naam) => werkbankRoutes.definitieNieuw({ env, params: { id: '1' }, request: new Request('http://x/api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ soort: 'omscoren', naam, definitie: { variabele: 'v:101' } }) }) });
+  const data = { lijsten: { schalen: SCHALEN, cijferschalen: CIJFERSCHALEN, kenmerken: KENMERKEN }, themas: [{ id: 11, naam: 'Werk', volgorde: 1 }], meetpunten: [], meetmomenten: [],
+    vragenlijsten: [{ id: 10, titel: 'Lijst', meetmoment_id: null }], vragen: db.prepare('SELECT * FROM vragen').all().map((q) => ({ ...q })), inzendingen: [],
+    codes: [{ id: 5, naam: 'werkdruk', volgorde: 1 }], coderingen: [{ code_id: 5, vraag_id: 102, inzending_id: 1001 }] };
+  const naam = codeVariabelen(data)[0].naam;
+  await assert.rejects(post(naam), (e) => e.status === 400 && /gereserveerd/.test(e.message));
+  const goed = await post(`${naam}_eigen`);
+  assert.equal(goed.status, 201);
+  assert.ok(Math.max(...batches) <= 10, `opdrachten per batch: ${batches.join(', ')}`);
+});
