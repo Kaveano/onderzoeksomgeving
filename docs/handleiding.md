@@ -120,6 +120,7 @@ Bovenin staat naast **Onderzoeken** en **Sjablonen** de **Bibliotheek**: één v
    - Bij een **Nederlandse** naam vul je dat apart in bij **Tussenvoegsel**, met een kleine letter (bijvoorbeeld *de* bij *Vroome*). In de literatuurlijst staat het dan achter de voorletters, met een punt erachter: *Vroome, E. M. M. de. (2025).* In je tekst begint de naam met een hoofdletter: *De Vroome (2025)*.
    - Bij een **Vlaamse of buitenlandse** naam hoort het bij de achternaam. Vul dan bijvoorbeeld *De Witte* in bij **Achternaam** en laat het tussenvoegsel leeg: *De Witte, H. (2020).*
    - Bij **Plak een verwijzing** ziet de app het verschil aan de hoofdletter: *de Vroome* of *Vroome, E. M. M. de* wordt een tussenvoegsel, *De Witte* blijft de achternaam. Controleer het even.
+   - Let op: Google Scholar schrijft ook Nederlandse namen met een hoofdletter, bijvoorbeeld *Van Dierendonck, D. (2011).* Is het een Nederlandse auteur? Zet dan *Dierendonck* bij **Achternaam** en *van* bij **Tussenvoegsel**, met een kleine letter.
 5. Geen jaartal? Laat het jaar leeg; in de verwijzing staat dan *z.d.* (zonder datum). Dat geldt ook voor een webpagina waarop geen datum staat.
 6. Een webpagina of cijfers?
    - Staat er een datum op de pagina, zoals bij een nieuwsbericht of "Pagina bijgewerkt op …"? Vul die in bij **Datum van de pagina** en laat **Geraadpleegd op** leeg.
