@@ -7,7 +7,7 @@
 
 import {
   BRONSOORTEN, ONDERWERPEN, TALEN, BETROUWBAARHEID, legeBron, leesAuteur, auteurAlsTekst, apaVerwijzing, sorteerLiteratuur,
-  normaliseer, paginaStreep, taalUitTekst, onderwerpUitTekst, zonderSterren, LIMIETEN,
+  normaliseer, paginaStreep, taalUitTekst, raadTaal, onderwerpUitTekst, zonderSterren, LIMIETEN,
 } from './bibliotheek-regels.js';
 
 // ---------- RIS ----------
@@ -88,8 +88,9 @@ export function naarRis(bronnen, { metNotities = false } = {}) {
 }
 
 /**
- * Leest een RIS-bestand. → { bronnen: [bron (zoals legeBron)], meldingen: [tekst] }.
+ * Leest een RIS-bestand. → { bronnen: [bron (zoals legeBron)], meldingen: [tekst], taalGeraden: aantal }.
  * Vervolgregels (zonder tag) horen bij de vorige tag. Een record zonder titel wordt overgeslagen.
+ * taalGeraden: bij zoveel bronnen stond er geen taal (LA) in het bestand en is de taal geraden (raadTaal).
  */
 export function leesRis(tekst) {
   const regels = String(tekst ?? '').replace(/^﻿/, '').split(/\r\n|\r|\n/);
@@ -119,6 +120,7 @@ export function leesRis(tekst) {
 
   const bronnen = [];
   const meldingen = [];
+  let taalGeraden = 0;
   for (const rec of records) {
     const alle = (tag) => rec.velden.filter((v) => v.tag === tag).map((v) => v.waarde).filter(Boolean);
     const eerste = (...tags) => {
@@ -177,7 +179,6 @@ export function leesRis(tekst) {
       }
     }
     const taal = taalUitTekst(eerste('LA'));
-    if (taal) bron.taal = taal;
     for (const k of alle('KW')) {
       for (const w of k.split(/\s*;\s*/).filter(Boolean)) {
         const o = onderwerpUitTekst(w);
@@ -194,6 +195,13 @@ export function leesRis(tekst) {
       samenvatting = samenvatting.slice(0, LIMIETEN.samenvatting);
     }
     bron.samenvatting = samenvatting;
+    // Zonder LA (Google Scholar en Mendeley laten die vaak weg) de taal raden uit de titel, het tijdschrift of boek en de
+    // samenvatting, zoals bij "Plak een verwijzing" (raadTaal); anders zou elke Engelse bron Nederlands heten.
+    if (taal) bron.taal = taal;
+    else {
+      bron.taal = raadTaal(`${bron.titel} ${t2} ${samenvatting}`);
+      taalGeraden++;
+    }
     const notities = [];
     for (const n of alle('N1')) {
       if (/^Kernpunten:/i.test(n)) {
@@ -207,7 +215,13 @@ export function leesRis(tekst) {
     bronnen.push(bron);
   }
   if (!records.length) meldingen.push('Dit bestand bevat geen bronnen in RIS-vorm (regels als "TY  - JOUR").');
-  return { bronnen, meldingen };
+  return { bronnen, meldingen, taalGeraden };
+}
+
+/** De melding bij het importeren als er bij n van de totaal bronnen geen taal (LA) in het RIS-bestand stond. */
+export function taalGeradenTekst(n, totaal) {
+  const wie = n === 1 && totaal === 1 ? 'deze bron' : n === totaal ? (n === 2 ? 'beide bronnen' : `alle ${n} bronnen`) : `${n} van de ${totaal} bronnen`;
+  return `Bij ${wie} stond geen taal in het bestand. We hebben de taal geraden uit de titel en de samenvatting (Nederlands of Engels). Klopt die niet? Pas hem dan aan bij de bron.`;
 }
 
 /** Tekstbestand lezen: UTF-8, of anders windows-1252 (zoals oudere Windows-programma's het opslaan). */

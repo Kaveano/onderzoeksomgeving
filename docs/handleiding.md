@@ -130,7 +130,7 @@ Een organisatie met een afkorting noem je de eerste keer voluit: *(Centraal Bure
 **Eigen notities** zijn alleen voor jou. Ze komen nooit in een rapport, een deellink of een RIS-bestand (tenzij je bij exporteren zelf **Eigen notities meenemen** aanzet).
 
 **Importeren en exporteren**
-- **Importeren**: kies een RIS-bestand (.ris) uit Zotero, Mendeley of EndNote. Je ziet eerst hoeveel bronnen erin staan en welke al in je bibliotheek staan; die worden overgeslagen.
+- **Importeren**: kies een RIS-bestand (.ris) uit Zotero, Mendeley of EndNote. Je ziet eerst hoeveel bronnen erin staan en welke al in je bibliotheek staan; die worden overgeslagen. Staat bij een bron geen taal in het bestand (Google Scholar en Mendeley laten die vaak weg), dan raden we de taal uit de titel en de samenvatting: Nederlands of Engels. Je krijgt daar een melding over. Klopt de taal niet, pas hem dan aan bij de bron.
 - **Exporteren**: de gevonden bronnen of de hele bibliotheek, als **Literatuurlijst (Word)**, **Excel** (je eigen overzicht) of **RIS** (om in Zotero, Mendeley of EndNote in te lezen).
 
 **Betrouwbaarheid**: *Hoog* (wetenschappelijk getoetst, officiële statistiek of wet- en regelgeving), *Redelijk* (rapport van een bekend instituut, overheid of vakliteratuur), *Beperkt* (mening, blog, commerciële bron of klein onderzoek zonder verantwoording) of *Nog niet beoordeeld*. Gebruik in een rapport bij voorkeur bronnen met een hoge betrouwbaarheid, en controleer altijd de originele bron.

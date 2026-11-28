@@ -1,5 +1,6 @@
-// Integratiebevindingen over bruikbaarheid (G5):
+// Integratiebevindingen over bruikbaarheid (G5–G6):
 // - G5: "Alle resultaten" (ook bij een meelezer) gebruikt voor een verborgen cel overal ×, met VERBORGEN_UITLEG; nergens "<5";
+// - G6: een RIS-bestand zonder taal (LA) maakt een Engelse bron niet Nederlands: de taal wordt geraden, met een melding;
 // Zuiver: geen server nodig. Uitvoeren: node --test test/integratie-gebruik.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -10,6 +11,8 @@ import { kijkerDashboard } from '../src/routes/delen.js';
 import { VERBORGEN, VERBORGEN_UITLEG } from '../public/js/beheer/privacy.js';
 import { CIJFERSCHALEN } from '../src/lib/schalen.js';
 import { uitsplitsingTekst, uitsplitsingIetsVerborgen } from '../public/js/beheer/schermen/dashboard.js';
+import { leesRis, naarRis, taalGeradenTekst } from '../public/js/beheer/bibliotheek-bestanden.js';
+import { legeBron } from '../public/js/beheer/bibliotheek-regels.js';
 
 const lees = (pad) => readFileSync(new URL(pad, import.meta.url), 'utf8');
 
@@ -97,4 +100,67 @@ test('G5: het scherm "Alle resultaten" kent geen "<5" meer; de handleiding ook n
   assert.match(scherm, /function groepCel\(w\) \{\n\s+if \(w && w\.verborgen\) return verborgenTd\(\);/, 'een verborgen cel is ×');
   assert.match(scherm, /verborgenTd = \(\) => h\('td', \{ class: 'rechts getal db-cel-verborgen' \}, verborgenCel\(null\)\)/);
   assert.ok(!lees('../docs/handleiding.md').includes('"<5"'), 'de handleiding noemt geen "<5"');
+});
+
+// ---------- G6: RIS zonder taal ----------
+
+const EDMONDSON = `TY  - JOUR
+AU  - Edmondson, Amy
+TI  - Psychological safety and learning behavior in work teams
+T2  - Administrative Science Quarterly
+PY  - 1999
+VL  - 44
+IS  - 2
+SP  - 350
+EP  - 383
+DO  - 10.2307/2666999
+ER  -
+`;
+
+test('G6: een Engelse bron zonder LA wordt Engels; een Nederlandse blijft Nederlands; LA gaat voor', () => {
+  const { bronnen, meldingen, taalGeraden } = leesRis(`${EDMONDSON}
+TY  - JOUR
+AU  - Schaufeli, W. B.
+TI  - Burnout
+T2  - Journal of Organizational Behavior
+PY  - 2004
+ER  -
+
+TY  - BOOK
+AU  - Jansen, A.
+TI  - Werkdruk in de zorg
+PY  - 2023
+ER  -
+
+TY  - JOUR
+AU  - Smit, J.
+TI  - Learning in teams
+LA  - nl
+PY  - 2020
+ER  -
+`);
+  assert.deepEqual(bronnen.map((b) => b.taal), ['en', 'en', 'nl', 'nl']);
+  assert.equal(bronnen[1].taal, 'en', 'een titel zonder herkenbare woorden: het tijdschrift beslist');
+  assert.equal(bronnen[3].taal, 'nl', 'LA in het bestand gaat altijd voor');
+  assert.equal(taalGeraden, 3);
+  assert.deepEqual(meldingen, [], 'de meldingen (overgeslagen regels e.d.) blijven zoals ze waren');
+  // Vroeger: legeBron gaf altijd 'nl'.
+  assert.equal(legeBron('artikel').taal, 'nl');
+});
+
+test('G6: een bestand met LA (zoals onze eigen RIS-export) raadt niets', () => {
+  const b = { ...legeBron('artikel'), titel: 'Psychological safety', taal: 'nl', jaar: 1999, auteurs: [{ achternaam: 'Edmondson', tussenvoegsel: '', voorletters: 'A.' }] };
+  const r = leesRis(naarRis([b]));
+  assert.equal(r.taalGeraden, 0);
+  assert.equal(r.bronnen[0].taal, 'nl');
+});
+
+test('G6: de melding bij het importeren', () => {
+  assert.match(taalGeradenTekst(1, 1), /^Bij deze bron stond geen taal in het bestand\./);
+  assert.match(taalGeradenTekst(2, 2), /^Bij beide bronnen stond/);
+  assert.match(taalGeradenTekst(7, 7), /^Bij alle 7 bronnen stond/);
+  assert.match(taalGeradenTekst(2, 5), /^Bij 2 van de 5 bronnen stond/);
+  assert.match(taalGeradenTekst(2, 5), /Pas hem dan aan bij de bron\.$/);
+  const scherm = lees('../public/js/beheer/schermen/bibliotheek.js');
+  assert.match(scherm, /taalGeraden \? melding\(taalGeradenTekst\(taalGeraden, bronnen\.length\)\)/, 'de importdialoog toont de melding');
 });
