@@ -9,7 +9,7 @@ import {
   BRONSOORTEN, ONDERWERPEN, TALEN, BETROUWBAARHEID, dubbelZoeker, reeksDelen, auteursRegel,
 } from '../bibliotheek-regels.js';
 import { zoek, markeringen, SORTERING_LABELS } from '../bibliotheek-zoeken.js';
-import { leesRis, leesTekstBestand, taalGeradenTekst } from '../bibliotheek-bestanden.js';
+import { leesRis, leesTekstBestand, taalGeradenTekst, taalOnbekendTekst } from '../bibliotheek-bestanden.js';
 import { haalBibliotheek, bibliotheekGewijzigd } from '../bibliotheek-data.js';
 import { markeer, bronMeta, openKnop, citeerDialoog, koppelDialoog, exporteer } from '../bibliotheek-ui.js';
 
@@ -363,7 +363,7 @@ export async function toon(container, ctx) {
       voeg.disabled = true;
       try {
         if (bestand.size > 20_000_000) throw new Error('Dit bestand is te groot (meer dan 20 MB).');
-        const { bronnen, meldingen, taalGeraden } = leesRis(leesTekstBestand(new Uint8Array(await bestand.arrayBuffer())));
+        const { bronnen, meldingen, taalGeraden, taalOnbekend } = leesRis(leesTekstBestand(new Uint8Array(await bestand.arrayBuffer())));
         const alBekend = [];
         nieuw = [];
         const zoeker = dubbelZoeker(bib.bronnen);
@@ -380,6 +380,7 @@ export async function toon(container, ctx) {
           h('p', {}, `${aantal(bronnen.length, 'bron', 'bronnen')} gevonden.${alBekend.length ? ` ${alBekend.length} ${alBekend.length === 1 ? 'staat' : 'staan'} al in je bibliotheek en ${alBekend.length === 1 ? 'wordt' : 'worden'} overgeslagen.` : ''}`),
           nieuw.length > ruimte ? melding(`Er passen nog ${ruimte} bronnen in de bibliotheek (maximaal 1.000).`, 'waarschuwing') : null,
           taalGeraden ? melding(taalGeradenTekst(taalGeraden, bronnen.length)) : null,
+          taalOnbekend.length ? melding(taalOnbekendTekst(taalOnbekend), 'waarschuwing') : null,
           meldingen.length ? melding(h('ul', { class: 'bb-meldingen' }, meldingen.slice(0, 10).map((m) => h('li', {}, m)), meldingen.length > 10 ? h('li', {}, `… en nog ${meldingen.length - 10}.`) : null), 'waarschuwing') : null);
         voeg.disabled = !nieuw.length || nieuw.length > ruimte;
         voeg.textContent = nieuw.length ? `${aantal(nieuw.length, 'bron', 'bronnen')} toevoegen` : 'Niets om toe te voegen';

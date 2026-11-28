@@ -79,3 +79,36 @@ test('correlatie met leeftijd bij 3 keer "liever niet": de privacyreden, niet "g
   const weinig = werkbank(exportLijst([{ id: 2, tekst: 'A' }, { id: 3, tekst: 'B' }], Array.from({ length: 8 }, (_, i) => ({ 2: 1 + (i % 5), 3: 1 + ((i * 2) % 5) }))));
   assert.match(meldingenVan(await weinig('correlatie', { variabelen: ['v:2', 'v:3'] }))[0], /Geen enkel paar heeft genoeg respondenten/);
 });
+
+// ---------- G6: RIS zonder LA ----------
+
+import { leesRis, raadTaalRis, taalOnbekendTekst } from '../public/js/beheer/bibliotheek-bestanden.js';
+import { readFileSync } from 'node:fs';
+
+test('G6: een Engelse HR-bron zonder signaalwoord wordt niet stil Nederlands; zonder aanknopingspunt noemen we hem', () => {
+  const titels = [
+    ['en', 'Job demands-resources theory: Taking stock and looking forward Journal of Occupational Health Psychology'],
+    ['en', 'Burnout and work engagement: The JD-R approach Annual Review of Organizational Psychology and Organizational Behavior'],
+    ['en', 'Psychological safety and learning behavior in work teams Administrative Science Quarterly'],
+    ['en', 'Employee turnover: A meta-analytic review Personnel Psychology'],
+    ['en', 'Transformational leadership Journal of Applied Psychology'],
+    ['en', 'Perceived organizational support Journal of Applied Psychology'],
+    ['en', 'Work engagement Journal of Organizational Behavior'],
+    ['en', 'Organizational commitment Human Resource Management Review'],
+    ['nl', 'Werkdruk in de zorg Tijdschrift voor HRM'],
+    ['nl', 'Duurzame inzetbaarheid Gedrag & Organisatie'],
+    ['nl', 'Verzuim Tijdschrift voor Bedrijfs- en Verzekeringsgeneeskunde'],
+    ['nl', 'Medewerkerstevredenheid onderzoek Tijdschrift voor HRM'],
+  ];
+  for (const [taal, tekst] of titels) assert.equal(raadTaalRis(tekst), taal, tekst);
+  assert.equal(raadTaalRis('Xyz 2020'), null, 'geen aanknopingspunt');
+  // Het bestand van de reviewer (zoals Google Scholar, zonder LA).
+  const ris = `TY  - JOUR\nAU  - Meyer, John P.\nTI  - Organizational commitment\nT2  - Human Resource Management Review\nPY  - 1991\nER  - \n\nTY  - JOUR\nAU  - Vries, Jan de\nTI  - Duurzame inzetbaarheid van oudere medewerkers\nT2  - Tijdschrift voor HRM\nPY  - 2021\nER  - \n\nTY  - JOUR\nAU  - Kahn, W. A.\nTI  - Xyz\nPY  - 1990\nER  - \n`;
+  const { bronnen, taalGeraden, taalOnbekend } = leesRis(ris);
+  assert.deepEqual(bronnen.map((b) => b.taal), ['en', 'nl', 'nl']);
+  assert.equal(taalGeraden, 3);
+  assert.deepEqual(taalOnbekend, ['Xyz']);
+  assert.equal(taalOnbekendTekst(['Xyz']), 'Bij 1 bron konden we de taal niet raden: “Xyz”. Die staat nu op Nederlands. Kies zelf de juiste taal bij de bron.');
+  const scherm = readFileSync(new URL('../public/js/beheer/schermen/bibliotheek.js', import.meta.url), 'utf8');
+  assert.match(scherm, /taalOnbekend\.length \? melding\(taalOnbekendTekst\(taalOnbekend\), 'waarschuwing'\)/, 'de importdialoog noemt ze');
+});

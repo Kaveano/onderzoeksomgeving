@@ -7,10 +7,39 @@
 
 import {
   BRONSOORTEN, ONDERWERPEN, TALEN, BETROUWBAARHEID, legeBron, leesAuteur, auteurAlsTekst, apaVerwijzing, sorteerLiteratuur,
-  normaliseer, paginaStreep, taalUitTekst, raadTaal, onderwerpUitTekst, zonderSterren, LIMIETEN,
+  normaliseer, paginaStreep, taalUitTekst, onderwerpUitTekst, zonderSterren, LIMIETEN,
 } from './bibliotheek-regels.js';
 
 // ---------- RIS ----------
+
+// Taal raden zonder LA (G6). raadTaal (bibliotheek-regels.js) telt alleen een paar kleine woorden en kiest bij een
+// gelijkspel stil 'nl'. Hier tellen ook HR-vaktaal en woordvormen mee, en bij een gelijkspel weten we het niet.
+const EN_WOORDEN = new Set(['the', 'of', 'and', 'for', 'with', 'a', 'an', 'on', 'to', 'from', 'at', 'by', 'is', 'are', 'how', 'what', 'why',
+  'journal', 'review', 'management', 'psychology', 'organizational', 'organisational', 'organization', 'organisation', 'commitment', 'theory',
+  'resource', 'resources', 'demands', 'job', 'jobs', 'work', 'employee', 'employees', 'engagement', 'performance', 'leadership', 'burnout',
+  'satisfaction', 'turnover', 'behavior', 'behaviour', 'human', 'health', 'wellbeing', 'workplace', 'research', 'study', 'studies', 'international',
+  'quarterly', 'applied', 'science', 'sciences', 'business', 'public', 'perspective', 'evidence', 'effect', 'effects', 'role', 'model', 'social',
+  'personnel', 'occupational', 'vocational', 'career', 'stress', 'safety', 'team', 'teams', 'among', 'between', 'their', 'into', 'its', 'new', 'support']);
+const NL_WOORDEN = new Set(['de', 'het', 'een', 'van', 'en', 'voor', 'met', 'bij', 'op', 'naar', 'over', 'uit', 'te', 'aan', 'als', 'door',
+  'werk', 'medewerkers', 'medewerker', 'werknemer', 'werknemers', 'tijdschrift', 'onderzoek', 'organisatie', 'organisaties', 'arbeid', 'verzuim',
+  'welzijn', 'leiderschap', 'beleid', 'gezondheid', 'personeel', 'ontwikkeling', 'werkdruk', 'zorg', 'sociale', 'praktijk', 'handboek', 'rapport',
+  'onderwijs', 'duurzame', 'oudere', 'jongere', 'tussen', 'onder', 'nieuwe', 'hun', 'wat', 'hoe', 'gedrag']);
+const EN_UITGANG = /(tion|tions|sion|sions|ship|ships|ment|ments|ness|ity|ities|ive|ives|ings)$/;
+const NL_UITGANG = /(heid|heden|schap|schappen|lijk|lijke|isch|ische|igheid|ingen|atie|aties|teit|teiten)$/;
+
+/** 'en', 'nl' of null (geen aanknopingspunt, of evenveel voor beide). */
+export function raadTaalRis(tekst) {
+  let en = 0;
+  let nl = 0;
+  for (const w of normaliseer(tekst).split(' ')) {
+    if (!w) continue;
+    if (EN_WOORDEN.has(w) || (w.length > 5 && EN_UITGANG.test(w))) en++;
+    if (NL_WOORDEN.has(w) || (w.length > 5 && NL_UITGANG.test(w)) || /ij|aa|uu/.test(w)) nl++;
+  }
+  if (en > nl) return 'en';
+  if (nl > en) return 'nl';
+  return null;
+}
 
 const TY_UIT = {
   artikel: 'JOUR', rapport: 'RPRT', boek: 'BOOK', hoofdstuk: 'CHAP', website: 'ELEC', wet: 'STAT', richtlijn: 'STAND',
@@ -90,7 +119,8 @@ export function naarRis(bronnen, { metNotities = false } = {}) {
 /**
  * Leest een RIS-bestand. → { bronnen: [bron (zoals legeBron)], meldingen: [tekst], taalGeraden: aantal }.
  * Vervolgregels (zonder tag) horen bij de vorige tag. Een record zonder titel wordt overgeslagen.
- * taalGeraden: bij zoveel bronnen stond er geen taal (LA) in het bestand en is de taal geraden (raadTaal).
+ * taalGeraden: bij zoveel bronnen stond er geen taal (LA) in het bestand en is de taal geraden (raadTaalRis).
+ * taalOnbekend: de titels van de bronnen waarbij dat niet lukte (die staan op Nederlands).
  */
 export function leesRis(tekst) {
   const regels = String(tekst ?? '').replace(/^﻿/, '').split(/\r\n|\r|\n/);
@@ -121,6 +151,7 @@ export function leesRis(tekst) {
   const bronnen = [];
   const meldingen = [];
   let taalGeraden = 0;
+  const taalOnbekend = [];
   for (const rec of records) {
     const alle = (tag) => rec.velden.filter((v) => v.tag === tag).map((v) => v.waarde).filter(Boolean);
     const eerste = (...tags) => {
@@ -196,10 +227,13 @@ export function leesRis(tekst) {
     }
     bron.samenvatting = samenvatting;
     // Zonder LA (Google Scholar en Mendeley laten die vaak weg) de taal raden uit de titel, het tijdschrift of boek en de
-    // samenvatting, zoals bij "Plak een verwijzing" (raadTaal); anders zou elke Engelse bron Nederlands heten.
+    // samenvatting (raadTaalRis, met HR-vaktaal en woordvormen); anders zou elke Engelse bron Nederlands heten.
+    // Is er geen enkel aanknopingspunt, dan blijft Nederlands staan en noemen we de bron (taalOnbekend).
     if (taal) bron.taal = taal;
     else {
-      bron.taal = raadTaal(`${bron.titel} ${t2} ${samenvatting}`);
+      const gok = raadTaalRis(`${bron.titel} ${t2} ${samenvatting}`);
+      bron.taal = gok || 'nl';
+      if (!gok) taalOnbekend.push(bron.titel || `Regel ${rec.regel}`);
       taalGeraden++;
     }
     const notities = [];
@@ -215,7 +249,13 @@ export function leesRis(tekst) {
     bronnen.push(bron);
   }
   if (!records.length) meldingen.push('Dit bestand bevat geen bronnen in RIS-vorm (regels als "TY  - JOUR").');
-  return { bronnen, meldingen, taalGeraden };
+  return { bronnen, meldingen, taalGeraden, taalOnbekend };
+}
+
+/** De melding bij bronnen waarvan we de taal niet konden raden (G6): die staan op Nederlands, kies zelf. */
+export function taalOnbekendTekst(titels) {
+  const lijst = titels.slice(0, 5).map((t) => `“${t}”`).join(', ') + (titels.length > 5 ? ` en nog ${titels.length - 5}` : '');
+  return `Bij ${titels.length === 1 ? '1 bron' : `${titels.length} bronnen`} konden we de taal niet raden: ${lijst}. ${titels.length === 1 ? 'Die staat' : 'Die staan'} nu op Nederlands. Kies zelf de juiste taal bij de bron.`;
 }
 
 /** De melding bij het importeren als er bij n van de totaal bronnen geen taal (LA) in het RIS-bestand stond. */
