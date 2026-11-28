@@ -84,7 +84,8 @@ test('J5: "Alle antwoorden wissen" meldt het aantal gewiste ingevulde vragenlijs
   assert.equal(voor.coderingen.length, 6);
   const r = await roep(`${B}/vragenlijsten/7001/inzendingen`, { methode: 'DELETE' });
   assert.equal(r.status, 200, JSON.stringify(r.data));
-  assert.deepEqual(r.data, { ok: true, verwijderd: 7 }, 'vroeger 7 + 5 coderingen + 2 citaten = 14');
+  // verwijderd telt alleen de ingevulde vragenlijsten; sinds R10 staan de meegegane coderingen en citaten er apart bij.
+  assert.deepEqual(r.data, { ok: true, verwijderd: 7, coderingen: 5, citaten: 2 }, 'vroeger 7 + 5 coderingen + 2 citaten = 14');
   // De coderingen en citaten van die antwoorden zijn mee weg; die van de andere vragenlijst niet.
   const na = (await roep(`${B}/onderzoeken/700/codering`)).data;
   assert.deepEqual(na.coderingen.map((c) => c.inzending_id), [75001]);
@@ -92,5 +93,5 @@ test('J5: "Alle antwoorden wissen" meldt het aantal gewiste ingevulde vragenlijs
   const data = (await roep(`${B}/onderzoeken/700/export/data`)).data;
   assert.deepEqual(data.inzendingen.map((i) => i.vragenlijst_id), [7005, 7005]);
   // Nog een keer wissen: niets meer te wissen.
-  assert.deepEqual((await roep(`${B}/vragenlijsten/7001/inzendingen`, { methode: 'DELETE' })).data, { ok: true, verwijderd: 0 });
+  assert.deepEqual((await roep(`${B}/vragenlijsten/7001/inzendingen`, { methode: 'DELETE' })).data, { ok: true, verwijderd: 0, coderingen: 0, citaten: 0 });
 });
