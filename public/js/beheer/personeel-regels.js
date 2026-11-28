@@ -1089,6 +1089,20 @@ export function populatieVoorVraag(aggregaat, vraag, { d = DREMPEL } = {}) {
   return gevonden ? uit : null;
 }
 
+/**
+ * De antwoordmogelijkheden zonder groep met dezelfde naam in het bestand, als het bestand ook groepen heeft die bij
+ * geen mogelijkheid horen (alleen indelingen zonder klassen): [optie-id]. Zo'n mogelijkheid krijgt van
+ * populatieVoorVraag geen aantal, omdat haar medewerkers in een niet-gekoppelde groep kunnen zitten. Dat volgt uit de
+ * groepsnamen, niet uit de aantallen; "Dat zeg ik liever niet" telt niet mee.
+ */
+export function optiesZonderGroep(aggregaat, vraag) {
+  const dim = DIMENSIE_VAN_KENMERK[vraag?.kenmerk];
+  const dd = aggregaat?.dimensies?.[dim];
+  if (!dd || KLASSEN[dim] || !ongekoppeldeGroepen(aggregaat, vraag).length) return [];
+  const labels = new Set(dd.groepen.filter((g) => g.label !== ONBEKEND).map((g) => normaal(g.label)));
+  return optiesVan(vraag).filter((o) => o && !isLieverNiet(o.label) && !labels.has(normaal(o.label))).map((o) => o.id);
+}
+
 /** Groepen uit het bestand die bij geen antwoordmogelijkheid horen: [{ label, medewerkers }] (voor een melding). */
 export function ongekoppeldeGroepen(aggregaat, vraag) {
   const dim = DIMENSIE_VAN_KENMERK[vraag?.kenmerk];

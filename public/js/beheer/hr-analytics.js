@@ -22,7 +22,7 @@ import { dashboardUitRijen, rijenUitExport, isBeschermd } from './dashboard-reke
 import { bouwModel, vragenVan, schaalScoreTelling, waardenVan, groepeerVragen, cijferWaarde, schaalWaarde } from './analyse-model.js';
 import { isRechteLijn, RECHTE_LIJN_MIN } from './werkbank/dataset.js';
 import { KENMERKEN, kenmerkVoorTekst, isLieverNiet, magKenmerk } from './kenmerken.js';
-import { personeelKpis, populatieVoorVraag } from './personeel-regels.js';
+import { personeelKpis, populatieVoorVraag, ongekoppeldeGroepen, optiesZonderGroep } from './personeel-regels.js';
 
 export const VERSIE = 1;
 /** Zoveel indelingen komen hooguit in "Thema's per groep". */
@@ -262,8 +262,9 @@ const isVraagKenmerk = (q) => !!q.kenmerk && q.uitsplitsen && magKenmerk({ type:
  * De populatie per antwoordmogelijkheid van een achtergrondvraag: met de hand ingevuld (hr_instellingen.populatie,
  * per vraag-id of stam) gaat voor; anders uit het personeelsbestand. { waarden: {optie: n}, bron } of null.
  */
+const handPopulatie = (q, instellingen) => instellingen?.populatie?.[q.id] || instellingen?.populatie?.[q.stam] || null;
 function populatieVan(q, instellingen, personeel) {
-  const hand = instellingen?.populatie?.[q.id] || instellingen?.populatie?.[q.stam] || null;
+  const hand = handPopulatie(q, instellingen);
   const uitBestand = personeel ? populatieVoorVraag(personeel, { type: q.type, kenmerk: q.kenmerk, opties: q.opties }) : null;
   if (!hand && !uitBestand) return null;
   const waarden = {};
@@ -373,10 +374,25 @@ function samenstelling(q, lijst, instellingen, personeel, d) {
     if (!g.samengevoegd && g.n > 0) g.foutmarge_pp = S.foutmarge(g.n, g.populatie);
   }
 
-  // Representativiteit: alleen getoonde categorieën met een getoonde populatie (nooit verborgen cellen).
-  const vergelijk = groepen.filter((g) => g.populatie !== null && !g.niet_ingevuld);
+  // Groepen in het personeelsbestand die bij geen antwoord horen (bijv. "Keukenteam" niet gekoppeld aan "Keuken"):
+  // alleen als het bestand voor deze vraag gebruikt wordt (niet alle aantallen met de hand ingevuld). De namen staan
+  // ook in de tabel van de personeelscijfers. Een mogelijkheid zonder groep met die naam (en zonder aantal met de hand)
+  // krijgt een eigen reden: "niet gekoppeld" volgt uit de namen, niet uit een te klein aantal.
+  const hand = handPopulatie(q, instellingen);
+  const metHand = (id) => !!hand && Number.isInteger(hand[id]) && hand[id] >= 0;
+  const vq = { type: q.type, kenmerk: q.kenmerk, opties: q.opties };
+  const bestandNodig = !!personeel && opties.some((o) => !lieverNiet.has(o.id) && !metHand(o.id));
+  const ongekoppeld = bestandNodig ? ongekoppeldeGroepen(personeel, vq).map((g) => g.label) : [];
+  const zonderGroep = new Set(ongekoppeld.length ? optiesZonderGroep(personeel, vq).filter((id) => !metHand(id)) : []);
+  const isNietGekoppeld = (g) => g.populatie === null && !g.populatie_verborgen && g.optie_ids.some((id) => zonderGroep.has(id));
+
+  // Representativiteit: alleen getoonde categorieën met een getoonde populatie (nooit verborgen cellen). Een groep met
+  // aantallen die niet kloppen (controleer_aantallen) doet niet mee: niet in de percentages, het verschil of de figuur.
+  const vergelijk = groepen.filter((g) => g.populatie !== null && !g.niet_ingevuld && !g.controleer_aantallen);
   // "Niet ingevuld" en "Dat zeg ik liever niet" doen nooit mee (geen groep in de organisatie); die staan hier niet bij.
-  const nietVergeleken = groepen.filter((g) => !g.niet_ingevuld && !g.liever_niet && g.populatie === null).map((g) => g.label);
+  const zonderAantal = groepen.filter((g) => !g.niet_ingevuld && !g.liever_niet && g.populatie === null);
+  const nietGekoppeld = zonderAantal.filter(isNietGekoppeld).map((g) => g.label);
+  const nietVergeleken = zonderAantal.filter((g) => !isNietGekoppeld(g)).map((g) => g.label);
   let representativiteit = null;
   if (pop) {
     const nV = vergelijk.reduce((t, g) => t + g.n, 0);
@@ -388,9 +404,11 @@ function samenstelling(q, lijst, instellingen, personeel, d) {
       g.populatie_pct_vergelijk = pp;
     }
     // Klopt een aantal medewerkers niet (meer respondenten dan medewerkers), dan zegt een toets niets over de respondenten.
-    const toets = vergelijk.some((g) => g.controleer_aantallen) ? { reden: 'controleer_aantallen' }
+    const toets = groepen.some((g) => g.controleer_aantallen) ? { reden: 'controleer_aantallen' }
       : vergelijk.length >= 2 ? S.aanpassingsToets(vergelijk.map((g) => g.n), vergelijk.map((g) => g.populatie)) : { reden: 'te_weinig_groepen' };
-    const basisR = { chi2: null, df: null, p: null, n: nV, kleinste_verwacht: null, populatie_bron: pop.bron, niet_vergeleken: nietVergeleken };
+    const basisR = {
+      chi2: null, df: null, p: null, n: nV, kleinste_verwacht: null, populatie_bron: pop.bron, niet_vergeleken: nietVergeleken, niet_gekoppeld: nietGekoppeld,
+    };
     const verschillen = vergelijk.map((g) => ({ label: g.label, pct_respondenten: g.pct_vergelijk, pct_medewerkers: g.populatie_pct_vergelijk, verschil_pp: g.verschil_pp }));
     if (!toets || toets.reden) {
       representativiteit = { oordeel: 'niet_te_toetsen', reden: toets?.reden || 'klein', ...basisR, verschillen, afwijkend: [] };
@@ -406,7 +424,7 @@ function samenstelling(q, lijst, instellingen, personeel, d) {
   }
   return {
     vraag_id: q.id, stam: q.stam, kenmerk: q.kenmerk, kenmerk_naam: KENMERKEN[q.kenmerk]?.naam || '', tekst: q.tekst,
-    groepen, verborgen_rest, representativiteit, populatie_bron: pop ? pop.bron : null,
+    groepen, verborgen_rest, representativiteit, populatie_bron: pop ? pop.bron : null, ongekoppeld,
   };
 }
 

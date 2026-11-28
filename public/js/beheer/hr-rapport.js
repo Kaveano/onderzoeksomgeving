@@ -68,7 +68,18 @@ export function kerncijfersVoorKijker(k, { tussenstand = false, metPersoneel = f
     uit.verloop.respons = (uit.verloop.respons || []).map((p) => (p.open ? { ...p, respons_pct: null } : p));
     uit.verloop.toetsen = (uit.verloop.toetsen || []).filter((t) => !t.open && !openMm.has(t.van?.meetmoment_id) && !openMm.has(t.naar?.meetmoment_id));
   }
-  if (!metPersoneel) uit.personeel = null;
+  if (!metPersoneel) {
+    uit.personeel = null;
+    // Zonder personeelscijfers ook geen groepsnamen uit het personeelsbestand; "niet gekoppeld" wordt de gewone reden.
+    for (const km of uit.kenmerken || []) {
+      km.ongekoppeld = [];
+      const r = km.representativiteit;
+      if (r?.niet_gekoppeld?.length) {
+        r.niet_vergeleken = [...r.niet_gekoppeld, ...(r.niet_vergeleken || [])];
+        r.niet_gekoppeld = [];
+      }
+    }
+  }
   uit.benchmarks = (uit.benchmarks || []).map((b) => {
     const vanPersoneel = b.sleutel === 'verzuim_pct' || b.sleutel === 'verloop_pct';
     const vanLijst = !vanPersoneel;
@@ -192,7 +203,8 @@ export const ZWANGERSCHAPSVERLOF = {
  */
 export function representativiteitZinnen(km) {
   const r = km?.representativiteit;
-  if (!r) return [];
+  const los = ongekoppeldZin(km);
+  if (!r) return los ? [los] : [];
   const naar = NAAR[km.kenmerk] || `"${km.tekst}"`;
   const uit = [];
   if (r.oordeel === 'geen_aanwijzing') {
@@ -210,11 +222,28 @@ export function representativiteitZinnen(km) {
       ? `Naar ${naar} is niet getoetst of de respondenten op de organisatie lijken: daarvoor zijn de groepen te klein.`
       : `Naar ${naar} is niet getoetst of de respondenten op de organisatie lijken: daarvoor zijn er te weinig groepen met een bekend aantal medewerkers.`);
   }
-  // Eén zin voor onbekend en verborgen: anders zou je zien welk aantal medewerkers te klein is om te tonen.
+  // Niet gekoppeld volgt uit de groepsnamen; daarna één zin voor onbekend en verborgen (anders zou je zien welk aantal
+  // medewerkers te klein is om te tonen).
+  if (r.niet_gekoppeld?.length) uit.push(`${r.niet_gekoppeld.join(', ')}: niet vergeleken (in het personeelsbestand staat geen groep met deze naam).`);
   if (r.niet_vergeleken?.length) uit.push(`${r.niet_vergeleken.join(', ')}: niet vergeleken (aantal medewerkers onbekend of te klein om te tonen).`);
+  if (los) uit.push(los);
   return uit;
 }
 
+/**
+ * De zin bij groepen in het personeelsbestand die bij geen antwoord van de vraag horen (km.ongekoppeld: groepsnamen
+ * die ook in de tabel van de personeelscijfers staan), of null.
+ */
+export function ongekoppeldZin(km) {
+  const los = km?.ongekoppeld;
+  if (!Array.isArray(los) || !los.length) return null;
+  const MAX = 10;
+  const namen = `${los.slice(0, MAX).join(', ')}${los.length > MAX ? ` en nog ${los.length - MAX}` : ''}`;
+  return `In het personeelsbestand ${los.length === 1 ? 'staat een groep die' : 'staan groepen die'} bij geen antwoord van deze vraag ${los.length === 1 ? 'hoort' : 'horen'} (${namen}). Lees het personeelsbestand opnieuw in en koppel ${los.length === 1 ? 'hem' : 'ze'} aan een antwoord, of vul de aantallen zelf in bij Instellingen.`;
+}
+
+/** In een cel van een groep met meer respondenten dan medewerkers (scherm, Word en Excel). */
+export const CONTROLEER = 'controleer de aantallen';
 /** Uitleg onder de tabel "Wie deden mee" als er met de organisatie wordt vergeleken. */
 export const VERGELIJK_UITLEG = 'De percentages gaan over de groepen die met de organisatie vergeleken worden. Wie de vraag niet invulde of "Dat zeg ik liever niet" koos, telt daarbij niet mee. Het verschil is het percentage respondenten min het percentage medewerkers, in procentpunten.';
 export const NIET_INGEVULD_UITLEG = 'Ook wie deze vraag niet invulde, telt mee bij de groepen die niet apart getoond zijn.';
@@ -236,15 +265,18 @@ export function samenstellingTabel(km) {
   const rijen = (km?.groepen || []).map((g) => {
     const naam = naamVan(g);
     if (!metOrg) return { vergeleken: false, cellen: [naam, aantal(g.n), procent(g.pct)], getallen: [naam, g.n ?? VERBORGEN, eindig(g.pct) ? Math.round(g.pct) : VERBORGEN] };
-    const vergeleken = g.populatie !== null && !g.niet_ingevuld && eindig(g.pct_vergelijk) && eindig(g.populatie_pct_vergelijk);
+    // Een groep met aantallen die niet kloppen (meer respondenten dan medewerkers) wordt niet vergeleken.
+    const controleer = !!g.controleer_aantallen;
+    const vergeleken = g.populatie !== null && !g.niet_ingevuld && !controleer && eindig(g.pct_vergelijk) && eindig(g.populatie_pct_vergelijk);
     const pR = vergeleken ? Math.round(g.pct_vergelijk) : null;
     const pM = vergeleken ? Math.round(g.populatie_pct_vergelijk) : null;
     const org = g.niet_ingevuld || g.liever_niet ? '–' : g.populatie_verborgen ? VERBORGEN : g.populatie === null ? 'onbekend' : aantal(g.populatie);
-    const orgPct = vergeleken ? nlProcent(pM) : g.populatie_verborgen ? VERBORGEN : '–';
+    const orgPct = vergeleken ? nlProcent(pM) : controleer ? CONTROLEER : g.populatie_verborgen ? VERBORGEN : '–';
     return {
       vergeleken,
-      cellen: [naam, aantal(g.n), vergeleken ? nlProcent(pR) : '–', org, orgPct, vergeleken ? metTeken(pR - pM, 0) : '–', foutmargeTekst(g.foutmarge_pp)],
-      getallen: [naam, g.n ?? VERBORGEN, vergeleken ? pR : '', g.niet_ingevuld || g.liever_niet ? '' : g.populatie_verborgen ? VERBORGEN : g.populatie ?? '', vergeleken ? pM : g.populatie_verborgen ? VERBORGEN : '', vergeleken ? pR - pM : '',
+      cellen: [naam, aantal(g.n), vergeleken ? nlProcent(pR) : '–', org, orgPct, vergeleken ? metTeken(pR - pM, 0) : controleer ? CONTROLEER : '–', foutmargeTekst(g.foutmarge_pp)],
+      getallen: [naam, g.n ?? VERBORGEN, vergeleken ? pR : '', g.niet_ingevuld || g.liever_niet ? '' : g.populatie_verborgen ? VERBORGEN : g.populatie ?? '',
+        vergeleken ? pM : controleer ? CONTROLEER : g.populatie_verborgen ? VERBORGEN : '', vergeleken ? pR - pM : controleer ? CONTROLEER : '',
         eindig(g.foutmarge_pp) ? Math.round(g.foutmarge_pp * 10) / 10 : ''],
     };
   });
@@ -394,10 +426,13 @@ export function kerncijferFiguren(k) {
   const kv = (k.kenmerken || []).find((x) => x.representativiteit && x.representativiteit.verschillen?.length);
   if (kv) {
     const vs = kv.representativiteit.verschillen;
+    // Een groep met aantallen die niet kloppen staat niet in de figuur (en telt niet mee in de percentages), alleen in de noot.
+    const controleer = kv.groepen.filter((g) => g.controleer_aantallen).map((g) => (g.samengevoegd ? LABEL_OVERIG : g.label));
     const alt = `Samenstelling naar ${(kv.kenmerk_naam || 'groep').toLowerCase()}: ${vs.map((x) => `${x.label} ${nlProcent(x.pct_respondenten)} van de respondenten tegen ${nlProcent(x.pct_medewerkers)} van de medewerkers`).join('; ')}.`;
     uit.push(fig(`samenstelling-${kv.vraag_id}`, 'staaf', `Respondenten en organisatie naar ${(kv.kenmerk_naam || 'groep').toLowerCase()}`, alt, {
       eenheid: '%', schaal: { min: 0, max: 100 }, categorieen: vs.map((x) => x.label),
       reeksen: [{ label: 'Respondenten', waarden: vs.map((x) => x.pct_respondenten) }, { label: 'Organisatie', waarden: vs.map((x) => x.pct_medewerkers) }],
+      ...(controleer.length ? { noot: `${controleer.join(', ')}: niet in de figuur, want er zijn meer respondenten dan medewerkers; controleer de aantallen.` } : {}),
     }));
   }
   // 6. Prioriteitenmatrix (thema's, geen personen).
@@ -486,7 +521,7 @@ function deelnameBlokken(k, figuren) {
   if (ls.length) {
     uit.push(tabel(['Vragenlijst', 'Meetmoment', 'Uitgenodigd', 'Ingevuld', 'Respons', 'Foutmarge'], ls.map((l) => [
       l.titel, l.meetmoment_naam || '–', eindig(l.uitgenodigd) ? aantal(l.uitgenodigd) : '–', l.klein ? VERBORGEN : aantal(l.n),
-      l.controleer_aantallen ? 'controleer de aantallen' : eindig(l.respons_pct) ? nlProcent(l.respons_pct) : l.klein ? VERBORGEN : '–',
+      l.controleer_aantallen ? CONTROLEER : eindig(l.respons_pct) ? nlProcent(l.respons_pct) : l.klein ? VERBORGEN : '–',
       foutmargeTekst(l.foutmarge_pp),
     ]), 'Respons per vragenlijst'));
   }
@@ -761,7 +796,7 @@ export function kerncijferBladen(k) {
   const ls = k.deelname?.lijsten || [];
   bladen.push({ naam: 'Deelname', rijen: [['Vragenlijst', 'Meetmoment', 'Status', 'Uitgenodigd', 'Ingevuld', 'Respons (%)', 'Foutmarge (procentpunt)'],
     ...ls.map((l) => [l.titel, l.meetmoment_naam || '', l.status, l.uitgenodigd ?? '', l.klein ? VERBORGEN : l.n,
-      l.controleer_aantallen ? 'controleer de aantallen' : l.klein ? VERBORGEN : l.respons_pct === null ? '' : xr(l.respons_pct, 0), l.foutmarge_pp === null ? '' : xr(l.foutmarge_pp, 1)]), ...uitleg] });
+      l.controleer_aantallen ? CONTROLEER : l.klein ? VERBORGEN : l.respons_pct === null ? '' : xr(l.respons_pct, 0), l.foutmarge_pp === null ? '' : xr(l.foutmarge_pp, 1)]), ...uitleg] });
   // Zelfde getallen als de tabel op het scherm en in Word (samenstellingTabel), plus de respons per groep.
   const samenstelling = [['Vraag', 'Groep', 'Respondenten', '% respondenten', 'Medewerkers', '% medewerkers', 'Verschil (procentpunt)', 'Respons (%)', 'Foutmarge (procentpunt)']];
   for (const km of k.kenmerken || []) {
@@ -769,7 +804,7 @@ export function kerncijferBladen(k) {
     t.rijen.forEach((r, i) => {
       const g = km.groepen[i];
       const [naam, n, pR, pop, pM, verschil, marge] = t.metOrganisatie ? r.getallen : [...r.getallen, '', '', '', ''];
-      const respons = !g ? VERBORGEN : g.controleer_aantallen ? 'controleer de aantallen' : g.respons_pct === null ? (g.populatie_verborgen ? VERBORGEN : '') : xr(g.respons_pct, 0);
+      const respons = !g ? VERBORGEN : g.controleer_aantallen ? CONTROLEER : g.respons_pct === null ? (g.populatie_verborgen ? VERBORGEN : '') : xr(g.respons_pct, 0);
       samenstelling.push([km.tekst, naam, n, pR, pop, pM, verschil, respons, marge]);
     });
     for (const z of representativiteitZinnen(km)) samenstelling.push([km.tekst, z]);

@@ -646,6 +646,81 @@ test('een groep met respondenten maar 0 medewerkers: "controleer de aantallen", 
   assert.equal(meer.representativiteit.reden, 'controleer_aantallen');
 });
 
+test('een groep met aantallen die niet kloppen telt niet mee in de percentages, het verschil en de figuur (scherm, Word, Excel)', () => {
+  for (const [pop, C] of [[[30, 20, 0], 0], [[30, 20, 8], 8]]) {
+    const k = kern(kenmerkExport([20, 15, 10], { populatie: pop }));
+    const km = k.kenmerken[0];
+    const c = km.groepen.find((g) => g.label === 'Groep C');
+    assert.deepEqual([c.controleer_aantallen, c.pct_vergelijk, c.populatie_pct_vergelijk, c.verschil_pp], [true, null, null, null]);
+    // A en B: 20 en 15 van 35 respondenten tegen 30 en 20 van 50 medewerkers.
+    assert.deepEqual(km.representativiteit.verschillen.map((v) => v.label), ['Groep A', 'Groep B']);
+    dicht(km.representativiteit.verschillen[0].pct_respondenten, 2000 / 35, 1e-9);
+    dicht(km.representativiteit.verschillen[0].pct_medewerkers, 60, 1e-9);
+    assert.equal(km.representativiteit.reden, 'controleer_aantallen');
+    const t = R.samenstellingTabel(km);
+    assert.deepEqual(t.rijen[0].cellen.slice(0, 6), ['Groep A', '20', '57%', '30', '60%', '−3']);
+    assert.deepEqual(t.rijen[2].cellen, ['Groep C', '10', '–', String(C), 'controleer de aantallen', 'controleer de aantallen', '–']);
+    assert.equal(t.rijen[2].vergeleken, false);
+    // Word (korte koppen) en Excel (Samenstelling): dezelfde cellen.
+    assert.deepEqual(t.word.rijen[2].slice(3, 6), [String(C), 'controleer de aantallen', 'controleer de aantallen']);
+    const blad = R.kerncijferBladen(k).find((b) => b.naam === 'Samenstelling');
+    assert.deepEqual(blad.rijen.find((r) => r[1] === 'Groep C').slice(1, 8), ['Groep C', 10, '', C, 'controleer de aantallen', 'controleer de aantallen', 'controleer de aantallen']);
+    assert.ok(!blad.rijen.some((r) => r[1] === 'Groep C' && r.includes(22)));
+    // De figuur "Respondenten en organisatie": zonder Groep C, met een noot.
+    const f = R.kerncijferFiguren(k).find((x) => x.id.startsWith('samenstelling-'));
+    assert.deepEqual(f.categorieen, ['Groep A', 'Groep B']);
+    assert.match(f.noot, /^Groep C: niet in de figuur, want er zijn meer respondenten dan medewerkers; controleer de aantallen\.$/);
+    assert.ok(!/Groep C/.test(f.alt));
+  }
+});
+
+test('niet-gekoppelde groepen in het personeelsbestand: een eigen reden en een zin op het scherm, in Word en in Excel', () => {
+  const periode = { van: '2025-11', tot: '2026-10' };
+  const bestand = (groepen) => verwerkPersoneel(['Afdeling', 'In dienst'], groepen.flatMap(([label, n]) => Array.from({ length: n }, () => [label, '2020-01'])),
+    { rollen: { 0: 'afdeling', 1: 'datum_in' }, periode }).aggregaat;
+  const aggregaat = bestand([['Groep A', 30], ['Groep B', 20], ['Keukenteam', 38]]);
+  const k = kern(kenmerkExport([20, 15, 10]), {}, aggregaat);
+  const km = k.kenmerken[0];
+  assert.deepEqual(km.ongekoppeld, ['Keukenteam']);
+  assert.deepEqual(km.representativiteit.niet_gekoppeld, ['Groep C']);
+  assert.deepEqual(km.representativiteit.niet_vergeleken, []);
+  const zinnen = R.representativiteitZinnen(km);
+  const eigen = 'Groep C: niet vergeleken (in het personeelsbestand staat geen groep met deze naam).';
+  const los = 'In het personeelsbestand staat een groep die bij geen antwoord van deze vraag hoort (Keukenteam). Lees het personeelsbestand opnieuw in en koppel hem aan een antwoord, of vul de aantallen zelf in bij Instellingen.';
+  assert.ok(zinnen.includes(eigen), zinnen.join(' | '));
+  assert.ok(zinnen.includes(los), zinnen.join(' | '));
+  assert.ok(!zinnen.some((z) => /onbekend of te klein/.test(z)));
+  // Word (rapportblokken), Excel (Samenstelling) en "Neem op in stuk" hebben dezelfde zinnen.
+  const word = R.kerncijferBlokken(k, 'alles').filter((b) => b.soort === 'alinea').map((b) => b.tekst);
+  assert.ok(word.includes(eigen) && word.includes(los));
+  const blad = R.kerncijferBladen(k).find((b) => b.naam === 'Samenstelling');
+  assert.ok(blad.rijen.some((r) => r[1] === eigen) && blad.rijen.some((r) => r[1] === los));
+  assert.ok(R.kerncijferTekst(k).includes(los));
+  // Zonder personeelscijfers (meelezer, of de vraag bij Excel/Word niet aangevinkt): geen groepsnamen uit het bestand.
+  const zonder = R.kerncijfersVoorKijker(k, { tussenstand: true, metPersoneel: false });
+  assert.ok(!JSON.stringify(zonder).includes('Keukenteam'));
+  assert.deepEqual(zonder.kenmerken[0].representativiteit.niet_vergeleken, ['Groep C']);
+  assert.ok(R.representativiteitZinnen(zonder.kenmerken[0]).includes('Groep C: niet vergeleken (aantal medewerkers onbekend of te klein om te tonen).'));
+  assert.ok(R.kerncijfersVoorKijker(k, { tussenstand: true, metPersoneel: true }).kenmerken[0].ongekoppeld.includes('Keukenteam'));
+  // Meer groepen: "staan groepen die … horen", en een mogelijkheid die wel een groep heeft, houdt haar aantal.
+  const twee = kern(kenmerkExport([20, 15, 10]), {}, bestand([['Groep A', 30], ['Keukenteam', 38], ['Stagiairs', 6]])).kenmerken[0];
+  assert.deepEqual(twee.ongekoppeld, ['Keukenteam', 'Stagiairs']);
+  assert.equal(twee.groepen.find((g) => g.label === 'Groep A').populatie, 30);
+  assert.match(R.ongekoppeldZin(twee), /^In het personeelsbestand staan groepen die bij geen antwoord van deze vraag horen \(Keukenteam, Stagiairs\)\. .*koppel ze aan een antwoord/);
+  // Geen enkele mogelijkheid gekoppeld: geen vergelijking, wel de zin.
+  const niets = kern(kenmerkExport([20, 15, 10]), {}, bestand([['Keukenteam', 38], ['Staf', 40]])).kenmerken[0];
+  assert.equal(niets.representativiteit, null);
+  assert.deepEqual(R.representativiteitZinnen(niets), [R.ongekoppeldZin(niets)]);
+  // Alle aantallen met de hand ingevuld: het bestand doet niet mee, dus geen zin.
+  const hand = kenmerkExport([20, 15, 10], { populatie: [30, 20, 12] });
+  const kh = kern(hand, {}, aggregaat).kenmerken[0];
+  assert.deepEqual([kh.ongekoppeld, kh.representativiteit.niet_gekoppeld, kh.representativiteit.populatie_bron], [[], [], 'handmatig']);
+  // Een bestand waarin alles gekoppeld is: niets extra.
+  const goed = kern(kenmerkExport([20, 15, 10]), {}, bestand([['Groep A', 30], ['Groep B', 20], ['Groep C', 38]])).kenmerken[0];
+  assert.deepEqual([goed.ongekoppeld, goed.representativiteit.niet_gekoppeld], [[], []]);
+  assert.equal(R.ongekoppeldZin(goed), null);
+});
+
 test('aantal medewerkers met de hand: alleen als bij elke groep een aantal staat (anders geen respons of foutmarge)', () => {
   const deels = kenmerkExport([30, 25, 20, 15]);
   deels.hr_instellingen = { versie: 1, populatie: { 1: { o1: 60, o2: 50, o3: 40 } } };
