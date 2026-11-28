@@ -22,9 +22,12 @@ import { h, vervang, leeg, laden, melding, getal, aantal, tabSubnav } from '../u
 import { haalGegevens, voortgangTekst } from '../gegevens.js';
 import * as S from '../statistiek.js';
 import { neemOpInStuk } from '../stukdialoog.js';
-import { bouwModel, schaalWaarde, isKeuzevraag, vragenVan, waardenVan } from '../analyse-model.js';
+import { bouwModel, schaalWaarde, isKeuzevraag, vragenVan, waardenVan, schaalScoreTelling } from '../analyse-model.js';
 import { maakDatasetKaart } from './analyse-dataset.js';
-import { verdeelInGroepen, maskeerKruistabel, drempelVan } from '../privacy.js';
+import { maskeerKruistabel, drempelVan, weggevallenVeilig } from '../privacy.js';
+import { kiesGroepen } from '../werkbank/procedures/basis.js';
+import { dashboardUitRijen, rijenUitExport } from '../dashboard-rekenen.js';
+import { TOETS_WEGGEVALLEN } from '../rapport-feiten.js';
 
 const ALFA = 0.05; // grens voor "statistisch significant"
 const MIN_PAREN = 10; // samenhang, betrouwbaarheid en kruistabel: minstens zoveel respondenten
@@ -189,22 +192,79 @@ const alsTitel = (o) => `${hoofdletter(o.soort)} “${o.naam}”`; // Thema “W
  *   Respondenten die de uitsplitsvraag oversloegen tellen als verborgen mee.
  * Geëxporteerd voor de test die de uitkomst vergelijkt met de vroegere eigen regels van dit scherm.
  */
-export function verdeelGroepen(lijst, vraag, waarden, drempel) {
-  const groepen = optiesVan(vraag).map((o) => ({ naam: o.label, id: o.id, waarden: [] }));
+export function verdeelGroepen(lijst, vraag, waarden, drempel, { sleutel = null, dashboard = null } = {}) {
+  const groepen = optiesVan(vraag).map((o) => ({ naam: o.label, id: o.id, waarden: [], inz: [] }));
   const perId = new Map(groepen.map((gr) => [gr.id, gr]));
   let zonderGroep = 0;
   lijst.inz.forEach((a, i) => {
+    const gr = perId.get(categorie(vraag, a));
+    if (gr) gr.inz.push(a); // iedereen in de groep, ook zonder score (voor B7: wie wegviel)
     const x = waarden[i];
     if (x === null) return;
-    const gr = perId.get(categorie(vraag, a));
     if (gr) gr.waarden.push(x);
     else zonderGroep++;
   });
-  const indeling = verdeelInGroepen(groepen.map((gr, i) => ({ sleutel: i, label: gr.naam, n: gr.waarden.length })), {
-    d: drempel, strategie: 'weglaten', extraVerborgen: zonderGroep,
+  // Groepen die om een andere reden niet getoond worden (zoals in de werkbank, P2 en B7):
+  // - het dashboard verbergt deze vraag of dit thema in die groep (onderdrukAlles; dashboard = de verborgen labels);
+  // - bij een thema- of meetpuntscore vallen in die groep 1 tot 4 respondenten weg (te weinig vragen beantwoord).
+  const uitgesloten = groepen.map(() => false);
+  const reden = { dashboard: [], weggevallen: [] };
+  groepen.forEach((gr, i) => {
+    if (gr.waarden.length < drempel) return;
+    if (dashboard?.has(gr.naam)) { uitgesloten[i] = true; reden.dashboard.push(gr); return; }
+    if (sleutel && !weggevallenVeilig(weggevallenBij(lijst, sleutel, gr.inz), drempel)) { uitgesloten[i] = true; reden.weggevallen.push(gr); }
   });
-  const reden = (r) => indeling.weggelaten.filter((w) => w.reden === r).map((w) => groepen[w.sleutel]);
-  return { mee: indeling.zichtbaar.map((z) => groepen[z.sleutel]), klein: reden('klein'), ookNiet: reden('terugrekenen') };
+  const keuze = kiesGroepen(groepen.map((gr) => gr.waarden.length), { d: drempel, extraVerborgen: zonderGroep, uitgesloten });
+  const mee = keuze.mee.map((i) => groepen[i]);
+  // B7 ook voor de getoonde groepen samen (zoals in de werkbank).
+  const samenOnveilig = !!sleutel && mee.length > 0 && !weggevallenVeilig(weggevallenBij(lijst, sleutel, mee.flatMap((gr) => gr.inz)), drempel);
+  return {
+    mee: samenOnveilig ? [] : mee,
+    klein: keuze.klein.map((i) => groepen[i]),
+    ookNiet: keuze.ookNiet.map((i) => groepen[i]),
+    dashboard: reden.dashboard,
+    weggevallen: reden.weggevallen,
+    samenOnveilig,
+  };
+}
+
+/**
+ * B7 (zoals de toetsen in het rapport en de werkbank): bij een thema- of meetpuntscore vallen respondenten weg die
+ * minder dan de helft van de vragen beantwoordden. Het dashboard telt hun antwoorden wel. Zijn het er 1 tot 4, dan
+ * zijn hun antwoorden terug te rekenen uit het dashboard min deze uitkomst. Geeft het aantal weggevallen respondenten
+ * onder inz (standaard: iedereen van de vragenlijst); 0 bij een losse vraag.
+ */
+export function weggevallenBij(lijst, sleutel, inz = lijst.inz) {
+  if (!/^[tm]:/.test(String(sleutel || ''))) return 0;
+  const vragen = vragenVan(lijst, sleutel);
+  if (vragen.length < 2) return 0;
+  return schaalScoreTelling(vragen, inz).weggevallen;
+}
+
+/**
+ * P2: welke groepen (labels) het dashboard in de uitsplitsing bij deze score verbergt. uitsplitsing: de uitsplitsing
+ * van dashboardUitRijen voor deze vragenlijst en uitsplitsvraag. Een thema: de themacel; een schaal- of cijfervraag:
+ * de cel van die vraag; een meetpunt: verborgen als een van zijn vragen verborgen is. Geeft een Set (leeg = niets).
+ */
+export function dashboardVerborgen(uitsplitsing, lijst, sleutel) {
+  const uit = new Set();
+  if (!uitsplitsing) return uit;
+  const [soort, idTekst] = String(sleutel).split(':');
+  const id = Number(idTekst);
+  const vragen = soort === 't' ? [] : vragenVan(lijst, sleutel);
+  for (const g of uitsplitsing.groepen || []) {
+    if (g.verborgen) continue; // al niet getoond (en zonder getallen)
+    let weg = false;
+    if (soort === 't') weg = !!g.themas?.find((c) => c.thema_id === id)?.verborgen;
+    else {
+      for (const q of vragen) {
+        const lijstCellen = q.type === 'cijfer' ? g.cijfers : g.vragen;
+        if (lijstCellen?.find((c) => c.vraag_id === q.id)?.verborgen) weg = true;
+      }
+    }
+    if (weg) uit.add(g.label);
+  }
+  return uit;
 }
 
 // ---------- Uitleg in gewone taal ----------
@@ -328,6 +388,18 @@ export async function toon(container, ctx) {
   const keuze = keuzes.get(onderzoekId);
 
   const lijstenMetData = model.lijsten.filter((l) => l.inz.length > 0);
+  // De uitsplitsing van het dashboard (dezelfde berekening, dashboard-rekenen.js) per vragenlijst en uitsplitsvraag:
+  // wat daar in een groep verborgen is, blijft bij Verschil tussen groepen ook weg (P2).
+  let dashboardRijen = null;
+  const uitsplitsingen = new Map();
+  const uitsplitsingVan = (lijst, vraag) => {
+    const sleutel = `${lijst.id}:${vraag.id}`;
+    if (!uitsplitsingen.has(sleutel)) {
+      dashboardRijen = dashboardRijen || rijenUitExport(data);
+      uitsplitsingen.set(sleutel, dashboardUitRijen(dashboardRijen, { vragenlijst: lijst.id, uitsplitsen: vraag.id }).selectie?.uitsplitsing || null);
+    }
+    return uitsplitsingen.get(sleutel);
+  };
   const mmNaam = new Map(model.meetmomenten.map((mm) => [mm.id, mm.naam]));
   const lijstNaam = (l) => (l.meetmoment_id && mmNaam.has(l.meetmoment_id) ? `${l.titel}, ${mmNaam.get(l.meetmoment_id)}` : l.titel);
 
@@ -485,14 +557,16 @@ export async function toon(container, ctx) {
   function scoresOpMoment(mmId, sleutel) {
     const uit = [];
     let gemeten = false;
+    let weggevallen = false; // B7: in een vragenlijst van dit meetmoment vallen 1 tot 4 respondenten weg
     for (const l of lijstenMetMoment) {
       if (l.meetmoment_id !== mmId) continue;
       const w = waardenVan(l, sleutel);
       if (!w) continue;
       gemeten = true;
+      if (!weggevallenVeilig(weggevallenBij(l, sleutel), drempel)) weggevallen = true;
       for (const x of w) if (x !== null) uit.push(x);
     }
-    return { waarden: uit, gemeten };
+    return { waarden: uit, gemeten, weggevallen };
   }
 
   function vulMeetmomenten(kaart) {
@@ -547,6 +621,8 @@ export async function toon(container, ctx) {
     if (ontbreekt.length) {
       return melding(`${alsTitel(wat)} is bij ${opsomming(ontbreekt)} niet gemeten met een schaal- of cijfervraag. Kies iets wat op beide meetmomenten is gevraagd.`);
     }
+    const weg = [[A, naamA], [B, naamB]].filter(([s]) => s.weggevallen).map(([, naam]) => naam);
+    if (weg.length) return melding(`${alsTitel(wat)} bij ${opsomming(weg)} is ${TOETS_WEGGEVALLEN}.`);
     const teWeinig = [[A, naamA], [B, naamB]].filter(([s]) => s.waarden.length < drempel).map(([, naam]) => naam);
     if (teWeinig.length) {
       return melding(`Te weinig antwoorden om te vergelijken: bij ${opsomming(teWeinig)} hebben minder dan ${drempel} respondenten hierop een score. Vanaf ${drempel} respondenten per meetmoment kun je vergelijken.`);
@@ -584,9 +660,10 @@ export async function toon(container, ctx) {
       const A = scoresOpMoment(keuze.mmA, sleutel);
       const B = scoresOpMoment(keuze.mmB, sleutel);
       if (!A.gemeten || !B.gemeten) continue;
+      const veilig = !A.weggevallen && !B.weggevallen;
       const genoeg = A.waarden.length >= drempel && B.waarden.length >= drempel;
-      const r = genoeg ? rekenTweeGroepen(A.waarden, B.waarden) : null;
-      rijen.push({ naam: t.naam, r: r && r.welch ? r : null, reden: !genoeg ? `minder dan ${drempel} respondenten` : 'geen spreiding in de scores' });
+      const r = genoeg && veilig ? rekenTweeGroepen(A.waarden, B.waarden) : null;
+      rijen.push({ naam: t.naam, r: r && r.welch ? r : null, reden: !veilig ? TOETS_WEGGEVALLEN.replace(/^niet getoond: /, '') : !genoeg ? `minder dan ${drempel} respondenten` : 'geen spreiding in de scores' });
     }
     if (rijen.length < 2) return null;
     const getoetst = rijen.filter((x) => x.r);
@@ -684,22 +761,27 @@ export async function toon(container, ctx) {
 
   function uitkomstGroepen(lijst, vraag) {
     const wat = omschrijf(model, [lijst], keuze.wat2);
-    const { mee, klein, ookNiet } = verdeelGroepen(lijst, vraag, waardenVan(lijst, keuze.wat2), drempel);
+    // Wat het dashboard in de uitsplitsing naar deze vraag verbergt, blijft hier ook weg (P2); en bij een score de
+    // groepen waarin 1 tot 4 respondenten wegvallen (B7).
+    const dashboard = dashboardVerborgen(uitsplitsingVan(lijst, vraag), lijst, keuze.wat2);
+    const { mee, klein, ookNiet, dashboard: viaDashboard, weggevallen, samenOnveilig } = verdeelGroepen(lijst, vraag, waardenVan(lijst, keuze.wat2), drempel, { sleutel: keuze.wat2, dashboard });
     const regelKlein = klein.length ? `Niet meegenomen (minder dan ${drempel} respondenten): ${klein.map((gr) => gr.naam).join(', ')}.` : null;
+    const regelDashboard = viaDashboard.length
+      ? `Niet meegenomen: ${viaDashboard.map((gr) => gr.naam).join(', ')}. Op het dashboard ${viaDashboard.length === 1 ? 'staat deze groep' : 'staan deze groepen'} hier niet, omdat anders een kleine groep bij deze vraag of bij een andere vraag van hetzelfde thema terug te rekenen is.`
+      : null;
+    const regelWeg = weggevallen.length ? `Niet meegenomen: ${weggevallen.map((gr) => gr.naam).join(', ')} (${TOETS_WEGGEVALLEN.replace(/^niet getoond: /, '')}).` : null;
     const regelOokNiet = ookNiet.length
       ? `Ook niet meegenomen: ${ookNiet.map((gr) => gr.naam).join(', ')}. Anders zijn de scores van een kleine groep terug te rekenen uit het totaal.`
       : null;
-    const weggelaten = klein.length || ookNiet.length
-      ? h('div', { class: 'an-weggelaten' },
-        regelKlein ? h('p', {}, regelKlein) : null,
-        regelOokNiet ? h('p', {}, regelOokNiet) : null)
-      : null;
+    const regels = [regelKlein, regelDashboard, regelWeg, regelOokNiet].filter(Boolean);
+    const weggelaten = regels.length ? h('div', { class: 'an-weggelaten' }, regels.map((r) => h('p', {}, r))) : null;
+    if (samenOnveilig) return [uitkomstKop(`${alsTitel(wat)} per groep`), melding(`${alsTitel(wat)} per groep is ${TOETS_WEGGEVALLEN}.`), weggelaten];
     const titel = `${alsTitel(wat)} per groep`;
     const kopRegels = [
       `Verschil tussen groepen – ${alsTitel(wat)}`,
       `Groepen volgens de vraag “${vraag.tekst}” – ${lijstNaam(lijst)}; ${bereikTekst([lijst], keuze.wat2)}`,
     ];
-    const voetRegels = [regelKlein, regelOokNiet].filter(Boolean);
+    const voetRegels = regels;
 
     if (mee.length < 2) {
       return [
@@ -808,6 +890,9 @@ export async function toon(container, ctx) {
       return melding(`Te weinig antwoorden: minder dan ${MIN_PAREN} respondenten hebben op beide een score. Vanaf ${MIN_PAREN} kun je samenhang berekenen.`);
     }
     const titel = `Samenhang tussen ${voluit(x)} en ${voluit(y)}`;
+    // B7: een thema- of meetpuntscore waarbij 1 tot 4 respondenten wegvallen, niet naast het dashboard.
+    const onveilig = [[x, keuze.x], [y, keuze.y]].filter(([, k]) => !weggevallenVeilig(weggevallenBij(lijst, k), drempel)).map(([o]) => alsTitel(o));
+    if (onveilig.length) return [uitkomstKop(titel), melding(`${onveilig.join(' en ')} ${onveilig.length === 1 ? 'is' : 'zijn'} hier ${TOETS_WEGGEVALLEN}.`)];
     // Bij een ja/nee-vraag is de samenhang in feite een vergelijking van de ja-groep met de nee-groep.
     // Is een van die groepen kleiner dan de drempel, dan zou de uitkomst iets over die kleine groep verraden.
     for (const [o, w, ander] of [[x, xs, ys], [y, ys, xs]]) {
@@ -852,10 +937,14 @@ export async function toon(container, ctx) {
   }
 
   function samenhangThemas(lijst) {
-    const themas = model.themas
-      .map((t) => ({ naam: t.naam, waarden: waardenVan(lijst, `t:${t.id}`) }))
+    const alle = model.themas
+      .map((t) => ({ naam: t.naam, waarden: waardenVan(lijst, `t:${t.id}`), veilig: weggevallenVeilig(weggevallenBij(lijst, `t:${t.id}`), drempel) }))
       .filter((t) => t.waarden);
-    if (themas.length < 2) return null;
+    // B7: thema's waarbij 1 tot 4 respondenten wegvallen, doen niet mee.
+    const nietVeilig = alle.filter((t) => !t.veilig).map((t) => t.naam);
+    const themas = alle.filter((t) => t.veilig);
+    const nootWeg = nietVeilig.length ? h('p', { class: 'an-noot' }, `Niet in de tabel: ${opsomming(nietVeilig)} (${TOETS_WEGGEVALLEN.replace(/^niet getoond: /, '')}).`) : null;
+    if (themas.length < 2) return nootWeg ? [uitkomstKop("Samenhang tussen alle thema's"), nootWeg] : null;
     const cel = (a, b) => {
       const n = a.waarden.filter((w, i) => w !== null && b.waarden[i] !== null).length;
       return n >= MIN_PAREN ? S.pearson(a.waarden, b.waarden) : null;
@@ -913,6 +1002,7 @@ export async function toon(container, ctx) {
       h('p', { class: 'an-noot' },
         `Per tweetal tellen alleen respondenten mee met een score op beide thema's (minstens ${MIN_PAREN}). Een punt (·) betekent: niet te berekenen. `,
         'Bij zoveel correlaties tegelijk valt er al snel één door toeval significant uit; kijk vooral naar de sterke verbanden.'),
+      nootWeg,
     ];
   }
 

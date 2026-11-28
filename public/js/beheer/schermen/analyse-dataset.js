@@ -7,6 +7,8 @@ import { api } from '../api.js';
 import { h, vervang, laden, melding, meld, meldFout, bevestig, aantal, getal } from '../ui.js';
 import * as S from '../statistiek.js';
 import { kolomSoort, isCodekolom } from '../inlees-regels.js';
+import { verbergReeks, verdeelInGroepen } from '../privacy.js';
+import { ordeStatistieken } from '../werkbank/privacy-selectie.js';
 
 const ALFA = 0.05;
 export const MIN_GROEP = 5; // kleinere groepen doen niet mee aan een vergelijking (de drempel van 5, zoals overal; BOUWPLAN B5)
@@ -29,6 +31,63 @@ function groepeer(rijen, kolom) {
 }
 
 const getallen = (rijen, kolom) => rijen.map((r) => r[kolom]).filter((w) => typeof w === 'number' && Number.isFinite(w));
+
+// ---------- Privacy (P5): dezelfde regels als de werkbank op dezelfde dataset (privacy.js) ----------
+
+/**
+ * De verdeling van een indelingskolom, beschermd zoals in de werkbank: aantallen per groep gaan door verbergReeks
+ * (1 tot 4, en ter aanvulling de kleinste andere, zodat niets uit het totaal terug te rekenen is); lege cellen zijn een
+ * eigen reeks (1 tot 4 verborgen). Is er iets verborgen, dan staan de groepen op naam (de volgorde op grootte zou
+ * verraden hoe groot een verborgen groep is), en zijn de percentages van alle rijen als het aantal lege cellen
+ * verborgen is (anders volgt het uit het totaal).
+ * @returns {{ groepen: { naam, aantal: number|null, pct: number|null }[], leeg: number|null, totaal: number|null, basis: number, ietsVerborgen: boolean }}
+ */
+export function kolomVerdeling(rijen, kolom, d = MIN_GROEP) {
+  const gr = groepeer(rijen, kolom);
+  const aantallen = gr.map((x) => x.rijen.length);
+  const weg = verbergReeks(aantallen, d);
+  const leeg = rijen.length - aantallen.reduce((a, b) => a + b, 0);
+  const leegWeg = leeg > 0 && leeg < d;
+  const ietsVerborgen = leegWeg || weg.some(Boolean);
+  const totaal = aantallen.reduce((a, b) => a + b, 0);
+  const basis = leegWeg ? rijen.length : totaal;
+  let groepen = gr.map((x, i) => ({ naam: x.naam, aantal: weg[i] ? null : x.rijen.length, pct: weg[i] || !basis ? null : (x.rijen.length / basis) * 100 }));
+  if (ietsVerborgen) groepen = groepen.slice().sort((a, b) => a.naam.localeCompare(b.naam, 'nl', { numeric: true }));
+  return { groepen, leeg: leegWeg ? null : leeg, totaal: leegWeg ? null : totaal, basis, ietsVerborgen };
+}
+
+/**
+ * Beschrijving van een getallenkolom zonder getallen die bij één persoon horen (PR-10, zoals de werkbank): minder dan
+ * 5 waarden → null; minimum en maximum zijn de 5e laagste en hoogste waarde en de mediaan staat er pas vanaf 9 waarden.
+ */
+export function getalBeschrijving(waarden, d = MIN_GROEP) {
+  const b = S.beschrijf(waarden);
+  if (!b || b.n < d) return null;
+  const o = ordeStatistieken(waarden.slice().sort((x, y) => x - y), d);
+  return { ...b, mediaan: o.mediaan, min: o.minimum, max: o.maximum };
+}
+
+/**
+ * Groepen om te vergelijken (strategie 'weglaten' van privacy.js, zoals Verschil tussen groepen): groepen met minder
+ * dan 5 waarden doen niet mee, en is wat verborgen blijft samen 1 tot 4, dan ook de kleinste andere groep niet. Wie wel
+ * een waarde heeft maar geen groep (lege cel in de indeling), telt als verborgen mee: de beschrijving van de kolom
+ * toont het totaal. Daarna hooguit maxGroepen (de grootste).
+ * @returns {{ mee: { naam, waarden }[], klein: string[], ookNiet: string[], teVeel: boolean }}
+ */
+export function datasetGroepen(rijen, wat, groep, { d = MIN_GROEP, maxGroepen = MAX_GROEPEN } = {}) {
+  const alles = groepeer(rijen, groep).map((x) => ({ naam: x.naam, waarden: getallen(x.rijen, wat) }));
+  const zonderGroep = rijen.filter((r) => isLeeg(r[groep]) && typeof r[wat] === 'number' && Number.isFinite(r[wat])).length;
+  const r = verdeelInGroepen(alles.map((x, i) => ({ sleutel: i, label: x.naam, n: x.waarden.length })), { d, strategie: 'weglaten', extraVerborgen: zonderGroep });
+  let mee = r.zichtbaar.map((z) => alles[z.sleutel]).sort((a, b) => b.waarden.length - a.waarden.length || a.naam.localeCompare(b.naam, 'nl'));
+  const teVeel = mee.length > maxGroepen;
+  if (teVeel) mee = mee.slice(0, maxGroepen);
+  return {
+    mee,
+    klein: r.weggelaten.filter((w) => w.reden === 'klein').map((w) => w.label).sort((a, b) => a.localeCompare(b, 'nl', { numeric: true })),
+    ookNiet: r.weggelaten.filter((w) => w.reden === 'terugrekenen').map((w) => w.label),
+    teVeel,
+  };
+}
 
 /**
  * Maakt de kaart. bouw: { nummer, maakKaart, kiesVeld, uitkomstKop, beschrijfTabel, uitkomsten, conclusie, stukKnop,
@@ -109,22 +168,26 @@ export function maakDatasetKaart(ctx, bouw, keuze) {
           h('tbody', {}, dataset.kolommen.map((naam, i) => {
             const soort = dataset.soorten[i];
             const gevuld = dataset.rijen.filter((r) => !isLeeg(r[i])).length;
+            // Gevuld: 1 tot 4 (of 1 tot 4 lege cellen bij een indeling) wordt ×, zoals Geldig (n) in de werkbank.
+            const leeg = dataset.rijen.length - gevuld;
+            const gevuldWeg = (gevuld > 0 && gevuld < MIN_GROEP) || (soort === 'categorie' && leeg > 0 && leeg < MIN_GROEP);
             let inhoud = '';
             if (soort === 'getal') {
-              const b = S.beschrijf(getallen(dataset.rijen, i));
-              inhoud = b ? `gemiddeld ${g(b.gemiddelde)}; van ${g(b.min)} tot ${g(b.max)}` : '';
+              const b = getalBeschrijving(getallen(dataset.rijen, i));
+              inhoud = !b ? `minder dan ${MIN_GROEP} waarden` : b.min === null ? `gemiddeld ${g(b.gemiddelde)}` : `gemiddeld ${g(b.gemiddelde)}; van ${g(b.min)} tot ${g(b.max)}*`;
             } else if (soort === 'categorie') {
-              const gr = groepeer(dataset.rijen, i);
-              inhoud = `${aantal(gr.length, 'groep', 'groepen')}: ${gr.slice(0, 4).map((x) => `${x.naam} (${x.rijen.length})`).join(', ')}${gr.length > 4 ? ', …' : ''}`;
+              const v = kolomVerdeling(dataset.rijen, i);
+              inhoud = `${aantal(v.groepen.length, 'groep', 'groepen')}: ${v.groepen.slice(0, 4).map((x) => `${x.naam} (${x.aantal === null ? '×' : x.aantal})`).join(', ')}${v.groepen.length > 4 ? ', …' : ''}`;
             } else if (soort === 'tekst') {
               inhoud = 'vrije tekst (niet te analyseren)';
             }
             return h('tr', {},
               h('th', { scope: 'row' }, naam),
               h('td', {}, { getal: 'Getal', categorie: 'Indeling', tekst: 'Tekst', leeg: 'Leeg' }[soort]),
-              h('td', { class: 'rechts getal' }, gevuld.toLocaleString('nl-NL')),
+              h('td', { class: 'rechts getal' }, gevuldWeg ? '×' : gevuld.toLocaleString('nl-NL')),
               h('td', {}, inhoud));
-          })))));
+          })))),
+      h('p', { class: 'an-noot' }, `× = niet getoond: minder dan ${MIN_GROEP} rijen, of verborgen zodat een klein aantal niet terug te rekenen is. * Van en tot: de ${MIN_GROEP}e laagste en de ${MIN_GROEP}e hoogste waarde, zodat geen getal bij één persoon hoort.`));
   }
 
   // ----- De vier vragen -----
@@ -137,25 +200,34 @@ export function maakDatasetKaart(ctx, bouw, keuze) {
     const k = keuze.dsKolom;
     const naam = dataset.kolommen[k];
     if (dataset.soorten[k] === 'getal') {
-      const b = S.beschrijf(getallen(dataset.rijen, k));
-      const tekst = () => [`${naam} – ${dataset.naam} (${nTekst(b.n)})`, `- Gemiddelde: ${g(b.gemiddelde)}`, `- Middelste waarde (mediaan): ${g(b.mediaan)}`, `- Spreiding (sd): ${g(b.sd)}`, `- Laagste en hoogste: ${g(b.min)} en ${g(b.max)}`].join('\n');
+      const b = getalBeschrijving(getallen(dataset.rijen, k));
+      if (!b) return [veld, bouw.uitkomstKop(naam), melding(`Deze kolom heeft minder dan ${MIN_GROEP} waarden. Om de anonimiteit te beschermen, tonen we er niets van.`)];
+      const metOrde = b.min !== null;
+      const tekst = () => [`${naam} – ${dataset.naam} (${nTekst(b.n)})`, `- Gemiddelde: ${g(b.gemiddelde)}`,
+        metOrde ? `- Middelste waarde (mediaan): ${g(b.mediaan)}` : null, `- Spreiding (sd): ${g(b.sd)}`,
+        metOrde ? `- Laagste en hoogste (de ${MIN_GROEP}e laagste en de ${MIN_GROEP}e hoogste waarde): ${g(b.min)} en ${g(b.max)}` : null].filter(Boolean).join('\n');
       return [veld, bouw.uitkomstKop(naam, bouw.stukKnop(tekst, `beschrijving van ${naam}`)), bouw.uitkomsten([
         ['Aantal waarden', nTekst(b.n), dataset.rijen.length > b.n ? `${aantal(dataset.rijen.length - b.n, 'rij is', 'rijen zijn')} leeg in deze kolom.` : null],
         ['Gemiddelde', g(b.gemiddelde), null],
-        ['Middelste waarde (mediaan)', g(b.mediaan), 'De helft van de waarden ligt eronder, de helft erboven. Wijkt de mediaan sterk af van het gemiddelde, dan zijn er uitschieters.'],
+        metOrde ? ['Middelste waarde (mediaan)', g(b.mediaan), 'De helft van de waarden ligt eronder, de helft erboven. Wijkt de mediaan sterk af van het gemiddelde, dan zijn er uitschieters.'] : null,
         ['Spreiding (sd)', g(b.sd), 'Hoe groter, hoe verder de waarden uit elkaar liggen.'],
-        ['Laagste en hoogste waarde', bereik(b.min, b.max), null],
+        metOrde
+          ? ['Laagste en hoogste waarde', bereik(b.min, b.max), `De ${MIN_GROEP}e laagste en de ${MIN_GROEP}e hoogste waarde, zodat geen getal bij één persoon hoort.`]
+          : ['Laagste en hoogste waarde', 'niet getoond', `Die staan er pas bij vanaf ${2 * MIN_GROEP - 1} waarden, zodat geen getal bij één persoon hoort.`],
       ])];
     }
-    const gr = groepeer(dataset.rijen, k);
-    const totaal = gr.reduce((t, x) => t + x.rijen.length, 0);
-    const tekst = () => [`${naam} – ${dataset.naam} (${nTekst(totaal)})`, ...gr.map((x) => `- ${x.naam}: ${x.rijen.length} (${getal((x.rijen.length / totaal) * 100, 0)}%)`)].join('\n');
+    const v = kolomVerdeling(dataset.rijen, k);
+    const cel = (x) => (x === null ? '×' : x.toLocaleString('nl-NL'));
+    const pct = (x) => (x === null ? '×' : `${getal(x, 0)}%`);
+    const tekst = () => [`${naam} – ${dataset.naam} (${nTekst(v.basis)})`, ...v.groepen.map((x) => `- ${x.naam}: ${cel(x.aantal)} (${pct(x.pct)})`),
+      v.ietsVerborgen ? `× = niet getoond: minder dan ${MIN_GROEP}, of verborgen zodat een klein aantal niet terug te rekenen is.` : null].filter(Boolean).join('\n');
     return [veld, bouw.uitkomstKop(naam, bouw.stukKnop(tekst, `verdeling van ${naam}`)),
       h('div', { class: 'tabel-wrapper' },
         h('table', { class: 'tabel an-tabel' },
           h('caption', { class: 'sr-only' }, `Verdeling van ${naam}`),
           h('thead', {}, h('tr', {}, h('th', { scope: 'col' }, naam), h('th', { scope: 'col', class: 'rechts' }, 'Aantal'), h('th', { scope: 'col', class: 'rechts' }, 'Percentage'))),
-          h('tbody', {}, gr.map((x) => h('tr', {}, h('th', { scope: 'row' }, x.naam), h('td', { class: 'rechts getal' }, x.rijen.length.toLocaleString('nl-NL')), h('td', { class: 'rechts getal' }, `${getal((x.rijen.length / totaal) * 100, 0)}%`))))))];
+          h('tbody', {}, v.groepen.map((x) => h('tr', {}, h('th', { scope: 'row' }, x.naam), h('td', { class: 'rechts getal' }, cel(x.aantal)), h('td', { class: 'rechts getal' }, pct(x.pct))))))),
+      v.ietsVerborgen ? h('p', { class: 'an-noot' }, `× = niet getoond: minder dan ${MIN_GROEP} rijen, of verborgen zodat een klein aantal niet terug te rekenen is.${v.leeg === null ? ' Ook het aantal lege cellen is verborgen; de percentages zijn daarom van alle rijen.' : ''}`) : null];
   }
 
   function groepen() {
@@ -176,13 +248,12 @@ export function maakDatasetKaart(ctx, bouw, keuze) {
     const wat = dataset.kolommen[keuze.dsWat];
     const indeling = dataset.kolommen[keuze.dsGroep];
     const titel = `${wat} per ${indeling}`;
-    const alles = groepeer(dataset.rijen, keuze.dsGroep).map((x) => ({ naam: x.naam, waarden: getallen(x.rijen, keuze.dsWat) }));
-    let mee = alles.filter((x) => x.waarden.length >= MIN_GROEP);
-    const klein = alles.filter((x) => x.waarden.length < MIN_GROEP);
-    const teVeel = mee.length > MAX_GROEPEN;
-    if (teVeel) mee = mee.slice(0, MAX_GROEPEN);
+    // Kleine groepen doen niet mee, en zo nodig ook de kleinste andere groep (privacy.js, 'weglaten'): anders is een
+    // kleine groep terug te rekenen uit het gemiddelde van de hele kolom (bij "Hoe ziet één kolom eruit?").
+    const { mee, klein, ookNiet, teVeel } = datasetGroepen(dataset.rijen, keuze.dsWat, keuze.dsGroep);
     const noot = [
-      klein.length ? `Niet meegenomen omdat er minder dan ${MIN_GROEP} waarden zijn: ${klein.map((x) => x.naam).slice(0, 8).join(', ')}${klein.length > 8 ? ', …' : ''}.` : null,
+      klein.length ? `Niet meegenomen omdat er minder dan ${MIN_GROEP} waarden zijn: ${klein.slice(0, 8).join(', ')}${klein.length > 8 ? ', …' : ''}.` : null,
+      ookNiet.length ? `Ook niet meegenomen: ${ookNiet.join(', ')}. Anders zijn de waarden van een kleine groep terug te rekenen uit het totaal.` : null,
       teVeel ? `Alleen de ${MAX_GROEPEN} grootste groepen zijn meegenomen.` : null,
     ].filter(Boolean).join(' ');
     const nootEl = noot ? h('p', { class: 'an-noot' }, noot) : null;
@@ -308,6 +379,14 @@ export function maakDatasetKaart(ctx, bouw, keuze) {
       : null;
     if (rijen.length < 2 || kolommen.length < 2) return [velden, bouw.uitkomstKop(titel), melding('In minstens één van de kolommen komt maar één groep voor. Dan valt er geen verband te toetsen.')];
     const tabel = rijen.map((r) => kolommen.map((k) => r.rijen.filter((x) => sleutel(x[keuze.dsKol]) === sleutel(k.naam)).length));
+    // Net als bij onderdeel 5 en in de werkbank: een combinatie met minder dan 5 rijen (ook 0) komt niet in beeld, en
+    // dan ook de toets niet (uit de toets en de totalen zou zo'n kleine cel terug te rekenen zijn).
+    if (tabel.some((rij) => rij.some((c) => c < MIN_GROEP))) {
+      return [velden, bouw.uitkomstKop(titel), afgekapt, melding([
+        h('p', {}, `Niet elke combinatie heeft minstens ${MIN_GROEP} rijen. Om te voorkomen dat iets over zo'n kleine groep is af te leiden, worden de kruistabel en de toets niet getoond.`),
+        h('p', { class: 'klein' }, 'Dit kan wel met minder groepen: deel de kolommen eerst in grotere groepen in (bijvoorbeeld in de werkbank, Indelen in groepen).'),
+      ])];
+    }
     const uit = S.chiKwadraat(tabel);
     const n = tabel.flat().reduce((a, b) => a + b, 0);
     const telTabel = h('div', { class: 'tabel-wrapper' },

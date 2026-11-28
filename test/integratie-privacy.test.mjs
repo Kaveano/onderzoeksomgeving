@@ -354,3 +354,83 @@ test('J7: een eigen variabele krijgt nooit de naam van een codevariabele, en and
   assert.equal(new Set(alleNamen).size, alleNamen.length, `alle namen verschillen: ${alleNamen.join(', ')}`);
   assert.equal(ov.variabelen.find((v) => v.id === 'c:70@5').naam, `${vraag}_werkdruk_2`);
 });
+
+// ---------- Stap voor stap: B7 (P6), het dashboardpatroon bij Verschil tussen groepen (P2) en Eigen dataset (P5) ----------
+
+import { verdeelGroepen, weggevallenBij, dashboardVerborgen } from '../public/js/beheer/schermen/analyse.js';
+import { kolomVerdeling, getalBeschrijving, datasetGroepen } from '../public/js/beheer/schermen/analyse-dataset.js';
+import { bouwModel } from '../public/js/beheer/analyse-model.js';
+import { TOETS_WEGGEVALLEN } from '../public/js/beheer/rapport-feiten.js';
+
+test('P6: een themascore waarbij 1 respondent wegvalt, staat niet in Stap voor stap (zoals de toets in het rapport)', () => {
+  // Thema Veiligheid met 3 vragen: 20 mensen vulden alles in, 1 persoon alleen vraag 1 (antwoord 1).
+  const vragen = [{ id: 1, tekst: 'V1' }, { id: 2, tekst: 'V2' }, { id: 3, tekst: 'V3' }];
+  const a = Array.from({ length: 20 }, (_, i) => ({ 1: 3 + (i % 3), 2: 2 + (i % 4), 3: 3 + (i % 2) }));
+  a.push({ 1: 1 });
+  const lijst = bouwModel(exportLijst(vragen, a)).lijsten[0];
+  assert.equal(weggevallenBij(lijst, 't:10'), 1, 'één weggevallen respondent: niet veilig (B7)');
+  assert.equal(weggevallenBij(lijst, 'v:1'), 0, 'een losse vraag laat niemand wegvallen');
+  // Met 0 of minstens 5 weggevallen mag het wel.
+  const veilig = bouwModel(exportLijst(vragen, a.slice(0, 20))).lijsten[0];
+  assert.equal(weggevallenBij(veilig, 't:10'), 0);
+  assert.equal(TOETS_WEGGEVALLEN, 'niet getoond: te weinig volledig ingevulde antwoorden om dit veilig naast het dashboard te tonen');
+});
+
+test('P2/P6: Verschil tussen groepen laat weg wat het dashboard verbergt en groepen met 1 tot 4 weggevallen', () => {
+  const data = scenarioGroepen();
+  const lijst = bouwModel(data).lijsten[0];
+  const vraag = lijst.vragen.find((q) => q.id === 1);
+  const uitsplitsing = dashboard(rijenUitExport(data), { vragenlijst: 1, uitsplitsen: 1 }).selectie.uitsplitsing;
+  for (const sleutel of ['t:10', 'v:3', 'v:2']) {
+    const verborgen = dashboardVerborgen(uitsplitsing, lijst, sleutel);
+    assert.deepEqual([...verborgen].sort(), ['Lab', 'Productie'], sleutel);
+    const r = verdeelGroepen(lijst, vraag, lijst.inz.map((x) => (sleutel === 't:10' ? ((x[2] ?? x[3]) + x[3]) / 2 : x[Number(sleutel.slice(2))] ?? null)), 5, { sleutel, dashboard: verborgen });
+    assert.deepEqual(r.mee.map((g) => g.naam), ['Kantoor'], `${sleutel}: alleen Kantoor, zoals het dashboard`);
+  }
+  // Zonder iets verborgen: alle groepen.
+  const open = scenarioGroepen({ labMetVraag2: 6 });
+  const l2 = bouwModel(open).lijsten[0];
+  const u2 = dashboard(rijenUitExport(open), { vragenlijst: 1, uitsplitsen: 1 }).selectie.uitsplitsing;
+  assert.equal(dashboardVerborgen(u2, l2, 't:10').size, 0);
+  const r2 = verdeelGroepen(l2, l2.vragen[0], l2.inz.map((x) => x[3]), 5, { sleutel: 'v:3', dashboard: dashboardVerborgen(u2, l2, 'v:3') });
+  assert.deepEqual(r2.mee.map((g) => g.naam), ['Kantoor', 'Productie', 'Lab']);
+  // B7 per groep: een thema met drie vragen; in Productie beantwoordt één persoon er maar één. Die valt weg.
+  const drie = exportLijst([AFDELING, { id: 2, tekst: 'A' }, { id: 3, tekst: 'B' }, { id: 4, tekst: 'C' }], [
+    ...Array.from({ length: 10 }, (_, i) => ({ 1: 'oa', 2: 3, 3: 4, 4: 2 + (i % 3) })),
+    ...Array.from({ length: 10 }, (_, i) => ({ 1: 'ob', 2: 4, 3: 3, 4: 1 + (i % 4) })),
+    ...Array.from({ length: 10 }, (_, i) => ({ 1: 'oc', 2: 2, 3: 5, 4: 3 + (i % 2) })),
+    { 1: 'ob', 2: 1 },
+  ]);
+  const l3 = bouwModel(drie).lijsten[0];
+  const r3 = verdeelGroepen(l3, l3.vragen[0], l3.inz.map((x) => (x[2] && x[3] && x[4] ? (x[2] + x[3] + x[4]) / 3 : null)), 5, { sleutel: 't:10' });
+  assert.deepEqual(r3.weggevallen.map((g) => g.naam), ['Productie']);
+  assert.ok(!r3.mee.some((g) => g.naam === 'Productie'));
+  assert.ok(r3.mee.length < 3, 'en ter aanvulling nog een groep, anders volgt Productie uit het totaal');
+});
+
+test('P5: Eigen dataset – verdeling, min/max, groepen en kruistabel volgen de regels van de werkbank', () => {
+  // "Personeel 2026": afdeling Productie 12 (2 tijdelijk), Lab 6 (1 vast), Kantoor 20.
+  const rijen = [];
+  for (let i = 0; i < 20; i++) rijen.push(['Kantoor', i % 2 ? 'Vast' : 'Tijdelijk', 20 + i]);
+  for (let i = 0; i < 12; i++) rijen.push(['Productie', i < 2 ? 'Tijdelijk' : 'Vast', 30 + i]);
+  for (let i = 0; i < 6; i++) rijen.push(['Lab', i < 1 ? 'Vast' : 'Tijdelijk', 40 + i]);
+  for (let i = 0; i < 3; i++) rijen.push(['Stage', 'Tijdelijk', 18]);
+  // Verdeling: Stage (3) verborgen en ter aanvulling Lab (6); op naam in plaats van op grootte.
+  const v = kolomVerdeling(rijen, 0);
+  assert.deepEqual(v.groepen.map((x) => [x.naam, x.aantal]), [['Kantoor', 20], ['Lab', null], ['Productie', 12], ['Stage', null]]);
+  assert.equal(v.ietsVerborgen, true);
+  // Minimum en maximum: de 5e laagste en hoogste waarde; met 7 waarden geen minimum, maximum of mediaan.
+  const b = getalBeschrijving(rijen.map((r) => r[2]));
+  assert.equal(b.min, 21, 'gesorteerd 18, 18, 18, 20, 21: de 5e laagste is 21 (niet 18, de waarde van één persoon)');
+  assert.equal(b.max, 41, 'de 5e hoogste: 45, 44, 43, 42, 41');
+  assert.equal(getalBeschrijving([1, 2, 3, 4]), null);
+  assert.equal(getalBeschrijving([1, 2, 3, 4, 5, 6, 7]).min, null);
+  // Groepen vergelijken: Stage (3) doet niet mee, en ter aanvulling ook de kleinste andere groep (Lab, 6).
+  const gr = datasetGroepen(rijen, 2, 0);
+  assert.deepEqual(gr.mee.map((x) => x.naam), ['Kantoor', 'Productie']);
+  assert.deepEqual(gr.klein, ['Stage']);
+  assert.deepEqual(gr.ookNiet, ['Lab']);
+  // Zonder kleine groepen doet alles mee.
+  const groot = rijen.filter((r) => r[0] !== 'Stage');
+  assert.deepEqual(datasetGroepen(groot, 2, 0).mee.map((x) => x.naam).sort(), ['Kantoor', 'Lab', 'Productie']);
+});
